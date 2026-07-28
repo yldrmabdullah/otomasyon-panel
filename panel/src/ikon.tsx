@@ -1,0 +1,53 @@
+/* Modül ikonları — inline SVG (stroke tabanlı, currentColor).
+   Emoji YERİNE: emoji platformdan platforma farklı render olur, renk kontrolü
+   yoktur, ekran okuyucuya çöp metin gider ve kurumsal panelde amatör durur. */
+
+const ORTAK = {
+  width: 18,
+  height: 18,
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.8,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+  'aria-hidden': true,
+};
+
+/** İzleme — sinyal/anten dalgaları */
+export function IkonIzleme() {
+  return (
+    <svg {...ORTAK}>
+      <path d="M4.9 19.1a10 10 0 0 1 0-14.2" />
+      <path d="M8.1 15.9a5.5 5.5 0 0 1 0-7.8" />
+      <path d="M19.1 4.9a10 10 0 0 1 0 14.2" />
+      <path d="M15.9 8.1a5.5 5.5 0 0 1 0 7.8" />
+      <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+/** Mevzuat — terazi */
+export function IkonMevzuat() {
+  return (
+    <svg {...ORTAK}>
+      <path d="M12 3v18" />
+      <path d="M7 21h10" />
+      <path d="M4.5 7h15" />
+      <path d="M7.2 7 4 13.5h6.4L7.2 7Z" />
+      <path d="M16.8 7 13.6 13.5H20L16.8 7Z" />
+    </svg>
+  );
+}
+
+/** Piyasa — yakıt deposu/tank */
+export function IkonPiyasa() {
+  return (
+    <svg {...ORTAK}>
+      <rect x="3.5" y="6" width="12" height="14" rx="1.8" />
+      <path d="M3.5 11h12" />
+      <path d="M6.5 6V4.2h6V6" />
+      <path d="M15.5 9h2.6a2 2 0 0 1 2 2v5.4a1.6 1.6 0 0 0 3.2 0" />
+    </svg>
+  );
+}

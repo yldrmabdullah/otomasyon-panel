@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env
+.env.local
+*.local
+panel/node_modules/
+panel/dist/
+panel/.vercel/
+*.log
+
+# Panel snapshot'ları — TÜRETİLMİŞ veri, kaynak değil.
+# araclar/panelSnapshot.ts DB'den yeniden üretiyor. 9.8 MB (30 bin bayi) ve her
+# tazelemede tamamı değişiyor → versiyonlamak depoyu hızla şişirir.
+panel/public/api/

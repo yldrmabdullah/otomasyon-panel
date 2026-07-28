@@ -1,0 +1,65 @@
+name: Otomasyon İzleme Job
+
+# Not: Bu alt-proje kendi başına bir GitHub reposuysa bu dosya doğru yerde.
+# Eğer ParkoilProd tek repo ise, bu dosyayı repo KÖKÜNDEKİ .github/workflows/ altına
+# taşı ve working-directory'yi otomasyon-panel olarak bırak.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *' # her 15 dakikada bir
+  workflow_dispatch: # elle tetikleme
+    inputs:
+      dry_run:
+        description: 'DRY_RUN (1 = bildirim atmadan test)'
+        required: false
+        default: '0'
+
+concurrency:
+  group: otomasyon-job
+  cancel-in-progress: false # üst üste binmesin ama çalışan iptal edilmesin
+
+jobs:
+  izleme:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: otomasyon-panel
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: otomasyon-panel/package-lock.json
+
+      - name: Bağımlılıklar
+        run: npm ci
+
+      - name: Şema (idempotent)
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Job
+        run: npm run job
+        env:
+          ASIS_GATEWAY: ${{ secrets.ASIS_GATEWAY }}
+          ASIS_GUID_KEY: ${{ secrets.ASIS_GUID_KEY }}
+          ASIS_DAGITICI_KOD: ${{ secrets.ASIS_DAGITICI_KOD }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          KOPUK_ESIK_SAAT: ${{ vars.KOPUK_ESIK_SAAT }}
+          TANK_VERI_ESIK_DK: ${{ vars.TANK_VERI_ESIK_DK }}
+          TEKRAR_BILDIRIM_SAAT: ${{ vars.TEKRAR_BILDIRIM_SAAT }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          EKIP_MAIL: ${{ secrets.EKIP_MAIL }}
+          NETGSM_USERCODE: ${{ secrets.NETGSM_USERCODE }}
+          NETGSM_PASSWORD: ${{ secrets.NETGSM_PASSWORD }}
+          NETGSM_HEADER: ${{ secrets.NETGSM_HEADER }}
+          EKIP_TELEFON: ${{ secrets.EKIP_TELEFON }}
+          # workflow_dispatch'ten gelen dry_run; cron'da boş → '0'
+          DRY_RUN: ${{ github.event.inputs.dry_run || '0' }}

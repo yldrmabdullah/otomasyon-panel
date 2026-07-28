@@ -1,0 +1,29 @@
+{
+  "name": "parkoil-otomasyon-panel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Parkoil otomasyon izleme + alarm sistemi (ASIS POL bağlantı/tank takibi, mail+SMS alarm)",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "job": "tsx job/index.ts",
+    "job:build": "tsc -p tsconfig.json",
+    "db:migrate": "tsx core/migrate.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ext .ts,.tsx"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^4.5.0",
+    "pg": "^8.13.1",
+    "nodemailer": "^6.9.16"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/nodemailer": "^6.4.17",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

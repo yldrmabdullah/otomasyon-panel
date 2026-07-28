@@ -1,0 +1,117 @@
+# Bağlantı & Tank İzleme — İş Mantığı
+
+## ⭐ Satış noktası tipleri (ASIS `IstasyonTip`)
+
+> Kaynak: canlı ASIS `GetStationList.IstasyonTip`, 2026-07-28 · tip isimleri kullanıcı teyidi.
+
+Parkoil'in satış noktaları **üç ayrı iş modeli**. Üçü de gerçek bayi/satış noktası:
+
+| Tip (ASIS değeri) | Panel etiketi | Canlı sayı |
+|---|---|---|
+| `İstasyonlu` | İstasyon | 265 |
+| `Köy pompası` | Köy pompası | 2 (ikisi de BURSA, aktif) |
+| `Tanker` | **Köy tankeri** | 2 |
+
+Ayrıca **istasyon dışı** satış da var (ASIS'te ayrı tip olarak görünmüyor — ileride
+netleştirilecek).
+
+⚠️ **Yanlış varsayıma düşme:** `Tanker-1`/`Tanker-2` kayıtları `EPDKKod=1` ve `durum=false`
+olduğu için "dağıtıcının kendi aracı, gerçek bayi değil" diye yorumlanabilir — **yanlış.**
+Bunlar **köy tankeri** satış noktaları (kullanıcı teyidi 2026-07-28). Panelden gizlenmez,
+diğer tipler gibi normal izlenir; yalnız tip filtresiyle ayrıştırılır.
+
+Panelde: `istasyonlar.tip` kolonu + İzleme'de "Tip" kolonu ve tip dropdown filtresi.
+Rozet renkleri **nötr** (bu bir sınıflandırma, aciliyet değil — alarm kırmızısıyla yarışmaz).
+
+## ⚠️ `online` ≠ `IstasyonDurum` (2026-07-28 düzeltmesi)
+
+ASIS iki farklı şey döndürüyor, bunlar **karıştırılmamalı**:
+
+| Alan | Anlamı | DB kolonu |
+|---|---|---|
+| `IstasyonDurum` (bool) | Kütükte **aktif kayıt** mı | `baglanti_durum.kayitli_aktif` |
+| `SonTarih` tazeliği | **Gerçekten veri geliyor mu** | `baglanti_durum.online` |
+
+**Bulunan bug:** `onlineDurumlar()` `online: i.durum` yazıyordu, yani `IstasyonDurum`'u
+"online" sayıyordu. Sonuç: panel **"180 Online"** gösterirken o istasyonların son verisi
+**5 gün öncesiydi**. Kullanıcıya canlı gösterilen veri canlı değildi.
+
+Düzeltme sonrası canlı: **172 gerçek online**, 179 kütükte aktif → aradaki **7 istasyon
+"kayıtlı aktif ama veri gelmiyor"** (eskiden bunlar Online görünüyordu).
+
+**Kural motorunda kritik incelik:** `baglantiKopuklari()` içinde `!d.online` ile eleme
+YAPILMAZ — `online` artık "veri taze mi" demek, kopuk istasyon zaten `online=false` olur ve
+bu filtre **tüm kopuk alarmlarını susturur.** Elemek için `kayitliAktif` kullanılır (kütükte
+pasif noktayı arayıp rahatsız etmemek için).
+
+Kategori sıralamasında da `kayitli_aktif IS FALSE` → `kapandi` kontrolü, EPDK kontrolünden
+**önce** gelir: ASIS bizim için pasif işaretlemişse EPDK'da hâlâ ONAYLANDI görünse bile
+"kopuk" diye alarm üretmek yanlış alarmdır.
+
+## ⚠️ `IstasyonKod='0'` → 5 bayi izlemeden düşüyordu (2026-07-28)
+
+ASIS'te **5 istasyonun `IstasyonKod` alanı `0`** (atanmamış). `istasyon_kod` PK olduğu için
+upsert'te birbirlerini eziyorlardı → 269 istasyondan yalnız **265'i** DB'ye giriyordu ve
+**4 gerçek bayi izlemeden tamamen düşmüştü**: MERTAY, ASTEK, ÇAYIRPINAR (×2). Bağlantıları
+kopsa kimse görmezdi — panelin var oluş sebebine aykırı.
+
+Çözüm: `core/asisClient.ts` → `istasyonKimlik()`. Kod yok/`0` ise EPDK no'dan stabil
+`E-{no}` kimliği üretir (EPDK no her bayide tekil ve sabit, snapshot'lar arası tutarlı).
+Son çare `T-{TIstasyonID}`. Hiçbiri yoksa kayıt **atlanır ve loglanır** (sessizce ezmek yerine).
+
+Doğrulama: DB artık ASIS ile birebir **269 = 269**. Eski bug'ın kalıntısı `kod='0'` satırı
+silindi (ilişkili alarm/tank sıfırdı; aynı bayi `E-08690` olarak mevcut).
+
+**Ders:** dış sistemden gelen "kod" alanının tekil olduğunu varsayma — upsert öncesi
+tekillik doğrulanır, çakışma sessizce veri kaybına dönüşür.
+
+## İki farklı sorun tipi
+
+### 1. Bağlantı kopuk (istasyon seviyesi)
+İstasyon POL'e hiç veri göndermiyor (offline). Belirti: `IstasyonOnlineDurum` → offline
+veya `SonVeriTarihi` çok eski.
+
+- **Eşik (varsayılan):** son veri > **3 saat** önce → kopuk say (env: `KOPUK_ESIK_SAAT`).
+  > (2026-07-23, kullanıcı) "örnek olarak 3-4 saati geçmiş kullanıcılar" → 3 saat başlangıç.
+- **Kaynak:** `GetStationList.SonTarih` (IstasyonOnlineDurum boş dönüyor — bkz asis-pol-notlar).
+- **Pasif filtresi (KRİTİK):** son veri > `PASIF_ESIK_GUN` (varsayılan 7) gün ise istasyon
+  "pasif/ölü" sayılır, alarm ATILMAZ. Yoksa aylardır kapalı ~90 kayıt her turda alarm üretir.
+  Ayrıca `kayitliAktif=false` (ASIS kütüğünde pasif) istasyonlara da alarm yok — bkz yukarıdaki
+  `online` ≠ `IstasyonDurum` bölümü, burada `online` ile eleme yapmak alarmları susturur.
+- **Kim çözer:** Sorun bayideyse bayi, bayilik dışıysa POL. Ama önce *tespit* + *haber ver*.
+- **Hedef:** Hem otomasyon ekibi hem **bayi** (çoğu bayi takip etmiyor).
+
+### 2. Tank veri yok (tank seviyesi)
+Bağlantı var (istasyon online) ama bir/birkaç/tüm tank veri göndermiyor.
+
+- **Eşik (varsayılan):** tank son ölçümü > **35 dk** önce → veri yok say
+  (env: `TANK_VERI_ESIK_DK`). Tank verisi 30 dk periyotlu → 35 dk tolerans.
+- **Hedef:** Ekip + bayi (SMS).
+
+## Alarm yaşam döngüsü
+
+```
+AÇIK yok + eşik aşıldı        → alarm AÇ, ilk bildirimi gönder
+AÇIK var + eşik hâlâ aşılı    → tekrar-bildirim aralığı geçtiyse hatırlat (debounce)
+AÇIK var + durum düzeldi      → alarm KAPAT, "düzeldi" bildirimi (opsiyonel)
+```
+
+- **Debounce:** Aynı açık alarm için varsayılan **6 saatte bir** hatırlatma
+  (env: `TEKRAR_BILDIRIM_SAAT`). Her job turunda spam ATMA.
+
+## Bildirim kanalları
+
+- **Mail:** SMTP. Ekip dağıtım listesi + ilgili bayinin epostası.
+- **SMS:** Netgsm. Bayi telefonu + (opsiyonel) ekip nöbetçi telefonu.
+- **DRY_RUN=1:** hiçbir şey göndermez, sadece loglar (test).
+
+## Yanlış alarmdan kaçın
+
+> Kullanıcıya "kopuk" gösterilen istasyon gerçekten kopuk olmalı. Yanlış alarm bayiyi yorar
+> ve güveni düşürür. Eşikleri gerçek POL raporuyla karşılaştırarak kalibre et.
+
+## İleride
+
+- Bakım/planlı kesinti penceresi (o sırada alarm atma).
+- Bayi bazlı özel eşik (bazı istasyonlar doğası gereği aralıklı).
+- Tekrarlayan kopukluk trendi (sık kopan istasyon raporu).
