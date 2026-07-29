@@ -141,9 +141,32 @@ da taşıyor. Ama bir tarafı **eksik dolduruluyor**.
 | Σ `EslesmeMiktari` | 14.991,21 | (bu kayıtta dolum=eşleşme) | ✅ |
 | Σ `IrsaliyeLitre` | 14.886 | Fatura 14.876 | ≈ 10 lt fark |
 
-→ **`IrsaliyeLitre` SATIRLARA BÖLÜNMÜŞ, toplanır** (T1 7.932 + T2 4.968 + T3 1.986).
-§4d'deki "her satırda tekrar ediyor" yorumu YANLIŞTI; sebep irsaliye no'nun yıllar
-arası tekrar kullanılması + kapsamsız gruplamaydı.
+→ Bu irsaliyede `IrsaliyeLitre` **satırlara bölünmüş** ve toplanıyor
+(T1 7.932 + T2 4.968 + T3 1.986 = 14.886).
+
+### ⚠️⚠️ DÜZELTME (2026-07-29): davranış KARMA, tek kural yok
+
+Yukarıdaki "bölünmüş, toplanır" sonucu **tek irsaliyeden genellenmişti — hatalı.**
+Tüm tabloda ölçüm: çok satırlı **5.669** irsaliyenin **873'ünde** `irsaliye_litre`
+her satırda **AYNI** (tekrar), geri kalanında **bölünmüş**.
+
+Kanıt (tekrar eden örnek) — `PIR2026000007487`, istasyon 210230, 6 satır:
+her satırda `irsaliye_litre = 33.107`. `sum()` → **198.642 lt** (bir tankerin ~6 katı,
+fiziksel olarak imkânsız); `max()` → 33.107, dolum toplamı 32.804 → fark **-303 lt** (makul).
+
+**Sonuç: `sum()` tekrar edenleri şişirir, `max()` bölünmüşleri eksik sayar.** Ayırt edici
+bir alan bulunamadı (`irsaliye_miktar` hep 0, `dolum_tipi` ayrım vermiyor).
+
+Temmuz 2026'da iki yöntemin verdiği "EPDK limiti (288 lt) aşan irsaliye" oranı:
+`sum()` → %42 · `max()` → %60. **İkisi de gerçek olamaz** — bir dağıtıcıda bu oran
+imkânsız. Bu yüzden panele "mutabakat ihlali" uyarısı **bu alandan türetilerek konulamaz.**
+
+**Ayrıca `irsaliye_hacim_fark` alanı çöp değer taşıyor:** irsaliyeli kayıtlarda en büyük
+mutlak değer **566.660.992**. Bu alan da kullanılmayacak.
+
+**Yapılabilir olan:** fark hesabı değil, **eksik veri raporu** — hangi istasyon dolumlarında
+irsaliye bilgisi ASIS'e hiç akmıyor (aşağıdaki §4d/4g bulgusu, %100 eksik olan istasyonlar var).
+O somut, savunulabilir ve yorum gerektirmiyor.
 
 ### ⛔ ASIL SORUN: irsaliye litresi ASIS'e AKMIYOR
 RAHA Temmuz, 11 irsaliye — DB toplamı POL faturasıyla karşılaştırıldı:

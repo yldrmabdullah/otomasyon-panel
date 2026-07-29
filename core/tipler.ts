@@ -99,7 +99,14 @@ export interface AsisDolum {
    *  POL ekranı ikisini ayrı satırda gösteriyor. (bkz epdk-mutabakat.md §4g) */
   eslesmeMiktari: number;
   irsaliyeNo: string | null;
-  /** İrsaliyede yazan (lt). SATIRLARA BÖLÜNMÜŞ → irsaliye bazında TOPLANIR.
+  /** İrsaliyede yazan (lt).
+   *  ⚠️⚠️ DAVRANIŞ KARMA (2026-07-29 ölçüldü) — tek kural YOK:
+   *  Çok satırlı 5.669 irsaliyenin **873'ünde** değer her satırda AYNI (tekrar),
+   *  geri kalanında satırlara BÖLÜNMÜŞ. Yani `sum()` tekrar edenleri şişirir
+   *  (PIR2026000007487: 6 × 33.107 = 198.642 lt — bir tankerin 6 katı), `max()` ise
+   *  bölünmüş olanları eksik sayar. Ayırt edici bir alan bulunamadı.
+   *  → **Mutabakat farkını bu alandan TEK BAŞINA hesaplama.** Fatura tarafı POL'den
+   *  (veya ASIS'ten kimlik alınıp GetPumpSaleListDetail'den) doğrulanmalı.
    *  ⚠️ Teslimlerin ~%45'inde ASIS'te 0 geliyor ama POL'de fatura dolu →
    *  fatura tarafı ASIS'ten TAM hesaplanamaz (§4g). */
   irsaliyeLitre: number;
