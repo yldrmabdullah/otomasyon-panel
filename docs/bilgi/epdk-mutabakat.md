@@ -105,6 +105,61 @@ irsaliye no/litre, **irsaliye_hacim_fark** (irsaliye − tank).
    → Tek satırda irsaliye-vs-dolum karşılaştırması YANLIŞ. Gerçek mutabakat muhtemelen **irsaliye no
    bazında** (aynı irsaliyenin tüm tank dağılımı toplanıp irsaliye litresiyle) yapılıyor. `DOĞRULANMASI GEREK`
 
+## 4e. ⭐⭐ POL EKRANLARI ÇÖZÜLDÜ — mutabakat POL'de HAZIR (2026-07-29, kullanıcı SS)
+
+İki POL ekranı görüldü ve **eşleştirildi**. Bu, §4d'deki "alan güvenilmez" yorumunu
+düzeltiyor: alan güvenilmez değil, **iki farklı biçimde** geliyor ve POL zaten
+doğru hesabı yapıp gösteriyor.
+
+**Ekran 1 — Satış Takip** (`EpdkModulu/Epdk2011/GonderilecekVeriler/SatisTakip.aspx`)
+Kolonlar: İrsaliye Tarihi · Ürün · **Dağıtıcı Sevk İrsaliye No** · Fatura No ·
+Birim Fiyat · **Fatura Satış Miktarı** · **Kalan Miktar** · **İstasyon Dolum** ·
+Köy Pompası · Tanker
+
+**Ekran 2 — Tank Dolum** (`EpdkModulu/Epdk2011/IstasyonDisSatis.aspx`)
+Kolonlar: İşlem Tarihi · **Eşleşme Durumu (yeşil/kırmızı ışık)** · Evrak No ·
+Evrak Tarihi · **Tank No** · **Çıkan Litre** · **Eşleşme Miktarı** · Ürün ·
+İade/Bakım/Transfer Var Mı · Şehir · Adres
+
+### Eşleştirme kanıtı — `PIR2026000008470` (25.07.2026, RAHA ENERJİ)
+| | POL Ekran 1 | POL Ekran 2 | Bizim DB |
+|---|---|---|---|
+| Fatura Satış Miktarı | **14.876,00** | — | — |
+| İstasyon Dolum | **14.991,21** | T1 7.992,09 + T2 4.992,63 + T3 2.006,49 = **14.991,21** ✓ | brüt aynı ✓ |
+| **Kalan Miktar** | **−115,21** | — | — |
+| Hesap | `14.876 − 14.991,21 = −115,21` ✓ | | |
+
+→ **MUTABAKAT FARKI = POL'ün "Kalan Miktar" kolonu.** Fatura (dağıtıcının sevk
+ettiği) − İstasyon Dolum (tanka gerçekten giren). −115 lt, yani **288 limitinin
+içinde, sorun yok**. Bizim analiz bunu "%53 ihlal" diye gösteriyordu.
+
+### `irsaliye_litre` İKİ BİÇİMDE geliyor (ölçüldü, 30 gün / 863 teslim)
+| Biçim | Sayı | Doğru işlem | Uyum |
+|---|---|---|---|
+| Tek satır | 412 | değeri doğrudan | %72 |
+| Satırlara BÖLÜNMÜŞ (farklı değerler) | 353 | **SUM** | %62 |
+| Her satırda TEKRAR eden (aynı değer) | 98 | **MAX** | %44 |
+| → "1 farklı değer varsa MAX, >1 ise SUM" kuralıyla | 863 | | **%65** |
+
+%65 yeterli değil (kalan %35'in gerçek sapma olması gerçekçi değil). Ayrıca:
+- **İrsaliye no YILLAR ARASI tekrar kullanılıyor:** `PIR2026000008470` hem 5 Kas 2025
+  hem 25 Tem 2026'da var → gruplamaya **tarih de girmeli**, yoksa toplamlar karışır.
+- `dolum_miktari_net` POL'ün İstasyon Dolum'una brütten daha yakın.
+
+### ⛔ KARAR: tersine mühendislik YAPILMAYACAK
+POL bu hesabı zaten yapıyor ve `Kalan Miktar` + `Eşleşme Durumu` (yeşil/kırmızı ışık)
+olarak gösteriyor. Formülü %65 isabetle taklit etmek yerine **POL'ün kendi çıktısını
+almak** doğru yol:
+1. **Excel export** — her iki ekranda Excel/PDF butonu var → `araclar/polExcelImport.ts`
+   deseniyle (bayi iletişimde kanıtlandı) içe aktarılır. En hızlı ve KESİN yol.
+2. **ASIS'te karşılığı** — "Eşleşme Miktarı" / "Eşleşme Durumu" alanlarını veren bir
+   SOAP metodu var mı? ASIS'e sorulacak (bkz aşağıdaki soru listesi).
+
+Bulunan diğer POL raporları (menüden): Mutabakat Dönemleri · Sorunlu İstasyonlar ·
+Dönemsel Veri Gönderim · **Epdk Durum Analiz** · Epdk İçerik Kontrol Dolum · Epdk
+İçerik Kontrol Satış · Aylık Ticket Sayısı · Tavan Fiyat Karşılaştırma · A3 Aylık
+Satış Kontrol → hepsi otomasyon işi; incelenmeli.
+
 ## 4d. ⛔ `irsaliye_litre` ALANI GÜVENİLMEZ — dolum mutabakatı KURULAMADI (2026-07-29)
 
 Dolum verisiyle (B girdisi) bağımsız bir "irsaliye vs tank" mutabakatı kurmayı denedim.
