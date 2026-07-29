@@ -1,8 +1,13 @@
 name: Otomasyon İzleme Job
 
-# Not: Bu alt-proje kendi başına bir GitHub reposuysa bu dosya doğru yerde.
-# Eğer ParkoilProd tek repo ise, bu dosyayı repo KÖKÜNDEKİ .github/workflows/ altına
-# taşı ve working-directory'yi otomasyon-panel olarak bırak.
+# Bu alt-proje KENDİ reposu olarak yayınlandı (yldrmabdullah/otomasyon-panel):
+# package.json, core/, job/ repo KÖKÜNDE. Dolayısıyla working-directory ve
+# cache-dependency-path'te `otomasyon-panel/` öneki OLMAZ.
+#
+# ⚠️ 2026-07-28/29: bu önek yüzünden job 15 dakikada bir fail ediyordu
+# ("Some specified paths were not resolved, unable to cache dependencies")
+# ve alarm bildirimleri hiç gitmiyordu. Yolları değiştirirken repo kökünün
+# neresi olduğunu doğrula.
 
 on:
   schedule:
@@ -21,17 +26,15 @@ concurrency:
 jobs:
   izleme:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: otomasyon-panel
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # Node 20 GH Actions'ta deprecate edildi (runner zaten 24'e zorluyor).
+          node-version: '22'
           cache: 'npm'
-          cache-dependency-path: otomasyon-panel/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Bağımlılıklar
         run: npm ci
@@ -51,6 +54,9 @@ jobs:
           KOPUK_ESIK_SAAT: ${{ vars.KOPUK_ESIK_SAAT }}
           TANK_VERI_ESIK_DK: ${{ vars.TANK_VERI_ESIK_DK }}
           TEKRAR_BILDIRIM_SAAT: ${{ vars.TEKRAR_BILDIRIM_SAAT }}
+          # KRİTİK: pasif filtre. Bu geçmezse aylardır kapalı ~90 istasyon her
+          # turda alarm üretir ve bayiler boş yere rahatsız edilir.
+          PASIF_ESIK_GUN: ${{ vars.PASIF_ESIK_GUN }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
