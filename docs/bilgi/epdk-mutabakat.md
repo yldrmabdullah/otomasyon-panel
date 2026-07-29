@@ -179,6 +179,64 @@ zaman bazında değil.)
 Kapsam ölçüldü: 16.685 irsaliyenin yalnız **9'u** iki yılda geçiyor → marjinal.
 Ama gruplamada **yıl/dönem filtresi ZORUNLU**, yoksa o 9 kayıt toplamları bozar.
 
+### ⭐ ASIL BULGU: fark TAM 1.000,00 lt — POL'de bir DÜZELTME kaydı var (2026-07-29)
+
+Kullanıcı uyardı: *"burada farklı bir durum vardır, ikisi de aynı yerden besleniyor."*
+Haklıydı. POL Excel ile ASIS canlı yanıtı irsaliye bazında karşılaştırıldı:
+
+| İrsaliye | POL İstasyon Dolum | ASIS Σ brüt | Fark | ASIS irsaliye |
+|---|---|---|---|---|
+| 7368 | 25.000,82 | 25.000,82 | **0** | 24.768 ✓ |
+| 7626 | 12.569,55 | 12.569,55 | **0** | 12.477 ✓ |
+| 7754 | 1.721,26 | 1.721,26 | **0** | 1.724 ✓ |
+| 7946 | 11.785,47 | 11.785,47 | **0** | 11.691 ✓ |
+| 8470 | 14.991,21 | 14.991,21 | **0** | 14.886 ✓ |
+| 7678 | 11.761,18 | 12.761,18 | **+1.000,00** | **0** |
+| 8250 | 16.479,81 | 17.479,81 | **+1.000,00** | **0** |
+| 8007 | 12.166,80 | 12.456,80 | +290 | **0** |
+| 8406 | 9.983,05 | 10.413,05 | +430 | **0** |
+| 7755 | 20.201,28 | 20.301,28 | +100 | 4.460 (kısmi) |
+
+**Örüntü kesin:** irsaliye litresi DOLU olan 5 kayıtta dolum farkı **tam sıfır**.
+İrsaliye litresi BOŞ olan kayıtlarda dolum da kayıyor — ve iki tanesinde fark
+**tam 1.000,00** (yuvarlak sayı → hesap hatası değil, bir İŞLEM).
+
+Üç hesap yöntemi de denendi, hiçbiri açıklamıyor (8250 için):
+| Yöntem | Toplam | POL'e fark |
+|---|---|---|
+| Σ `DolumMiktari` (brüt) | 17.479,81 | +1.000,00 |
+| Σ `DolumMiktariNet` | 17.308,96 | +829,15 |
+| Σ seviye farkı (bitiş−başlangıç) | 16.388,80 | −91,01 |
+
+→ Yani POL farklı bir alan/formül kullanmıyor; **POL tarafında bu teslime ait bir
+düzeltme (iade / transfer / iptal / manuel düzeltme) kaydı var** ve ASIS ham dolum
+kaydını olduğu gibi veriyor.
+
+**Bu, ASIS'e sorulacak soruyu DEĞİŞTİRİYOR.** Artık "IrsaliyeLitre neden boş" değil:
+
+> POL "Tesis Dolum" ekranında PIR2026000008250 (21.07.2026, RAHA ENERJİ) için
+> İstasyon Dolum **16.479,81** görünüyor; ASIS `GetTankFillingList` aynı irsaliye
+> için 3 tank satırı × toplam **17.479,81** döndürüyor (fark tam 1.000,00 lt) ve
+> `IrsaliyeLitre=0`. Aynı dönemde 7368/7626/7754/7946/8470 kayıtlarında hem dolum
+> **birebir** tutuyor hem `IrsaliyeLitre` dolu geliyor.
+> 1. Bu 1.000 lt'lik düzeltme POL'de hangi işlemden geliyor (iade/transfer/manuel)?
+> 2. O düzeltme ve fatura miktarı hangi SOAP metodundan alınabilir?
+>    (`GetTankFillingList` vermiyor; ekranda "İade Bakım Transfer Var Mı?" kolonu var.)
+
+### Düzeltme izi SOAP'ta ARANDI — YOK (tüketici arama, 2026-07-29)
+1. **34 alanın tamamı** sorunlu kayıtta (8250 T1) tek tek incelendi. Düzeltme/iade/
+   transfer izi taşıyan alan **yok**. `EslesmeMiktari` bile ham dolumla aynı (8596,02).
+2. **19 metodun tamamı** (docs/ASIS_TAM_REFERANS.md) tarandı: iade/bakım/transfer
+   düzeltmesi veren metot **yok**. `GetPumpSaleListTransfer` var ama o tanker SATIŞI,
+   dolum düzeltmesi değil.
+3. Tank Dolum ekranındaki **"İade Bakım Transfer Var Mı?"** kolonunun SOAP karşılığı
+   bulunamadı (Excel'de değer `-`).
+
+**SONUÇ:** POL ile ASIS aynı veritabanından besleniyor (kullanıcı doğru), ama POL ham
+dolum kaydına bir **düzeltme uyguluyor** ve o düzeltme SOAP arayüzünde hiç açılmıyor.
+Bu yüzden mutabakatın "Kullanılan" tarafı bile ASIS'ten TAM hesaplanamıyor — 11
+irsaliyeden 5'inde sapıyor (2× tam 1.000 lt, ayrıca 290 / 430 / 100 lt).
+
 ### Bu ne demek — üç sonuç
 1. **Panel dolum tarafını ASIS'ten hesaplayabilir** (`EslesmeMiktari` doğru).
 2. **Fatura/sevk tarafı ASIS'te güvenilir DEĞİL** — %45 boş. Mutabakatın "Dağıtıcıdan
