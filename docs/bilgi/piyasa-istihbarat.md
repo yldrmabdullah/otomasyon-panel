@@ -52,8 +52,41 @@ session kapandı) o günün snapshot'ı eksik olur. Sonraki TAM çekimle karşı
 "olmayan" binlerce bayi "yeni_bayi/transfer" sanılır (2026-07-28: 17.866 sahte transfer üretti).
 KURAL: Transfer tespiti yalnız İKİ TAM snapshot arasında anlamlı. Yarım çekim snapshot'ı SİLİNMELİ.
 Çözüm uygulandı: eksik 25-Tem snapshot + sahte transferler silindi, 28-Tem tam snapshot taban.
-İdeal: piyasaCek.ts çekim EKSİK biterse (hataliDagitici>0 veya işlenen<beklenen) o günün
-snapshot'ını yazmasın/işaretlesin — TODO.
+
+### ✅ ÇÖZÜLDÜ (2026-07-29): kod artık kendini koruyor
+Önceki "TODO: piyasaCek eksik biterse snapshot yazmasın" maddesi kapandı — ama koruma
+**`piyasaCek`'e değil `transferleriTespitEt`'in İÇİNE** kondu: çağıran kim olursa olsun
+(cron, elle çalıştırma, ileride başka bir araç) koruma devrede kalsın.
+
+Mekanizma: yeni snapshot'ın satır sayısı önceki günün **%90'ının altındaysa** çekim yarım
+kabul edilir → karşılaştırma ATLANIR, `-1` döner, anlaşılır uyarı + düzeltme SQL'i loglanır.
+`piyasaCek` bunu görünce **exit 2** ile çıkar (cron sessizce "başarılı" görünmesin).
+
+Eşiğin gerekçesi: gerçek piyasada bir günde bayi sayısının %10 düşmesi mümkün değil —
+böyle bir düşüş **her zaman** veri toplama arızasıdır, piyasa olayı değil.
+
+Kanıt (gerçek veriyle test edildi):
+| Senaryo | Sonuç |
+|---|---|
+| Yarım snapshot (6.000 / 30.303 = %19.8) | ENGELLENDİ, 0 transfer yazıldı |
+| Tam snapshot + 3 kasıtlı değişim | `dagitici_degisti 1`, `ayrildi 1`, `yeni_bayi 1` — üçü de doğru |
+
+## Transfer tespiti nasıl çalışıyor (mekanizma)
+
+`bayi_snapshot` her gün 30.303 bayinin fotoğrafını tutar (kolon: `snapshot_gun`,
+`bayi_lisans_no`, `dagitim_sirketi`, `lisans_durumu`, `il`). `transferleriTespitEt(bugun)`
+bugünü **bir önceki snapshot günüyle** `FULL OUTER JOIN` eder ve dört değişimi yakalar:
+
+| Tip | Koşul | İş anlamı |
+|---|---|---|
+| `dagitici_degisti` | `dagitim_sirketi` farklı | Bayi dağıtıcı değiştirdi (bizden gitti / bize geldi) |
+| `yeni_bayi` | Dün yok, bugün var | Piyasaya yeni giriş |
+| `ayrildi` | Dün var, bugün yok | EPDK kütüğünden düştü |
+| `durum_degisti` | `lisans_durumu` farklı | ONAYLANDI → SONLANDIRILDI vb. |
+
+⚠️ **Panel "0 kayıt" gösteriyorsa mekanizma bozuk değildir** — tek gün snapshot varsa
+karşılaştıracak önceki gün yoktur ve fonksiyon `0` döner. İkinci gün oluşunca çalışır.
+Panelde bu durum açıkça yazılı ("İlk snapshot alındı; ikinci günden itibaren…").
 
 ## TUZAK: null lisansNo (constraint) — ÇÖZÜLDÜ
 Tüm-durumlarda bazı dağıtıcı VE bayi kayıtlarında lisansNo null (iptal/iade). PK null olamaz →

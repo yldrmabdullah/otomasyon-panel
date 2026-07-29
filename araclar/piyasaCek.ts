@@ -48,7 +48,13 @@ async function main() {
   console.log(`\n✔ Çekim bitti. ${dagiticilar.length} dağıtıcı, ${toplamBayi} bayi, ${hataliDagitici} hatalı.`);
 
   // Transfer tespiti: bugünün snapshot'ını önceki günle karşılaştır.
+  // -1 → bütünlük kontrolü atladı (yarım snapshot); uyarı zaten loglandı.
   const transfer = await transferleriTespitEt(snapshotGun);
+  if (transfer < 0) {
+    console.error('✗ Transfer tespiti yapılmadı (yukarıdaki uyarıya bak). Çıkış kodu 2.');
+    await kapat();
+    process.exit(2); // cron/CI bunu fark etsin — sessizce başarılı görünmesin
+  }
   console.log(transfer > 0 ? `✔ ${transfer} transfer/değişim tespit edildi.` : 'Transfer tespiti: önceki gün yok ya da değişim yok.');
 
   await kapat();

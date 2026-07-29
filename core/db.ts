@@ -271,11 +271,27 @@ export async function bayileriKaydet(bayiler: EpdkBayi[], dagiticiLisansNo: stri
   }
 }
 
+/** Snapshot bütünlük eşiği: yeni snapshot, önceki günün bu oranının altında
+ *  kalırsa YARIM kabul edilir ve karşılaştırma yapılmaz. */
+const SNAPSHOT_BUTUNLUK_ORANI = 0.9;
+
 /**
  * Transfer tespiti: bugünün snapshot'ını en son ÖNCEKİ snapshot günüyle karşılaştırır.
  * Dağıtıcı değişen (transfer), yeni görülen (yeni_bayi), kaybolan (ayrildi), durum değişen
  * (durum_degisti) bayileri `transferler` tablosuna yazar. İki ayrı gün snapshot yoksa no-op.
- * Döner: eklenen transfer sayısı.
+ * Döner: eklenen transfer sayısı (yarım snapshot'ta -1).
+ *
+ * ⚠️ BÜTÜNLÜK KONTROLÜ ZORUNLU (canlıda yandı, 2026-07-25):
+ * EPDK çekimi yarıda kesilip 6/32 dağıtıcının bayisi yazıldığında, o kısmi
+ * snapshot tam snapshot'la karşılaştırıldı ve **17.866 hayalet "yeni_bayi"**
+ * üretti — eksik listede olmayan her bayi "yeni" göründü. Sahte kayıtlar ve
+ * kısmi snapshot elle silinmek zorunda kaldı.
+ *
+ * Kural: transfer tespiti yalnız İKİ TAM snapshot arasında geçerlidir. Bir
+ * günün bayi sayısı öncekinin %90'ının altındaysa çekim yarım kabul edilir;
+ * karşılaştırma ATLANIR ve uyarı loglanır. (Gerçek piyasada bir günde bayi
+ * sayısının %10 düşmesi mümkün değil — böyle bir düşüş her zaman veri
+ * toplama arızasıdır, piyasa olayı değil.)
  */
 export async function transferleriTespitEt(bugun: string): Promise<number> {
   const p = pool();
@@ -286,6 +302,32 @@ export async function transferleriTespitEt(bugun: string): Promise<number> {
   );
   const onceki = oncekiR.rows[0]?.g;
   if (!onceki) return 0; // karşılaştıracak önceki gün yok (ilk çalıştırma)
+
+  // Bütünlük: iki günün satır sayısını karşılaştır.
+  const sayR = await p.query<{ gun: string; n: string }>(
+    `SELECT snapshot_gun::text gun, count(*) n FROM bayi_snapshot
+     WHERE snapshot_gun IN ($1,$2) GROUP BY snapshot_gun`,
+    [onceki, bugun],
+  );
+  const say = new Map(sayR.rows.map((r) => [r.gun, Number(r.n)]));
+  const oncekiSayi = say.get(onceki) ?? 0;
+  const bugunSayi = say.get(bugun) ?? 0;
+
+  if (bugunSayi === 0) {
+    console.warn(`⚠ Transfer tespiti ATLANDI: ${bugun} snapshot'ı boş.`);
+    return -1;
+  }
+  if (oncekiSayi > 0 && bugunSayi < oncekiSayi * SNAPSHOT_BUTUNLUK_ORANI) {
+    const yuzde = ((bugunSayi / oncekiSayi) * 100).toFixed(1);
+    console.warn(
+      `⚠ Transfer tespiti ATLANDI — snapshot YARIM görünüyor.\n` +
+        `   ${bugun}: ${bugunSayi.toLocaleString('tr')} bayi · ${onceki}: ${oncekiSayi.toLocaleString('tr')} bayi (%${yuzde})\n` +
+        `   Bir günde bayi sayısının %10+ düşmesi veri toplama arızasıdır, piyasa olayı değil.\n` +
+        `   Karşılaştırmak binlerce hayalet "ayrildi" kaydı üretirdi. Çekimi tamamlayıp tekrar çalıştır\n` +
+        `   ya da bu günün snapshot'ını sil: DELETE FROM bayi_snapshot WHERE snapshot_gun='${bugun}';`,
+    );
+    return -1;
+  }
 
   // Tek sorguda: dün (o) FULL OUTER JOIN bugün (b) → değişimleri bul
   const r = await p.query(
