@@ -71,6 +71,25 @@ Kanıt (gerçek veriyle test edildi):
 | Yarım snapshot (6.000 / 30.303 = %19.8) | ENGELLENDİ, 0 transfer yazıldı |
 | Tam snapshot + 3 kasıtlı değişim | `dagitici_degisti 1`, `ayrildi 1`, `yeni_bayi 1` — üçü de doğru |
 
+## ✅ TRANSFER TESPİTİ İLK KEZ ÇALIŞTI (2026-07-29)
+
+İki tam snapshot oluştu (28 Tem 30.303 · 29 Tem 30.307, ikisi de `tum` kapsam) ve
+mekanizma ilk kez gerçek veriyle koştu: **15 değişim**, sıfır hayalet kayıt.
+
+| Tip | Sayı | Örnek |
+|---|---|---|
+| `dagitici_degisti` | 5 | CANSA (Konya): BAŞ → **Aytemiz** · İPEK (Çorum): TP Petrol → **ES ES** |
+| `durum_degisti` | 6 | 4× ONAYLANDI→SONLANDIRILDI · ÇINARLI: geçici durdurma → **ONAYLANDI** |
+| `yeni_bayi` | 4 | TUNALAR (Sivas) → Petrol Ofisi · UYKA (Kayseri) → OPET |
+
+Günlük net artış 4 bayi (30.303 → 30.307) — makul. Sayının bu mertebede olması
+doğrulama: binlerce çıksaydı bütünlük koruması devreye girmiş olurdu.
+
+⚠️ Kendi hatam olarak not: ilk çekimi `--tum-durumlar` bayrağı OLMADAN başlattım
+→ yalnız onaylı bayiler geldi (12.624) ve kapsam 28 Tem ile uyuşmadı. Koruma
+engelledi (doğru davranış), yanlış kapsamlı snapshot silinip doğru bayrakla
+tekrar çekildi. **Çekim komutunu bayraksız çalıştırmak = kapsam uyuşmazlığı.**
+
 ## Transfer tespiti nasıl çalışıyor (mekanizma)
 
 `bayi_snapshot` her gün 30.303 bayinin fotoğrafını tutar (kolon: `snapshot_gun`,
