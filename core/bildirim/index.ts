@@ -17,6 +17,21 @@ export interface BildirimSonuc {
 }
 
 /**
+ * Teslim edilebilir e-posta mı?
+ *
+ * ⚠️ Kaynak veride (POL/Logo) bozuk adresler var — 2026-07-29 canlı taraması:
+ * 5 bayide Türkçe karakterli yerel kısım (`haliskurşun@`, `ılgınparkakaryakıt72@`)
+ * ve içinde boşluk olan adres (`cengizmalaman5@gmail .com`). Bunlar SMTP'de
+ * sessizce düşer: sistem "gönderdim" sayar, bayi haber almaz. Ayıklanıp loglanır.
+ *
+ * Not: ASCII zorunluluğu kasıtlı. Gerçek IDN e-posta (SMTPUTF8) nadir ve bu
+ * kayıtların hepsi hatalı yazım — meşru bir adresi engellemiyoruz.
+ */
+function teslimEdilebilirMi(e: string): boolean {
+  return /^[\x21-\x7E]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(e) && !e.includes('..');
+}
+
+/**
  * Bir alarm/olay için mail + SMS gönderir. Hedefler + ekip birleştirilir, tekilleştirilir.
  * Bir kanalın hatası diğerini durdurmaz; hatalar toplanır.
  */
@@ -26,9 +41,18 @@ export async function bildir(
   smsMetin: string,
   hedef: BildirimHedefi,
 ): Promise<BildirimSonuc> {
-  const epostalar = tekil([...hedef.epostalar, ...config.mail.ekip]);
+  const hamEpostalar = tekil([...hedef.epostalar, ...config.mail.ekip]);
+  // Geçersiz adres TÜM gönderimi düşürmesin (ekip maili de gitmez) → ayıkla.
+  const epostalar = hamEpostalar.filter(teslimEdilebilirMi);
+  const bozuk = hamEpostalar.filter((e) => !teslimEdilebilirMi(e));
   const telefonlar = tekil([...hedef.telefonlar, ...config.sms.ekipTelefon]);
   const sonuc: BildirimSonuc = { mailDenendi: 0, smsDenendi: 0, hatalar: [] };
+  if (bozuk.length) {
+    // Sessiz kalmasın: düzeltilmesi gereken veri kaydı.
+    const uyari = `Geçersiz e-posta atlandı: ${bozuk.join(', ')}`;
+    console.warn(`  ⚠ ${uyari}`);
+    sonuc.hatalar.push(uyari);
+  }
 
   if (config.dryRun) {
     console.log(`  [DRY_RUN] MAIL → ${epostalar.join(', ') || '(hedef yok)'} : ${konu}`);

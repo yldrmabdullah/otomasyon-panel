@@ -105,6 +105,42 @@ AÇIK var + durum düzeldi      → alarm KAPAT, "düzeldi" bildirimi (opsiyonel
 - **SMS:** Netgsm. Bayi telefonu + (opsiyonel) ekip nöbetçi telefonu.
 - **DRY_RUN=1:** hiçbir şey göndermez, sadece loglar (test).
 
+## GitHub Actions (canlı çalışma) — kurulum notları
+
+Repo: **`yldrmabdullah/otomasyon-panel`**, branch `master`, cron `*/15 * * * *`.
+
+⚠️ **Bu alt-proje KENDİ reposu olarak yayınlandı** — `package.json`, `core/`, `job/` repo
+**kökünde**. Workflow'da `otomasyon-panel/` öneki KULLANILMAZ. (2026-07-28/29 tarihinde bu
+önek yüzünden job 15 dakikada bir `setup-node` adımında ~15 sn'de düşüyordu:
+`Some specified paths were not resolved, unable to cache dependencies`. Bir gün boyunca
+**hiçbir alarm bildirimi gitmedi** ve fail mailleri yığıldı.)
+
+**Ders:** cron'un "kurulu olması" çalıştığı anlamına gelmez. Yeni bir zamanlanmış iş
+kurulduğunda ilk gerçek koşu **teyit edilir** (`gh run list`), yalnız YAML'ın doğru
+görünmesine güvenilmez. Fail sessiz değildi — mail atıyordu — ama kimse bakmıyordu.
+
+### Secret / Variable ayrımı
+
+| GitHub Secret (sır) | GitHub Variable (sır değil) |
+|---|---|
+| `ASIS_GATEWAY`, `ASIS_GUID_KEY`, `ASIS_DAGITICI_KOD`, `DATABASE_URL` | `KOPUK_ESIK_SAAT=3`, `TANK_VERI_ESIK_DK=35`, `TEKRAR_BILDIRIM_SAAT=6`, `PASIF_ESIK_GUN=7` |
+| `SMTP_*`, `NETGSM_*`, `EKIP_MAIL`, `EKIP_TELEFON` | |
+
+Eşikleri variable yapmak, değiştirmek için kod/deploy gerektirmemesini sağlar.
+
+⚠️ **`PASIF_ESIK_GUN` job env'ine geçmeyi UNUTMA.** İlk kurulumda eksikti; o filtre
+olmadan aylardır kapalı ~90 istasyon her turda alarm üretir ve bayiler boş yere rahatsız
+edilir (bkz yukarıdaki pasif filtresi).
+
+### Bildirim durumu (2026-07-29)
+
+`SMTP_*` ve `NETGSM_*` **bilinçli olarak tanımlı DEĞİL** → job çalışır, ASIS'ten çeker,
+alarm tespit eder, DB'ye yazar, panel beslenir ama **bildirim göndermez**. Kimlikler
+geldiğinde eklenir. Açmadan önce dikkat: o an açık olan tüm alarmlar ilk koşuda bayilere
+gider (2026-07-29 itibarıyla 11 bildirim: 4 kopuk + 7 tank).
+
+Elle test: `gh workflow run otomasyon-job.yml -f dry_run=1` → gerçek veri, sıfır mesaj.
+
 ## Yanlış alarmdan kaçın
 
 > Kullanıcıya "kopuk" gösterilen istasyon gerçekten kopuk olmalı. Yanlış alarm bayiyi yorar
