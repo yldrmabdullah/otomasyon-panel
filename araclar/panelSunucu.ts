@@ -1,60 +1,170 @@
 // Local geliştirme API sunucusu — Vercel serverless'ın yerine geçer.
 //
-// NEDEN STATİK SNAPSHOT YETMİYOR: /api/bayiler artık sunucu-taraflı sayfalama
-// yapıyor (query parametresi: q/il/dagitici/durum/sirala/sayfa). Statik bir JSON
-// dosyası parametreye cevap veremez. Ayrıca giriş (oturum çerezi) de gerçek bir
-// sunucu gerektiriyor. Bu araç Vite proxy'sinin arkasında aynı sözleşmeyi sunar,
-// böylece local ile prod DAVRANIŞI da aynı olur (yalnız verisi değil).
+// NEDEN: /api/bayiler sunucu-taraflı sayfalama yapıyor (query parametresi) ve
+// giriş akışı gerçek bir sunucu gerektiriyor. Statik JSON dosyaları ikisini de
+// karşılayamaz. Bu araç aynı SÖZLEŞMEYİ sunar → local ile prod aynı davranır.
 //
 // Çalıştır:  npm run panel:api      → http://localhost:5178
 // Vite proxy'si /api/* isteklerini buraya yönlendirir (panel/vite.config.ts).
 
 import { createServer } from 'node:http';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { pool, kapat } from '../core/db.js';
 import { piyasaVerisi, durumVerisi, bayiVerisi, bayiSecenekleri } from '../core/panelSorgu.js';
+import {
+  girisDogrula, kullaniciBul, kullaniciListesi, kullaniciEkle, kullaniciSil,
+  rolDegistir, sifreDegistir, sifreUret, adNormal,
+} from '../core/kullanicilar.js';
 
 const PORT = Number(process.env.PANEL_API_PORT ?? 5178);
+const SIR = process.env.PANEL_OTURUM_SIRRI ?? 'local-gelistirme-sirri-en-az-32-karakter-olmali';
+const COOKIE = 'parkoil_oturum';
+const OMUR = 12 * 60 * 60;
 const p = pool();
 
-/** Local'de giriş kapısı KAPALI (env yoksa) — geliştirmeyi yavaşlatmasın.
- *  PANEL_KULLANICILAR tanımlıysa gerçek akışı test etmek için açılır. */
-const girisGerekli = !!process.env.PANEL_KULLANICILAR;
+// --- Oturum (prod ile aynı imzalama mantığı) ---
+const jetonUret = (ad: string) => {
+  const bitis = Math.floor(Date.now() / 1000) + OMUR;
+  const govde = `${Buffer.from(ad).toString('base64url')}.${bitis}`;
+  return `${govde}.${createHmac('sha256', SIR).update(govde).digest('base64url')}`;
+};
+const jetonDogrula = (j?: string): string | null => {
+  if (!j) return null;
+  const x = j.split('.');
+  if (x.length !== 3) return null;
+  const bek = createHmac('sha256', SIR).update(`${x[0]}.${x[1]}`).digest('base64url');
+  if (bek.length !== x[2].length || !timingSafeEqual(Buffer.from(bek), Buffer.from(x[2]))) return null;
+  if (Number(x[1]) < Math.floor(Date.now() / 1000)) return null;
+  try { return Buffer.from(x[0], 'base64url').toString('utf8'); } catch { return null; }
+};
+const cerezOku = (istek: any): string | null => {
+  const ham = istek.headers?.cookie;
+  if (typeof ham !== 'string') return null;
+  for (const c of ham.split(';')) {
+    const [ad, ...k] = c.trim().split('=');
+    if (ad === COOKIE) return jetonDogrula(k.join('='));
+  }
+  return null;
+};
+
+function govdeOku(istek: any): Promise<any> {
+  return new Promise((coz) => {
+    let d = '';
+    istek.on('data', (c: Buffer) => (d += c));
+    istek.on('end', () => { try { coz(d ? JSON.parse(d) : {}); } catch { coz({}); } });
+  });
+}
 
 const sunucu = createServer(async (istek, yanit) => {
   const url = new URL(istek.url ?? '/', `http://localhost:${PORT}`);
   const q = url.searchParams;
-  const json = (kod: number, govde: unknown) => {
-    yanit.writeHead(kod, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+  const json = (kod: number, govde: unknown, cerez?: string) => {
+    const b: Record<string, string> = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
+    if (cerez) b['Set-Cookie'] = cerez;
+    yanit.writeHead(kod, b);
     yanit.end(JSON.stringify(govde));
   };
 
   try {
-    // Giriş: local'de kullanıcı tanımlı değilse "her zaman girişli" davran.
+    // ---- Giriş / oturum ----
     if (url.pathname === '/api/giris') {
-      if (istek.method === 'GET') return json(200, { girisli: !girisGerekli, kullanici: 'local' });
-      if (istek.method === 'DELETE') return json(200, { girisli: false });
-      return json(200, { girisli: true, kullanici: 'local' });
+      if (istek.method === 'GET') {
+        const ad = cerezOku(istek);
+        const k = ad ? await kullaniciBul(p, ad) : null;
+        return json(200, k
+          ? { girisli: true, kullanici: k.kullanici_ad, rol: k.rol, adSoyad: k.ad_soyad, sifreDegistir: k.sifre_degistir }
+          : { girisli: false });
+      }
+      if (istek.method === 'DELETE') {
+        return json(200, { girisli: false }, `${COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`);
+      }
+      if (istek.method === 'PATCH') {
+        const ad = cerezOku(istek);
+        if (!ad) return json(401, { hata: 'Oturum gerekli.' });
+        const g = await govdeOku(istek);
+        await sifreDegistir(p, { ad, mevcutSifre: String(g.mevcutSifre ?? ''), yeniSifre: String(g.yeniSifre ?? '') });
+        return json(200, { tamam: true });
+      }
+      const g = await govdeOku(istek);
+      const k = await girisDogrula(p, String(g.kullanici ?? ''), String(g.sifre ?? ''));
+      if (!k) {
+        await new Promise((r) => setTimeout(r, 700));
+        return json(401, { hata: 'Kullanıcı adı veya şifre hatalı.' });
+      }
+      // Local'de Secure yok (http) — prod'da var.
+      return json(200,
+        { girisli: true, kullanici: k.kullanici_ad, rol: k.rol, adSoyad: k.ad_soyad, sifreDegistir: k.sifre_degistir },
+        `${COOKIE}=${jetonUret(k.kullanici_ad)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${OMUR}`);
     }
 
+    // ---- Bundan sonrası oturum ister (prod ile aynı) ----
+    const oturumAd = cerezOku(istek);
+    const benKim = oturumAd ? await kullaniciBul(p, oturumAd) : null;
+    if (!benKim) return json(401, { hata: 'Oturum gerekli. Lütfen giriş yapın.' });
+
+    // ---- Kullanıcı yönetimi (admin) ----
+    if (url.pathname === '/api/kullanicilar') {
+      if (benKim.rol !== 'admin') return json(403, { hata: 'Bu işlem için yönetici yetkisi gerekli.' });
+      try {
+        if (istek.method === 'GET')
+          return json(200, { kullanicilar: await kullaniciListesi(p), benKim: benKim.kullanici_ad });
+        if (istek.method === 'POST') {
+          const g = await govdeOku(istek);
+          const uretildi = !g.sifre;
+          const sifre = uretildi ? sifreUret() : String(g.sifre);
+          const k = await kullaniciEkle(p, {
+            ad: String(g.ad ?? ''), sifre,
+            rol: g.rol === 'admin' ? 'admin' : 'izleyici',
+            adSoyad: g.adSoyad ? String(g.adSoyad) : undefined,
+            olusturan: benKim.kullanici_ad, sifreDegistir: true,
+          });
+          return json(201, { kullanici: k, sifre, uretildi });
+        }
+        if (istek.method === 'PATCH') {
+          const g = await govdeOku(istek);
+          const hedef = adNormal(String(g.ad ?? ''));
+          if (!hedef) throw new Error('Kullanıcı adı gerekli.');
+          let yeniSifre: string | undefined;
+          if (g.sifreSifirla || g.yeniSifre) {
+            yeniSifre = g.yeniSifre ? String(g.yeniSifre) : sifreUret();
+            await sifreDegistir(p, { ad: hedef, yeniSifre, adminAtlama: true });
+          }
+          if (g.rol === 'admin' || g.rol === 'izleyici') {
+            if (hedef === benKim.kullanici_ad && g.rol !== 'admin')
+              throw new Error('Kendi yönetici rolünü düşüremezsin.');
+            await rolDegistir(p, hedef, g.rol);
+          }
+          return json(200, { tamam: true, sifre: yeniSifre });
+        }
+        if (istek.method === 'DELETE') {
+          const hedef = adNormal(q.get('ad') ?? '');
+          if (!hedef) throw new Error('Kullanıcı adı gerekli.');
+          if (hedef === benKim.kullanici_ad) throw new Error('Kendini silemezsin.');
+          await kullaniciSil(p, hedef);
+          return json(200, { tamam: true });
+        }
+        return json(405, { hata: 'Yöntem desteklenmiyor.' });
+      } catch (e) {
+        return json(400, { hata: e instanceof Error ? e.message : String(e) });
+      }
+    }
+
+    // ---- Veri uçları ----
     if (url.pathname === '/api/durum') return json(200, await durumVerisi(p));
     if (url.pathname === '/api/piyasa') return json(200, await piyasaVerisi(p));
-
     if (url.pathname === '/api/bayiler') {
       if (q.get('secenekler')) return json(200, await bayiSecenekleri(p));
-      return json(
-        200,
-        await bayiVerisi(p, {
-          q: q.get('q') ?? undefined,
-          il: q.get('il') ?? undefined,
-          dagitici: q.get('dagitici') ?? undefined,
-          durum: q.get('durum') ?? undefined,
-          sadeceBiz: q.get('sadeceBiz') === '1',
-          sirala: q.get('sirala') ?? undefined,
-          artan: q.get('artan') !== '0',
-          sayfa: Number(q.get('sayfa') ?? 1),
-          boyut: Number(q.get('boyut') ?? 50),
-        }),
-      );
+      return json(200, await bayiVerisi(p, {
+        q: q.get('q') ?? undefined,
+        il: q.get('il') ?? undefined,
+        dagitici: q.get('dagitici') ?? undefined,
+        durum: q.get('durum') ?? undefined,
+        sadeceBiz: q.get('sadeceBiz') === '1',
+        sirala: q.get('sirala') ?? undefined,
+        artan: q.get('artan') !== '0',
+        sayfa: Number(q.get('sayfa') ?? 1),
+        boyut: Number(q.get('boyut') ?? 50),
+      }));
     }
 
     json(404, { hata: `Bilinmeyen uç: ${url.pathname}` });
@@ -66,14 +176,11 @@ const sunucu = createServer(async (istek, yanit) => {
 
 sunucu.listen(PORT, () => {
   console.log(`✔ Panel API → http://localhost:${PORT}`);
-  console.log(`  Giriş kapısı: ${girisGerekli ? 'AÇIK (PANEL_KULLANICILAR tanımlı)' : 'kapalı (local kolaylık)'}`);
-  console.log('  Uçlar: /api/durum  /api/piyasa  /api/bayiler  /api/giris');
+  console.log('  Giriş GEREKLİ (prod ile aynı). Kullanıcı yok ise:');
+  console.log('    npm run kullanici -- ekle ahmet --admin');
+  console.log('  Uçlar: /api/giris  /api/kullanicilar  /api/durum  /api/piyasa  /api/bayiler');
 });
 
 for (const s of ['SIGINT', 'SIGTERM'] as const) {
-  process.on(s, async () => {
-    sunucu.close();
-    await kapat().catch(() => {});
-    process.exit(0);
-  });
+  process.on(s, async () => { sunucu.close(); await kapat().catch(() => {}); process.exit(0); });
 }

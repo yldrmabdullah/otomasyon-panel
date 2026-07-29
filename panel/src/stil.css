@@ -177,7 +177,40 @@ h1[tabindex='-1']:focus { outline: none; }
   flex-shrink: 0; transition: color .13s, border-color .13s;
 }
 .cikis-btn:hover { color: var(--accent); border-color: var(--accent-cizgi); }
+.cikis-btn.tehlike:hover { color: var(--krit); border-color: var(--krit); }
+.cikis-btn.tam-genis { width: 100%; margin-bottom: 6px; }
+.cikis-btn.ortala { align-self: center; }
 @media (pointer: coarse) { .cikis-btn { min-height: 32px; padding: 6px 12px; } }
+.kenar-sirket { display: block; }
+
+/* ── Kullanıcı yönetimi ── */
+.satir-islem { display: inline-flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+.alt-satir { font-size: var(--t-xs); color: var(--soluk); font-weight: 400; margin-top: 2px; }
+.ekle-form {
+  background: var(--panel); border: 1px solid var(--cizgi); border-left: 3px solid var(--marka);
+  border-radius: var(--r); padding: var(--s-4) var(--s-5); margin-bottom: var(--s-4);
+  box-shadow: var(--golge); display: flex; flex-direction: column; gap: var(--s-4);
+}
+.ekle-alanlar { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: var(--s-3); }
+.ekle-form .giris-btn { align-self: flex-start; }
+.ekle-form select {
+  background: var(--panel); color: var(--metin); border: 1px solid var(--cizgi-2);
+  border-radius: var(--r-sm); padding: 9px var(--s-3); cursor: pointer;
+}
+
+/* Üretilen şifre kartı — bir kez gösterilir, kaçırılmaması için belirgin */
+.sifre-karti {
+  background: var(--panel-2); border: 1px solid var(--accent-cizgi); border-left: 3px solid var(--marka);
+  border-radius: var(--r); padding: var(--s-4) var(--s-5); margin-bottom: var(--s-4);
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3);
+}
+.sifre-baslik { font-size: var(--t-md); color: var(--metin-2); flex: 1 1 100%; }
+.sifre-deger {
+  font-size: var(--t-xl); font-weight: 700; letter-spacing: 0.04em; color: var(--metin);
+  background: var(--panel); border: 1px dashed var(--cizgi-2); border-radius: var(--r-sm);
+  padding: var(--s-2) var(--s-4); user-select: all;
+}
+.sifre-not { font-size: var(--t-sm); color: var(--soluk); flex: 1 1 100%; }
 
 /* ── Kabuk: sidebar + içerik ── */
 .uygulama { display: grid; grid-template-columns: var(--kenar-en) 1fr; min-height: 100dvh; }

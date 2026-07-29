@@ -91,6 +91,19 @@ gh run list --repo yldrmabdullah/otomasyon-panel --limit 20 \
 
 ---
 
+## ⚠️ Saat dilimi tuzağı (teşhis sırasında)
+
+`gh run list` **UTC** gösterir, cron-job.org ise işin kendi saat diliminde
+(**Europe/Istanbul = UTC+3**). "Koşu gelmedi" derken aslında 3 saat farkına
+bakıyor olabilirsin. Referans olarak sunucu saatini kullan:
+
+```bash
+curl -sI https://api.github.com | grep -i "^date:"   # gerçek UTC
+```
+
+Not: bazı geliştirme kabuklarında `TZ=Europe/Istanbul date` çalışmaz (tzdata yok)
+ve sessizce UTC döner — buna güvenme, yukarıdaki komutu kullan.
+
 ## Sorun giderme
 
 | Belirti | Sebep |

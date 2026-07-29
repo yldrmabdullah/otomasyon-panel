@@ -71,6 +71,30 @@ ALTER TABLE bayi_iletisim ADD COLUMN IF NOT EXISTS telefonlar TEXT[] NOT NULL DE
 ALTER TABLE bayi_iletisim ADD COLUMN IF NOT EXISTS epostalar  TEXT[] NOT NULL DEFAULT '{}';
 ALTER TABLE bayi_iletisim ADD COLUMN IF NOT EXISTS kep        TEXT;
 
+-- Panel kullanıcıları.
+--
+-- NEDEN DB'DE (env değil): kullanıcı yönetimi ekranı çalışma anında ekleme/silme
+-- yapabilsin. Vercel ortam değişkeni çalışma anında değiştirilemez — her yeni
+-- kullanıcı yeniden deploy gerektirirdi.
+--
+-- Şifre: scrypt(N=16384, r=8, p=1) + 16 bayt rastgele tuz. node:crypto içinde,
+-- ek bağımlılık yok. Format: 'scrypt$<tuzHex>$<hashHex>'. Düz şifre HİÇ saklanmaz.
+CREATE TABLE IF NOT EXISTS panel_kullanicilar (
+  kullanici_ad   TEXT PRIMARY KEY,          -- küçük harfe normalize
+  sifre_hash     TEXT NOT NULL,
+  rol            TEXT NOT NULL DEFAULT 'izleyici',  -- admin | izleyici
+  ad_soyad       TEXT,
+  sifre_degistir BOOLEAN NOT NULL DEFAULT FALSE,    -- ilk girişte zorunlu değişim
+  son_giris      TIMESTAMPTZ,
+  olusturan      TEXT,                      -- kim ekledi (denetim izi)
+  olusturma      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  guncelleme     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Sonradan eklenen kolonlar (mevcut DB'yi bozmadan)
+ALTER TABLE panel_kullanicilar ADD COLUMN IF NOT EXISTS sifre_degistir BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE panel_kullanicilar ADD COLUMN IF NOT EXISTS son_giris TIMESTAMPTZ;
+ALTER TABLE panel_kullanicilar ADD COLUMN IF NOT EXISTS olusturan TEXT;
+
 -- Alarmlar. Açık alarm = kapandi IS NULL. Debounce son_bildirim ile.
 CREATE TABLE IF NOT EXISTS alarmlar (
   id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

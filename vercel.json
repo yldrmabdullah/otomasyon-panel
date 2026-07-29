@@ -11,7 +11,8 @@
     { "source": "/api/durum", "destination": "/panel/api/durum" },
     { "source": "/api/piyasa", "destination": "/panel/api/piyasa" },
     { "source": "/api/bayiler", "destination": "/panel/api/bayiler" },
-    { "source": "/api/giris", "destination": "/panel/api/giris" }
+    { "source": "/api/giris", "destination": "/panel/api/giris" },
+    { "source": "/api/kullanicilar", "destination": "/panel/api/kullanicilar" }
   ],
   "headers": [
     {
