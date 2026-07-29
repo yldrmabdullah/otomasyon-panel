@@ -140,3 +140,37 @@ CREATE TABLE IF NOT EXISTS sistem_ayar (
   deger      TEXT,
   guncelleme TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ── POL mutabakat verisi (İstasyon Dönemleri / Tesis Dolum Excel import) ──
+-- ⚠️ KAYNAK POL EXCEL, ASIS DEĞİL. Mutabakat hesabını POL yapıyor; biz sonucu
+-- saklayıp takip/alarm ediyoruz. Tersine mühendislik denendi, %65'te kaldı
+-- (bkz docs/bilgi/epdk-mutabakat.md §4f) → POL'ün kendi çıktısı alınıyor.
+--
+-- Formül (POL, doğrulandı): Fark = Dağıtıcıdan Alınan − Kullanılan Miktar
+--                           Fark% = Fark / Dağıtıcıdan Alınan × 100
+-- EPDK limiti: |Fark%| ≤ 3 (1240 sayılı Kurul Kararı)
+CREATE TABLE IF NOT EXISTS mutabakat_irsaliye (
+  irsaliye_no       TEXT NOT NULL,
+  irsaliye_tarihi   DATE NOT NULL,
+  epdk_no           TEXT,               -- bayi lisans no (BAY/939-82/{no} → {no})
+  istasyon_ad       TEXT,
+  urun              TEXT,
+  fatura_no         TEXT,
+  birim_fiyat       NUMERIC,
+  fatura_miktar     NUMERIC,            -- Dağıtıcıdan Alınan (sevk edilen)
+  istasyon_dolum    NUMERIC,            -- Kullanılan (tanka giren, EŞLEŞEN)
+  kalan_miktar      NUMERIC,            -- fatura − istasyon_dolum (POL hesaplıyor)
+  koy_pompasi       NUMERIC,
+  tanker            NUMERIC,
+  dis_satis         NUMERIC,
+  dagiticiya_iade   NUMERIC,
+  fark_yuzde        NUMERIC,
+  evrak_durum       TEXT,
+  bolge             TEXT,
+  mintika           TEXT,
+  kaynak_dosya      TEXT,               -- hangi export'tan geldi (izlenebilirlik)
+  guncelleme        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (irsaliye_no, irsaliye_tarihi, urun)
+);
+CREATE INDEX IF NOT EXISTS ix_mut_epdk ON mutabakat_irsaliye (epdk_no);
+CREATE INDEX IF NOT EXISTS ix_mut_tarih ON mutabakat_irsaliye (irsaliye_tarihi DESC);

@@ -105,6 +105,80 @@ irsaliye no/litre, **irsaliye_hacim_fark** (irsaliye − tank).
    → Tek satırda irsaliye-vs-dolum karşılaştırması YANLIŞ. Gerçek mutabakat muhtemelen **irsaliye no
    bazında** (aynı irsaliyenin tüm tank dağılımı toplanıp irsaliye litresiyle) yapılıyor. `DOĞRULANMASI GEREK`
 
+## 4f. ⭐⭐⭐ MUTABAKAT FORMÜLÜ KESİN ÇÖZÜLDÜ (2026-07-29, POL Excel + ekran eşleştirmesi)
+
+**"İstasyon Dönemleri Analiz"** ekranı (POL → Raporlar → İstasyon Dönemleri) aylık
+mutabakatın TAMAMINI veriyor. Üç POL Excel export'u ekranla birebir eşleştirildi.
+
+### Doğrulama — RAHA ENERJİ (210001), Temmuz 2026
+| Satır | Excel'den hesap | Ekran | |
+|---|---|---|---|
+| Dağıtıcıdan Alınan | Σ `Fatura Satış Miktarı` = **136.886** | 136.886 | ✓ |
+| Kullanılan Miktar | Σ `İstasyon Dolum` = **138.619,29** | 138.619 | ✓ |
+| **Fark** | **−1.733,29** | **−1.733 (%−1,27)** | ✓ |
+| Kontrol | Σ `Kalan Miktar` = −1.733,29 | | ✓ |
+
+→ **`Fark = Dağıtıcıdan Alınan − Kullanılan Miktar`**
+→ **`Fark(%) = Fark / Dağıtıcıdan Alınan × 100`**
+→ Satır bazındaki `Kalan Miktar` kolonu = o irsaliyenin kendi farkı; toplamı dönem farkı.
+
+⚠️ Bu, §4a'daki "tank stok hareketi" formülünden **BAŞKA** bir kontrol. İkisi ayrı:
+- §4a (Tank Uzlaştırma): tank içi hareket — `(başı + dolum − satış) − sonu`
+- §4f (İstasyon Dönemleri): **dağıtıcı↔bayi mutabakatı** — sevk edilen vs tanka giren
+
+### ⚠️ "Algılanan" ile "Eşleşen" AYNI DEĞİL — karıştırılmamalı
+| Kalem | RAHA | Not |
+|---|---|---|
+| Algılanan Tank Dolum | 141.439,29 | Tank Dolum Excel'inin `Çıkan Litre` toplamı |
+| **Eşleşen Tank Dolum** | **138.619,29** | Mutabakatta KULLANILAN değer |
+| Fark | 2.820 | Dönem dışı / eşleşmemiş kayıtlar |
+
+Tank Dolum Excel'i "algılanan"ı verir. Mutabakat hesabında **Eşleşen** kullanılır.
+`Eşleşme Durumu` kolonu (Eşleşen / Eşleşmeyen) ve `Eşleşme Miktarı` bunu ayırır.
+Alt kırılım: `Eşleşen Tank Dolum (IST)` istasyon + `(KP)` köy pompası.
+
+### `Dönem Dışı Eşleşen` — dönem sınırı tuzağı
+SLH PETROL (210008) Temmuz: `Dönem Dışı Eşleşen 25.457 lt`. Dış Satış Excel'i
+40.186 lt (2 kayıt) veriyor ama ekran `Dış Satış Toplam: 24.586` — fark dönem
+dışından. **Excel'i dönem filtresi olmadan toplamak yanlış sonuç verir.**
+
+### Gerçek sapma örneği — SLH PETROL, Temmuz 2026 (ekran KIRMIZI)
+| | K95 | Motorin | Toplam |
+|---|---|---|---|
+| Dağıtıcıdan Alınan | 16.008 | 68.748 | 84.756 |
+| Kullanılan | 16.224 | 61.022 | 77.246 |
+| **Fark** | −216 | **7.726** | 7.510 |
+| **Fark(%)** | −1,35 | **11,24** ⚠ | **8,86** ⚠ |
+| Pompa Satış | 19.004 | 74.049 | 93.053 |
+| Dış Satış | 0 | 24.586 | 24.586 |
+| Algılanan Tank Dolum | 20.295 | 58.143 | 78.438 |
+| Eşleşen Tank Dolum | 16.544 | 36.436 | 52.980 |
+| Dönem Dışı Eşleşen | 3.751 | 21.706 | 25.457 |
+
+Motorin %11,24 → EPDK %3 limitinin **çok üstünde**. RAHA'da %−1,27 (limit içinde).
+POL yüzdeyi kırmızı gösteriyor → ekranın kendi eşiği var, bizim de aynı eşikle
+alarm kurmamız gerekir.
+
+### POL Excel export kolonları (import aracı için)
+**Tesis Dolum** (`tesis_dolum_islem_detaylari*.xlsx`) — başlık satırı 5:
+`İrsaliye Tarihi · Ürün · Dagitici Sevk İrsaliye No · Fatura No · Birim Fiyat ·
+Fatura Satış Miktarı · Kalan Miktar · İstasyon Dolum · Köy Pompası · Tanker ·
+Belgelenen Dış Satış Miktarı · Dağıtıcıya İade · Evrak Durum · Plaka Dorse ·
+Plaka Çekici · SatisTip · Fark Yüzde · Lisans No · İstasyon Ad · Bölge · Mıntıka`
+
+**Tank Dolum** (`tankdolumislemdetay*.xlsx`) — başlık satırı 3:
+`İşlem Tarihi · Eşleşme Durumu · Evrak No · Evrak Tarihi · Tank No · Çıkan Litre ·
+Eşleşme Miktarı · Ürün · İade Bakım Transfer Var Mı · Şehir · Adres · Fatura Durum`
+
+**Dış Satış** (`dis_satis_*.xlsx`) — başlık satırı 3:
+`İşlem Tarihi · Evrak No · Evrak Tarihi · Belgelenen Dış Satış Miktarı · Ürün ·
+Şehir · Satışın Yapıldığı İlçe · Dolum Yolu · Plaka · Plaka Dorse ·
+İstasyon Fatura No · ...`
+
+⚠️ **Tarihler Excel serial** (46228 = 25.07.2026). Dönüşüm: `1899-12-30 + n gün`.
+⚠️ Hücreler XML'de **ham sayı** (nokta ondalık) — TR binlik/ondalık çevirimi YAPILMAZ,
+doğrudan `Number()`. (İlk denemede `14991.21`'i binlik sanıp 12 milyon çıktı.)
+
 ## 4e. ⭐⭐ POL EKRANLARI ÇÖZÜLDÜ — mutabakat POL'de HAZIR (2026-07-29, kullanıcı SS)
 
 İki POL ekranı görüldü ve **eşleştirildi**. Bu, §4d'deki "alan güvenilmez" yorumunu
