@@ -174,3 +174,18 @@ CREATE TABLE IF NOT EXISTS mutabakat_irsaliye (
 );
 CREATE INDEX IF NOT EXISTS ix_mut_epdk ON mutabakat_irsaliye (epdk_no);
 CREATE INDEX IF NOT EXISTS ix_mut_tarih ON mutabakat_irsaliye (irsaliye_tarihi DESC);
+
+-- tank_dolum: ASIS'te VAR olup çekilmeyen alanlar (2026-07-29, §4g).
+-- eslesme_miktari = POL "Eşleşen Tank Dolum" → MUTABAKATTA KULLANILAN değer
+--   (dolum_miktari "algılanan"dır; RAHA Temmuz'da fark 2.820 lt).
+-- seviye_baslangic/bitis_lt = tank seviyesi → GetTankLevelRecord KayitID=0
+--   dönüyordu ama seviye bilgisi DOLUM kaydında zaten geliyor.
+ALTER TABLE tank_dolum ADD COLUMN IF NOT EXISTS eslesme_miktari NUMERIC;
+ALTER TABLE tank_dolum ADD COLUMN IF NOT EXISTS irsaliye_miktar NUMERIC;
+ALTER TABLE tank_dolum ADD COLUMN IF NOT EXISTS irsaliye_miktar_fark NUMERIC;
+ALTER TABLE tank_dolum ADD COLUMN IF NOT EXISTS irsaliye_birim_fiyat NUMERIC;
+ALTER TABLE tank_dolum ADD COLUMN IF NOT EXISTS seviye_baslangic_lt NUMERIC;
+ALTER TABLE tank_dolum ADD COLUMN IF NOT EXISTS seviye_bitis_lt NUMERIC;
+ALTER TABLE tank_dolum ADD COLUMN IF NOT EXISTS kalibrasyon_yuzdesi NUMERIC;
+ALTER TABLE tank_dolum ADD COLUMN IF NOT EXISTS dolum_tipi TEXT;
+ALTER TABLE tank_dolum ADD COLUMN IF NOT EXISTS tanker_sicakligi NUMERIC;

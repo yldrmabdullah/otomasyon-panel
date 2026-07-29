@@ -258,9 +258,20 @@ export const asis = {
       dolumBitim: tarih(alan(d, 'DolumBitimZamani')) ?? new Date(),
       dolumMiktari: ondalik(alan(d, 'DolumMiktari')),
       dolumMiktariNet: ondalik(alan(d, 'DolumMiktariNet')),
+      // ⭐ MUTABAKAT: POL "Eşleşen Tank Dolum" = EslesmeMiktari (algılanan DEĞİL)
+      eslesmeMiktari: ondalik(alan(d, 'EslesmeMiktari')),
       irsaliyeNo: alan(d, 'IrsaliyeNo') || null,
       irsaliyeLitre: ondalik(alan(d, 'IrsaliyeLitre')),
+      irsaliyeMiktar: ondalik(alan(d, 'IrsaliyeMiktar')),
       irsaliyeHacimFark: ondalik(alan(d, 'IrsaliyeHacimFark')),
+      irsaliyeMiktarFark: ondalik(alan(d, 'IrsaliyeMiktarFark')),
+      irsaliyeBirimFiyat: ondalik(alan(d, 'IrsaliyeBirimfiyat')),
+      // ⭐ Tank seviyesi dolum kaydında geliyor → GetTankLevelRecord'a gerek yok
+      seviyeBaslangicLt: ondalik(alan(d, 'YakitDolumBaslamaMiktariLT')),
+      seviyeBitisLt: ondalik(alan(d, 'YakitDolumBitisMiktariLT')),
+      kalibrasyonYuzdesi: ondalik(alan(d, 'KalibrasyonYuzdesi')),
+      dolumTipi: alan(d, 'DolumTipi') || null,
+      tankerSicakligi: ondalik(alan(d, 'TankerSicakligi')),
       kapasiteLt: ondalik(alan(d, 'Kapasite')),
       tankerDolumTarihi: tarih(alan(d, 'TankerDolumTarihi')) ?? new Date(),
     }));

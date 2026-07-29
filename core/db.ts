@@ -93,26 +93,47 @@ export async function tanklariKaydet(istasyonKod: string, tanklar: AsisTank[]): 
 export async function dolumlariKaydet(dolumlar: AsisDolum[]): Promise<void> {
   if (dolumlar.length === 0) return;
   const p = pool();
-  const KOLON = 13;
-  const PARCA = 800; // 800×13 = 10400 parametre (limit ~65535, güvenli)
-  for (let i = 0; i < dolumlar.length; i += PARCA) {
-    const grup = dolumlar.slice(i, i + PARCA);
+  const KOLON = 22;
+  const PARCA = 500; // 500×22 = 11000 parametre (limit ~65535, güvenli)
+  // ⚠️ AYNI dolum_id bir yanıtta İKİ KEZ gelebiliyor. ON CONFLICT DO UPDATE aynı
+  // komutta aynı satırı iki kez güncellemeyi reddediyor ("ON CONFLICT DO UPDATE
+  // command cannot affect row a second time") → önce tekilleştir.
+  const tekil = [...new Map(dolumlar.map((d) => [d.dolumId, d])).values()];
+  for (let i = 0; i < tekil.length; i += PARCA) {
+    const grup = tekil.slice(i, i + PARCA);
     const degerler: unknown[] = [];
     const satirlar = grup.map((d, j) => {
       const b = j * KOLON;
       degerler.push(
         d.dolumId, d.istasyonKod, d.tankNo, d.urunAdi, d.dolumBaslama, d.dolumBitim,
-        d.dolumMiktari, d.dolumMiktariNet, d.irsaliyeNo, d.irsaliyeLitre, d.irsaliyeHacimFark,
-        d.kapasiteLt, d.tankerDolumTarihi,
+        d.dolumMiktari, d.dolumMiktariNet, d.eslesmeMiktari, d.irsaliyeNo, d.irsaliyeLitre,
+        d.irsaliyeMiktar, d.irsaliyeHacimFark, d.irsaliyeMiktarFark, d.irsaliyeBirimFiyat,
+        d.seviyeBaslangicLt, d.seviyeBitisLt, d.kalibrasyonYuzdesi, d.dolumTipi,
+        d.tankerSicakligi, d.kapasiteLt, d.tankerDolumTarihi,
       );
-      return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7},$${b + 8},$${b + 9},$${b + 10},$${b + 11},$${b + 12},$${b + 13})`;
+      return `(${Array.from({ length: KOLON }, (_, k) => `$${b + k + 1}`).join(',')})`;
     });
+    // ⚠️ DO NOTHING DEĞİL DO UPDATE: yeni alanlar (eslesme_miktari, seviye_*, kalibrasyon)
+    // sonradan eklendi; mevcut 36 bin kayıt DO NOTHING ile boş kalırdı. Artımlı çekim
+    // aynı kaydı tekrar getirdiğinde eksik alanlar doldurulur.
     await p.query(
       `INSERT INTO tank_dolum (dolum_id, istasyon_kod, tank_no, urun, dolum_baslama, dolum_bitim,
-         dolum_miktari, dolum_miktari_net, irsaliye_no, irsaliye_litre, irsaliye_hacim_fark,
-         kapasite_lt, tanker_dolum_tarihi)
+         dolum_miktari, dolum_miktari_net, eslesme_miktari, irsaliye_no, irsaliye_litre,
+         irsaliye_miktar, irsaliye_hacim_fark, irsaliye_miktar_fark, irsaliye_birim_fiyat,
+         seviye_baslangic_lt, seviye_bitis_lt, kalibrasyon_yuzdesi, dolum_tipi,
+         tanker_sicakligi, kapasite_lt, tanker_dolum_tarihi)
        VALUES ${satirlar.join(',')}
-       ON CONFLICT (dolum_id) DO NOTHING`,
+       ON CONFLICT (dolum_id) DO UPDATE SET
+         eslesme_miktari=EXCLUDED.eslesme_miktari,
+         irsaliye_miktar=EXCLUDED.irsaliye_miktar,
+         irsaliye_miktar_fark=EXCLUDED.irsaliye_miktar_fark,
+         irsaliye_birim_fiyat=EXCLUDED.irsaliye_birim_fiyat,
+         seviye_baslangic_lt=EXCLUDED.seviye_baslangic_lt,
+         seviye_bitis_lt=EXCLUDED.seviye_bitis_lt,
+         kalibrasyon_yuzdesi=EXCLUDED.kalibrasyon_yuzdesi,
+         dolum_tipi=EXCLUDED.dolum_tipi,
+         tanker_sicakligi=EXCLUDED.tanker_sicakligi,
+         guncelleme=now()`,
       degerler,
     );
   }

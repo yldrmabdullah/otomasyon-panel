@@ -105,6 +105,72 @@ irsaliye no/litre, **irsaliye_hacim_fark** (irsaliye − tank).
    → Tek satırda irsaliye-vs-dolum karşılaştırması YANLIŞ. Gerçek mutabakat muhtemelen **irsaliye no
    bazında** (aynı irsaliyenin tüm tank dağılımı toplanıp irsaliye litresiyle) yapılıyor. `DOĞRULANMASI GEREK`
 
+## 4g. ⭐⭐⭐ ASIS'TEN ÇEKİLEBİLİR — ama irsaliye litresi %45 EKSİK AKIYOR (2026-07-29)
+
+Soru: "Excel elle yüklemek mantıklı değil, ASIS web servisinden çekemez miyiz?"
+**Cevap: EVET, girdiler ASIS'te VAR.** `GetTankFillingList` mutabakatın iki tarafını
+da taşıyor. Ama bir tarafı **eksik dolduruluyor**.
+
+### ASIS'te olan ama ÇEKMEDİĞİMİZ alanlar (kod eksikliği — düzeltilebilir)
+`core/asisClient.ts:tankDolumlari()` bu alanları map etmiyordu:
+| Alan | Ne | Kanıt |
+|---|---|---|
+| **`EslesmeMiktari`** | POL'ün "Eşleşen Tank Dolum"u | RAHA 8470: 3 satır toplamı 14.991,21 |
+| `IrsaliyeMiktar` | (canlıda hep 0 görüldü) | |
+| `IrsaliyeMiktarFark` | | |
+| `IrsaliyeBirimfiyat` | | |
+| `KalibrasyonYuzdesi` | 1240 kararı kalibrasyon takibi için | 86 |
+| `DolumTipi` | O / M — teslim tipi | |
+| `YakitDolumBaslama/BitisMiktariLT` | tank seviyesi (mutabakat A/D girdisi!) | 567,71 → 2.574,21 |
+| `TankerSicakligi`, `Baslangic/BitisSicakligi` | hacim düzeltmesi | |
+
+⭐ `YakitDolumBaslamaMiktariLT` / `BitisMiktariLT` → **tank seviyesi geçmişi**.
+`GetTankLevelRecord` KayitID=0 dönüyordu ama seviye bilgisi DOLUM kaydında zaten var.
+
+### DOĞRULAMA — RAHA, PIR2026000008470 (25.07.2026)
+| | ASIS | POL | |
+|---|---|---|---|
+| Σ `DolumMiktari` | 14.991,21 | İstasyon Dolum 14.991,21 | ✅ **birebir** |
+| Σ `EslesmeMiktari` | 14.991,21 | (bu kayıtta dolum=eşleşme) | ✅ |
+| Σ `IrsaliyeLitre` | 14.886 | Fatura 14.876 | ≈ 10 lt fark |
+
+→ **`IrsaliyeLitre` SATIRLARA BÖLÜNMÜŞ, toplanır** (T1 7.932 + T2 4.968 + T3 1.986).
+§4d'deki "her satırda tekrar ediyor" yorumu YANLIŞTI; sebep irsaliye no'nun yıllar
+arası tekrar kullanılması + kapsamsız gruplamaydı.
+
+### ⛔ ASIL SORUN: irsaliye litresi ASIS'e AKMIYOR
+RAHA Temmuz, 11 irsaliye — DB toplamı POL faturasıyla karşılaştırıldı:
+| İrsaliye | ASIS Σ irsLitre | POL fatura | |
+|---|---|---|---|
+| 7368 | 24.768 | 24.768 | ✅ |
+| 7626 | 12.477 | 12.477 | ✅ |
+| 7946 | 11.691 | 11.691 | ✅ |
+| 7754 | 1.724 | 1.724 | ✅ |
+| 8470 | 14.886 | 14.876 | ≈ |
+| **7678 · 8007 · 8249 · 8250 · 8406** | **0** | 11.642 · 11.893 · 1.959 · 16.172 · 9.862 | ❌ |
+
+**Toplama kuralı DOĞRU** (4 irsaliyede birebir). Sorun: **11 irsaliyenin 5'inde
+(=%45) ASIS'te irsaliye litresi HİÇ YOK**, POL'de var. Bu yüzden ASIS toplamı
+39.682, POL 136.886.
+
+Bu, önceki "%40 eksik bildirim" bulgusunun ta kendisi — ama anlamı değişiyor:
+veri POL'de VAR, **ASIS web servisine akmıyor**. Yani bir A1B eksikliği değil,
+bir **entegrasyon/senkronizasyon eksikliği**.
+
+### Bu ne demek — üç sonuç
+1. **Panel dolum tarafını ASIS'ten hesaplayabilir** (`EslesmeMiktari` doğru).
+2. **Fatura/sevk tarafı ASIS'te güvenilir DEĞİL** — %45 boş. Mutabakatın "Dağıtıcıdan
+   Alınan" kolonu bu yüzden ASIS'ten tam hesaplanamaz.
+3. **ASIS'e sorulacak (asıl soru):** İrsaliyeli teslimlerin bir kısmında
+   `IrsaliyeLitre=0` geliyor ama POL'de fatura miktarı dolu. Bu alan neden
+   boş kalıyor? POL'ün gördüğü fatura verisi hangi metottan/alandan geliyor?
+   (Örnek: PIR2026000008250, 21.07.2026, RAHA — POL 16.172 lt, ASIS 0.)
+
+### Yapılacak (kod)
+`tankDolumlari()`'ye eksik alanları ekle → `EslesmeMiktari` ile dolum tarafı
+POL'le uyumlu hesaplanır; `YakitDolum*MiktariLT` ile tank seviyesi de gelir.
+Fatura tarafı ASIS'te düzelene kadar mutabakat "eksik veri" uyarısıyla gösterilir.
+
 ## 4f. ⭐⭐⭐ MUTABAKAT FORMÜLÜ KESİN ÇÖZÜLDÜ (2026-07-29, POL Excel + ekran eşleştirmesi)
 
 **"İstasyon Dönemleri Analiz"** ekranı (POL → Raporlar → İstasyon Dönemleri) aylık

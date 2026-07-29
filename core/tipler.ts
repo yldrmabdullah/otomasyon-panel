@@ -85,11 +85,30 @@ export interface AsisDolum {
   urunAdi: string;
   dolumBaslama: Date;
   dolumBitim: Date;
-  dolumMiktari: number; // tanka giren (lt)
+  dolumMiktari: number; // tanka giren, ALGILANAN (lt)
   dolumMiktariNet: number;
+  /** POL'ün "Eşleşen Tank Dolum"u — MUTABAKATTA KULLANILAN değer.
+   *  ⚠️ `dolumMiktari` (algılanan) ile AYNI DEĞİL: RAHA Temmuz'da algılanan
+   *  141.439, eşleşen 138.619 (fark 2.820 = dönem dışı/eşleşmemiş kayıtlar).
+   *  POL ekranı ikisini ayrı satırda gösteriyor. (bkz epdk-mutabakat.md §4g) */
+  eslesmeMiktari: number;
   irsaliyeNo: string | null;
-  irsaliyeLitre: number; // irsaliyede yazan (lt)
-  irsaliyeHacimFark: number; // irsaliye - tank (mutabakatın kalbi)
+  /** İrsaliyede yazan (lt). SATIRLARA BÖLÜNMÜŞ → irsaliye bazında TOPLANIR.
+   *  ⚠️ Teslimlerin ~%45'inde ASIS'te 0 geliyor ama POL'de fatura dolu →
+   *  fatura tarafı ASIS'ten TAM hesaplanamaz (§4g). */
+  irsaliyeLitre: number;
+  irsaliyeMiktar: number;      // canlıda hep 0 görüldü
+  irsaliyeHacimFark: number;   // irsaliye − tank (satır bazında; toplama uygun DEĞİL)
+  irsaliyeMiktarFark: number;
+  irsaliyeBirimFiyat: number;
+  /** Tank seviyesi (lt) — dolum ÖNCESİ/SONRASI. ⭐ Mutabakatın A/D girdisi:
+   *  `GetTankLevelRecord` KayitID=0 dönüyor ama seviye DOLUM kaydında zaten var. */
+  seviyeBaslangicLt: number;
+  seviyeBitisLt: number;
+  /** 1240 kararı: kalibrasyon değişiminde 24 saat içinde yedek zorunlu → takip. */
+  kalibrasyonYuzdesi: number;
+  dolumTipi: string | null;    // O / M
+  tankerSicakligi: number;     // hacim düzeltmesi
   kapasiteLt: number;
   tankerDolumTarihi: Date;
 }
