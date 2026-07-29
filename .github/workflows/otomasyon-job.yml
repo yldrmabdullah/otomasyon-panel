@@ -10,9 +10,15 @@ name: Otomasyon İzleme Job
 # neresi olduğunu doğrula.
 
 on:
+  # ⚠️ GH Actions bu cron'u ÜCRETSİZ planda ciddi şekilde kısıyor: `*/15` yazsak da
+  # ölçülen gerçek aralık ortalama 95 dk (61-202 dk arası, 2026-07-29).
+  # Bu yüzden ASIL tetikleyici dışarıdan gelen workflow_dispatch çağrısı
+  # (bkz docs/bilgi/baglanti-tank-izleme.md → "dışarıdan tetikleme").
+  # Buradaki schedule yalnız YEDEK: dış tetikleyici düşerse sistem tamamen durmasın.
   schedule:
-    - cron: '*/15 * * * *' # her 15 dakikada bir
-  workflow_dispatch: # elle tetikleme
+    - cron: '*/15 * * * *'
+  # Elle VE dışarıdan (cron-job.org → GitHub API) tetikleme. Bu yol kısıtlanmıyor.
+  workflow_dispatch:
     inputs:
       dry_run:
         description: 'DRY_RUN (1 = bildirim atmadan test)'

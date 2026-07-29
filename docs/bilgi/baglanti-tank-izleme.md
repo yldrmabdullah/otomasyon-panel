@@ -119,6 +119,27 @@ Repo: **`yldrmabdullah/otomasyon-panel`**, branch `master`, cron `*/15 * * * *`.
 kurulduğunda ilk gerçek koşu **teyit edilir** (`gh run list`), yalnız YAML'ın doğru
 görünmesine güvenilmez. Fail sessiz değildi — mail atıyordu — ama kimse bakmıyordu.
 
+### ⚠️ GH Actions cron GERÇEKTE 95 dk'da bir çalışıyor (ölçüldü 2026-07-29)
+
+YAML `*/15 * * * *` diyor ama **gerçek aralıklar: 61, 62, 78, 80, 84, 88, 105, 202 dk
+→ ortalama 95 dk.** GitHub ücretsiz planda sık zamanlanmış işleri ciddi şekilde kısıyor
+(kuyruğa alır, atlar). Bu bir yapılandırma hatası değil, platform sınırı.
+
+**Sonucu:** tank eşiği 35 dk ama kontrol ortalama 95 dk'da bir → bir tank veri göndermeyi
+kestiğinde bayi **ortalama ~1.5 saat, en kötü 3.5 saat** sonra haber alıyor. "30 dakikada
+bir veri düşer, kopukluğu hızlı yakalayalım" hedefiyle çelişiyor.
+
+**Seçenekler** (karar bekliyor):
+| Yol | Gerçek aralık | Maliyet |
+|---|---|---|
+| Böyle bırak | ~95 dk | 0 |
+| Dışarıdan tetikleme (cron-job.org vb. → `workflow_dispatch` API) | ~15 dk | 0 |
+| GitHub'da ücretli plan | ~15 dk | aylık ücret |
+| Kalıcı sunucu / Vercel Cron | dakika hassasiyeti | Vercel Cron ücretsiz planda günde 1 |
+
+Not: `workflow_dispatch` ile ELLE tetikleme kısıtlanmıyor — dışarıdan tetikleme bu yüzden
+çalışır. `gh workflow run` ile test edilen koşu 05:54'te sorunsuz geçti.
+
 ### Secret / Variable ayrımı
 
 | GitHub Secret (sır) | GitHub Variable (sır değil) |
