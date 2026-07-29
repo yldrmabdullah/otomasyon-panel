@@ -43,15 +43,23 @@ CREATE INDEX IF NOT EXISTS ix_bayi_dagitim ON bayiler_epdk (dagitim_sirketi);
 CREATE INDEX IF NOT EXISTS ix_bayi_il ON bayiler_epdk (il);
 
 -- Günlük snapshot — her gün her bayinin hangi dağıtıcıda/durumda olduğu. Transfer bundan türetilir.
+--
+-- ⚠️ `kapsam` KOLONU ZORUNLU (2026-07-29 dersi): çekim iki farklı kapsamda
+-- yapılabiliyor — `onaylandi` (yalnız aktif, ~12.6bin) veya `tum` (iptal/sonlanmış
+-- dahil, ~30.3bin). Kapsam kaydedilmediği için farklı kapsamdaki iki gün
+-- karşılaştırıldı ve 17bin hayalet "ayrildi" üretecekti; yalnız satır SAYISI
+-- kontrolü yakaladı. Artık kapsam da karşılaştırılıyor → uyuşmazlık net anlaşılır.
 CREATE TABLE IF NOT EXISTS bayi_snapshot (
   snapshot_gun    DATE NOT NULL,
   bayi_lisans_no  TEXT NOT NULL,
   dagitim_sirketi TEXT,
   lisans_durumu   TEXT,
   il              TEXT,
+  kapsam          TEXT,   -- 'tum' | 'onaylandi' — transfer karşılaştırmasında EŞİT olmalı
   PRIMARY KEY (snapshot_gun, bayi_lisans_no)
 );
 CREATE INDEX IF NOT EXISTS ix_snap_bayi ON bayi_snapshot (bayi_lisans_no, snapshot_gun DESC);
+ALTER TABLE bayi_snapshot ADD COLUMN IF NOT EXISTS kapsam TEXT;
 
 -- Tespit edilen transferler (dağıtıcı değişimi) + durum değişimleri.
 CREATE TABLE IF NOT EXISTS transferler (

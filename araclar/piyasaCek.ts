@@ -35,7 +35,8 @@ async function main() {
     try {
       const bayiler = await epdk.bayiler(d.lisansNo, tumDurumlar);
       if (bayiler.length > 0) {
-        await bayileriKaydet(bayiler, d.lisansNo, snapshotGun);
+        // Kapsam snapshot'a yazılır → farklı kapsamdaki günler karşılaştırılmasın.
+        await bayileriKaydet(bayiler, d.lisansNo, snapshotGun, tumDurumlar ? 'tum' : 'onaylandi');
         toplamBayi += bayiler.length;
       }
       console.log(`  [${i + 1}/${dagiticilar.length}] ${d.unvan.slice(0, 32)} → ${bayiler.length} bayi (toplam ${toplamBayi})`);

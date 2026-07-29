@@ -240,7 +240,14 @@ export async function dagiticilariKaydet(liste: EpdkDagitici[]): Promise<void> {
 }
 
 /** Bayileri GÜNCEL tabloya upsert + o günün snapshot'ına yaz. dagiticiLisansNo = sorguda kullanılan. */
-export async function bayileriKaydet(bayiler: EpdkBayi[], dagiticiLisansNo: string, snapshotGun: string): Promise<void> {
+/** @param kapsam 'tum' | 'onaylandi' — snapshot'a yazılır; transfer karşılaştırmasında
+ *  iki günün kapsamı EŞİT olmalı, yoksa binlerce hayalet kayıt üretir. */
+export async function bayileriKaydet(
+  bayiler: EpdkBayi[],
+  dagiticiLisansNo: string,
+  snapshotGun: string,
+  kapsam: 'tum' | 'onaylandi' = 'tum',
+): Promise<void> {
   const p = pool();
   for (const b of bayiler) {
     if (!b.bayiLisansNo) continue; // iptal/sonlanmış bazı bayilerde lisansNo boş → atla (PK null olamaz)
@@ -263,10 +270,11 @@ export async function bayileriKaydet(bayiler: EpdkBayi[], dagiticiLisansNo: stri
        gun(b.lisansBitis), gun(b.sozlesmeBaslangic), gun(b.sozlesmeBitis), gun(b.iptalTarihi), b.iptalAciklama],
     );
     await p.query(
-      `INSERT INTO bayi_snapshot (snapshot_gun, bayi_lisans_no, dagitim_sirketi, lisans_durumu, il)
-       VALUES ($1,$2,$3,$4,$5) ON CONFLICT (snapshot_gun, bayi_lisans_no) DO UPDATE SET
-         dagitim_sirketi=EXCLUDED.dagitim_sirketi, lisans_durumu=EXCLUDED.lisans_durumu, il=EXCLUDED.il`,
-      [snapshotGun, b.bayiLisansNo, b.dagitimSirketi, b.lisansDurumu, b.il],
+      `INSERT INTO bayi_snapshot (snapshot_gun, bayi_lisans_no, dagitim_sirketi, lisans_durumu, il, kapsam)
+       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (snapshot_gun, bayi_lisans_no) DO UPDATE SET
+         dagitim_sirketi=EXCLUDED.dagitim_sirketi, lisans_durumu=EXCLUDED.lisans_durumu,
+         il=EXCLUDED.il, kapsam=EXCLUDED.kapsam`,
+      [snapshotGun, b.bayiLisansNo, b.dagitimSirketi, b.lisansDurumu, b.il, kapsam],
     );
   }
 }
@@ -303,18 +311,34 @@ export async function transferleriTespitEt(bugun: string): Promise<number> {
   const onceki = oncekiR.rows[0]?.g;
   if (!onceki) return 0; // karşılaştıracak önceki gün yok (ilk çalıştırma)
 
-  // Bütünlük: iki günün satır sayısını karşılaştır.
-  const sayR = await p.query<{ gun: string; n: string }>(
-    `SELECT snapshot_gun::text gun, count(*) n FROM bayi_snapshot
-     WHERE snapshot_gun IN ($1,$2) GROUP BY snapshot_gun`,
+  // Bütünlük: iki günün satır sayısı VE kapsamı karşılaştırılır.
+  const sayR = await p.query<{ gun: string; n: string; kapsamlar: string[] }>(
+    `SELECT snapshot_gun::text gun, count(*) n,
+            array_agg(DISTINCT COALESCE(kapsam,'bilinmiyor')) kapsamlar
+     FROM bayi_snapshot WHERE snapshot_gun IN ($1,$2) GROUP BY snapshot_gun`,
     [onceki, bugun],
   );
   const say = new Map(sayR.rows.map((r) => [r.gun, Number(r.n)]));
+  const kaps = new Map(sayR.rows.map((r) => [r.gun, r.kapsamlar.sort().join('+')]));
   const oncekiSayi = say.get(onceki) ?? 0;
   const bugunSayi = say.get(bugun) ?? 0;
 
   if (bugunSayi === 0) {
     console.warn(`⚠ Transfer tespiti ATLANDI: ${bugun} snapshot'ı boş.`);
+    return -1;
+  }
+
+  // KAPSAM UYUŞMAZLIĞI: 'onaylandi' (~12.6bin) ile 'tum' (~30.3bin) karşılaştırılamaz.
+  // Sayı kontrolü bunu zaten yakalıyor ama sebebi anlaşılmıyordu → açıkça söyle.
+  const oncekiKapsam = kaps.get(onceki) ?? 'bilinmiyor';
+  const bugunKapsam = kaps.get(bugun) ?? 'bilinmiyor';
+  if (oncekiKapsam !== 'bilinmiyor' && bugunKapsam !== 'bilinmiyor' && oncekiKapsam !== bugunKapsam) {
+    console.warn(
+      `⚠ Transfer tespiti ATLANDI — KAPSAM UYUŞMAZLIĞI.\n` +
+        `   ${bugun}: '${bugunKapsam}' · ${onceki}: '${oncekiKapsam}'\n` +
+        `   Farklı kapsamdaki iki gün karşılaştırılamaz ('onaylandi' ~12.6bin, 'tum' ~30.3bin).\n` +
+        `   Aynı kapsamla tekrar çek: npm run piyasa -- ${oncekiKapsam === 'tum' ? '--tum-durumlar' : '(bayrak yok)'}`,
+    );
     return -1;
   }
   if (oncekiSayi > 0 && bugunSayi < oncekiSayi * SNAPSHOT_BUTUNLUK_ORANI) {
