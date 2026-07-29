@@ -47,19 +47,12 @@ interface Bayi {
   il: string | null; ilce: string | null; lisans_durumu: string | null;
   kategori: string | null; sozlesme_bitis: string | null;
 }
-/** Arama hedefi yükleme anında BİR KEZ hesaplanır — her tuş vuruşunda 30 bin
- *  string concat + lowercase yapmak paneli donduruyordu. */
-type BayiHazir = Bayi & { _ara: string };
-
-// Tüm sıralanabilir alanlar. İlçe/kategori/EPDK önceden sıralanamıyordu —
-// 30 bin satırlı tabloda "ilçeye göre sırala" makul bir istek.
+// Sıralanabilir alanlar. Sıralama/filtreleme/arama SUNUCUDA yapılır
+// (core/panelSorgu.ts, whitelist'li ORDER BY) — client'ta 30 bin satır
+// tutulmadığı için Intl.Collator ve _ara ön-normalizasyonuna gerek kalmadı.
 type SiralamaAlan =
   | 'lisans_sahibi' | 'dagitim_sirketi' | 'il' | 'ilce'
   | 'lisans_durumu' | 'kategori' | 'bayi_lisans_no' | 'sozlesme_bitis';
-
-// Collator SORT DIŞINDA kurulur: localeCompare'e her karşılaştırmada opsiyon
-// nesnesi vermek yeni Intl.Collator kurdurur (30 bin öğe → ~440 bin kurulum).
-const COLLATOR = new Intl.Collator('tr', { numeric: true });
 
 function gunFark(iso: string): string {
   const g = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
@@ -131,80 +124,78 @@ export function Piyasa() {
   const { veri, hata, yukleniyor, yenile } = useVeri<PiyasaVeri>('/api/piyasa', piyasaDogrula);
   const [arama, setArama] = useState('');
 
-  // Bayi tablosu
-  const [bayiler, setBayiler] = useState<BayiHazir[] | null>(null);
+  // Bayi tablosu — SUNUCU TARAFLI sayfalama.
+  // Eskiden 30.303 satırın tamamı indirilip client'ta filtrelenip sıralanıyordu:
+  // 8.88 MB ve sunucuda 26.5 sn (Vercel ücretsiz plan limiti 10 sn → timeout).
+  // Artık her filtre/sıra/sayfa değişiminde 50 satır çekilir (~103 ms).
+  const [sayfaliBayiler, setSayfaliBayiler] = useState<Bayi[] | null>(null);
+  const [toplamEslesen, setToplamEslesen] = useState(0);
   const [bayiHata, setBayiHata] = useState<string | null>(null);
+  const [bayiYukleniyor, setBayiYukleniyor] = useState(true);
   const [sorgu, dispatch] = useReducer(sorguReducer, SORGU_BAS);
-  const q = useGecikmeli(sorgu.q, 250);
+  const q = useGecikmeli(sorgu.q, 300);
   const kol = useKolonlar('bayiler', BAYI_KOLONLARI);
+
+  // Filtre açılırları — tüm bayiyi indirmeden, ayrı hafif çağrı.
+  const [secenekler, setSecenekler] = useState<{ iller: string[]; dagiticilar: string[]; toplamBayi: number }>(
+    { iller: [], dagiticilar: [], toplamBayi: 0 },
+  );
 
   // Sözleşme bölümü: kapsam filtresi + kademeli gösterim (sessiz kesme YOK)
   const [sozlesmeKapsam, setSozlesmeKapsam] = useState<'hepsi' | 'bizim' | 'rakip'>('hepsi');
 
-  // Bayileri ayrı yükle. Hata YUTULMAZ: "0 / 0" ile "sistem bozuk" ayırt
-  // edilemiyordu — iç operasyon panelinde bu kabul edilemez.
   useEffect(() => {
     const ac = new AbortController();
-    fetch('/api/bayiler', { signal: ac.signal })
+    fetch('/api/bayiler?secenekler=1', { signal: ac.signal })
+      .then((r) => (r.status === 401 ? (location.reload(), null) : r.ok ? r.json() : null))
+      .then((d) => { if (d) setSecenekler(d); })
+      .catch(() => {});
+    return () => ac.abort();
+  }, []);
+
+  const toplamSayfa = Math.max(1, Math.ceil(toplamEslesen / SAYFA_BOYUT));
+  const sayfa = Math.min(sorgu.sayfa, toplamSayfa);
+
+  // Sorgu değişince sunucudan çek. Hata YUTULMAZ: "0 / 0" ile "sistem bozuk"
+  // ayırt edilemiyordu — iç operasyon panelinde kabul edilemez.
+  useEffect(() => {
+    const ac = new AbortController();
+    const p = new URLSearchParams({
+      sirala: sorgu.sirala,
+      artan: sorgu.artan ? '1' : '0',
+      sayfa: String(sorgu.sayfa),
+      boyut: String(SAYFA_BOYUT),
+    });
+    if (q.trim()) p.set('q', q.trim());
+    if (sorgu.il) p.set('il', sorgu.il);
+    if (sorgu.dagitici) p.set('dagitici', sorgu.dagitici);
+    if (sorgu.durum) p.set('durum', sorgu.durum);
+    if (sorgu.sadeceBiz) p.set('sadeceBiz', '1');
+
+    setBayiYukleniyor(true);
+    fetch(`/api/bayiler?${p}`, { signal: ac.signal })
       .then(async (r) => {
+        if (r.status === 401) { location.reload(); return null; }
         if (!r.ok) throw new Error(`Bayi listesi alınamadı (${r.status} ${r.statusText})`);
         const d = await r.json();
-        if (!Array.isArray(d)) throw new Error('Bayi listesi beklenen biçimde değil.');
-        return d as Bayi[];
+        if (!Array.isArray(d?.satirlar)) throw new Error('Bayi listesi beklenen biçimde değil.');
+        return d as { satirlar: Bayi[]; toplam: number };
       })
       .then((d) => {
-        setBayiler(
-          d.map((b) => ({
-            ...b,
-            _ara: `${b.lisans_sahibi ?? ''} ${b.bayi_lisans_no} ${b.ilce ?? ''}`.toLocaleLowerCase('tr'),
-          })),
-        );
+        if (!d) return;
+        setSayfaliBayiler(d.satirlar);
+        setToplamEslesen(d.toplam);
         setBayiHata(null);
       })
       .catch((e: unknown) => {
         if ((e as Error)?.name === 'AbortError') return;
         setBayiHata(e instanceof Error ? e.message : String(e));
-        setBayiler([]);
-      });
+        setSayfaliBayiler([]);
+        setToplamEslesen(0);
+      })
+      .finally(() => setBayiYukleniyor(false));
     return () => ac.abort();
-  }, []);
-
-  // Filtre seçenekleri (il + dağıtıcı listeleri)
-  const iller = useMemo(
-    () => [...new Set((bayiler ?? []).map((b) => b.il).filter(Boolean))].sort() as string[],
-    [bayiler],
-  );
-  const dagiticiAdlari = useMemo(
-    () => [...new Set((bayiler ?? []).map((b) => b.dagitim_sirketi).filter(Boolean))].sort() as string[],
-    [bayiler],
-  );
-
-  // Filtre ve sıralama AYRI memo: tek memo'da sıralama yönü değişince filtre de
-  // baştan koşuyordu (ve tersi) — 30 bin satırda iki kat boşa iş.
-  const filtreli = useMemo(() => {
-    if (!bayiler) return [];
-    const ql = q.trim().toLocaleLowerCase('tr');
-    return bayiler.filter((b) => {
-      if (sorgu.sadeceBiz && b.dagitim_sirketi !== BIZ) return false;
-      if (sorgu.il && b.il !== sorgu.il) return false;
-      if (sorgu.dagitici && b.dagitim_sirketi !== sorgu.dagitici) return false;
-      if (sorgu.durum && b.lisans_durumu !== sorgu.durum) return false;
-      if (ql && !b._ara.includes(ql)) return false;
-      return true;
-    });
-  }, [bayiler, q, sorgu.il, sorgu.dagitici, sorgu.durum, sorgu.sadeceBiz]);
-
-  const filtreliBayiler = useMemo(() => {
-    const { sirala, artan } = sorgu;
-    return [...filtreli].sort((a, b) => {
-      const c = COLLATOR.compare((a[sirala] ?? '').toString(), (b[sirala] ?? '').toString());
-      return artan ? c : -c;
-    });
-  }, [filtreli, sorgu.sirala, sorgu.artan]);
-
-  const toplamSayfa = Math.max(1, Math.ceil(filtreliBayiler.length / SAYFA_BOYUT));
-  const sayfa = Math.min(sorgu.sayfa, toplamSayfa);
-  const sayfaliBayiler = filtreliBayiler.slice((sayfa - 1) * SAYFA_BOYUT, sayfa * SAYFA_BOYUT);
+  }, [q, sorgu.il, sorgu.dagitici, sorgu.durum, sorgu.sadeceBiz, sorgu.sirala, sorgu.artan, sorgu.sayfa]);
 
   const siraYon = (alan: SiralamaAlan): 'ascending' | 'descending' | 'none' =>
     sorgu.sirala === alan ? (sorgu.artan ? 'ascending' : 'descending') : 'none';
@@ -552,9 +543,9 @@ export function Piyasa() {
               <h2 id="bayi-baslik">
                 Tüm Bayiler{' '}
                 <span className="sayi" role="status" aria-live="polite">
-                  {bayiler === null
+                  {sayfaliBayiler === null
                     ? 'yükleniyor…'
-                    : `${filtreliBayiler.length.toLocaleString('tr')} / ${bayiler.length.toLocaleString('tr')} bayi`}
+                    : `${toplamEslesen.toLocaleString('tr')} / ${secenekler.toplamBayi.toLocaleString('tr')} bayi`}
                 </span>
               </h2>
             </div>
@@ -578,7 +569,7 @@ export function Piyasa() {
                 onChange={(e) => dispatch({ tip: 'filtre', deger: { il: e.target.value } })}
               >
                 <option value="">Tüm iller</option>
-                {iller.map((il) => <option key={il} value={il}>{il}</option>)}
+                {secenekler.iller.map((il: string) => <option key={il} value={il}>{il}</option>)}
               </select>
               <select
                 aria-label="Dağıtıcı filtresi"
@@ -586,7 +577,7 @@ export function Piyasa() {
                 onChange={(e) => dispatch({ tip: 'filtre', deger: { dagitici: e.target.value } })}
               >
                 <option value="">Tüm dağıtıcılar</option>
-                {dagiticiAdlari.map((d) => (
+                {secenekler.dagiticilar.map((d: string) => (
                   <option key={d} value={d}>
                     {d === BIZ ? 'Parkoil (Turgut)' : d.length > 34 ? d.slice(0, 34) + '…' : d}
                   </option>
@@ -617,7 +608,7 @@ export function Piyasa() {
             <div className="tablo-sar kaydirmali" tabIndex={0} role="region" aria-labelledby="bayi-baslik">
               <table>
                 <caption className="sr-only">
-                  Tüm bayiler — {filtreliBayiler.length} sonuç, sayfa {sayfa} / {toplamSayfa}.
+                  Tüm bayiler — {toplamEslesen} sonuç, sayfa {sayfa} / {toplamSayfa}.
                   Dikey ve yatay kaydırılabilir.
                 </caption>
                 <thead>
@@ -633,7 +624,7 @@ export function Piyasa() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sayfaliBayiler.map((b) => {
+                  {(sayfaliBayiler ?? []).map((b) => {
                     const biz = b.dagitim_sirketi === BIZ;
                     return (
                       <tr key={b.bayi_lisans_no} className={biz ? 'satir-biz' : ''}>
@@ -665,8 +656,12 @@ export function Piyasa() {
                       </tr>
                     );
                   })}
-                  {sayfaliBayiler.length === 0 && bayiler !== null && (
-                    <tr><td colSpan={kol.gorunurSayi} className="bos">Eşleşen bayi yok.</td></tr>
+                  {sayfaliBayiler !== null && sayfaliBayiler.length === 0 && (
+                    <tr>
+                      <td colSpan={kol.gorunurSayi} className="bos">
+                        {bayiYukleniyor ? 'Yükleniyor…' : 'Eşleşen bayi yok.'}
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>

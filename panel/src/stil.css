@@ -133,6 +133,52 @@ button, input, select { font: inherit; }
 .atla:focus { top: var(--s-2); }
 h1[tabindex='-1']:focus { outline: none; }
 
+/* ── Giriş ekranı ── */
+.giris-sar {
+  min-height: 100dvh; display: grid; place-items: center;
+  padding: var(--s-5); background: var(--bg);
+}
+@supports not (height: 100dvh) { .giris-sar { min-height: 100vh; } }
+.giris-kart {
+  width: 100%; max-width: 380px;
+  background: var(--panel); border: 1px solid var(--cizgi); border-radius: var(--r);
+  box-shadow: var(--golge); padding: var(--s-7) var(--s-6);
+  display: flex; flex-direction: column; gap: var(--s-4);
+  border-top: 3px solid var(--marka);
+}
+.giris-marka { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-1); }
+.giris-baslik { font-size: var(--t-xl); font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+.giris-alan { display: flex; flex-direction: column; gap: 6px; }
+.giris-alan > span { font-size: var(--t-sm); color: var(--soluk); font-weight: 500; }
+.giris-alan .arama { flex: none; min-width: 0; width: 100%; }
+.giris-btn {
+  background: var(--marka); color: #fff; border: none; border-radius: var(--r-sm);
+  padding: var(--s-3) var(--s-4); font-size: var(--t-lg); font-weight: 600; cursor: pointer;
+  transition: filter .13s;
+}
+.giris-btn:hover:not(:disabled) { filter: brightness(1.1); }
+.giris-btn:active:not(:disabled) { filter: brightness(.95); }
+.giris-btn:disabled { opacity: .5; cursor: default; }
+.giris-not { font-size: var(--t-xs); color: var(--soluk-2); margin: 0; line-height: 1.5; }
+@media (pointer: coarse) { .giris-btn, .giris-alan .arama { min-height: 44px; } }
+
+/* Sidebar dibinde kullanıcı + çıkış */
+.kenar-kullanici {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--s-2);
+  margin-bottom: 6px;
+}
+.kenar-kul-ad {
+  font-size: var(--t-sm); color: var(--metin-2); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cikis-btn {
+  background: transparent; border: 1px solid var(--cizgi-2); color: var(--soluk);
+  border-radius: 5px; padding: 3px 9px; font-size: var(--t-xs); cursor: pointer;
+  flex-shrink: 0; transition: color .13s, border-color .13s;
+}
+.cikis-btn:hover { color: var(--accent); border-color: var(--accent-cizgi); }
+@media (pointer: coarse) { .cikis-btn { min-height: 32px; padding: 6px 12px; } }
+
 /* ── Kabuk: sidebar + içerik ── */
 .uygulama { display: grid; grid-template-columns: var(--kenar-en) 1fr; min-height: 100dvh; }
 @supports not (height: 100dvh) { .uygulama { min-height: 100vh; } }
@@ -546,7 +592,16 @@ td.yok { color: var(--soluk-2); font-style: italic; }
   .kenar-oge { padding: var(--s-2) var(--s-3); scroll-snap-align: start; flex-shrink: 0; }
   .kenar-oge.akt::before { top: 0; bottom: auto; left: 0; right: 0; width: auto; height: 2px; border-radius: 0 0 2px 2px; }
   .kenar-alt { display: none; }
-  .kenar-dip, .tema-secim { display: none; }
+  .tema-secim { display: none; }
+  /* .kenar-dip tamamen gizlenirse ÇIKIŞ butonu erişilemez olur → şirket adını
+     gizle, kullanıcı+çıkış kalsın (sağ üstte kompakt). */
+  .kenar-dip {
+    border-top: none; padding: 0; margin-left: auto; font-size: 0; /* şirket metni gizle */
+    flex-shrink: 0;
+  }
+  .kenar-kullanici { margin-bottom: 0; }
+  .kenar-kul-ad { display: none; } /* dar ekranda ad yerine sadece Çıkış */
+  .cikis-btn { font-size: var(--t-xs); }
   .icerik-ic { padding: var(--s-5) var(--s-4) var(--s-8); }
   .baslik-satiri h1 { font-size: 22px; }
 

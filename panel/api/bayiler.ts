@@ -1,24 +1,46 @@
-// Vercel serverless: tüm bayi listesi (Piyasa modülünün "Tüm Bayiler" tablosu).
-// Salt-okuma. Sorgu core/panelSorgu.ts'te.
+// Vercel serverless: bayi listesi — SUNUCU TARAFLI sayfalama/filtre/sıralama.
+// Salt-okuma. Sorgu core/panelSorgu.ts'te (whitelist'li ORDER BY).
 //
-// BU ENDPOINT ÖNCEDEN HİÇ YOKTU: panel /api/bayiler'i çağırıyor ama yalnız
-// local'de public/api/bayiler statik dosyası vardı → prod'da 404 alıyor ve
-// hatayı yutup "0 / 0" gösteriyordu. Kullanıcı "veri yok" ile "sistem bozuk"u
-// ayırt edemiyordu. Panel artık hatayı yutmuyor, burası da gerçek veri veriyor.
+// ⚠️ Tüm tabloyu döndürmek 30.303 satır / 8.88 MB / 26.5 saniye sürüyordu →
+// Vercel ücretsiz plan 10 sn limitini aşıp timeout'a düşüyordu. Sayfalı: ~103 ms.
 //
-// NOT (bilinen sınır): 30 bin satır tek yanıtta döner (~9.4 MB ham / ~1 MB gzip).
-// Sunucu-taraflı sayfalama+arama sıradaki iş; o zaman bu handler query
-// parametresi (q/il/dagitici/durum/sirala/sayfa) alacak şekilde genişletilecek
-// ve bayiler_epdk(il), (dagitim_sirketi), (lisans_durumu) indeksleri gerekecek.
+// GET /api/bayiler?q=&il=&dagitici=&durum=&sadeceBiz=1&sirala=il&artan=0&sayfa=2&boyut=50
+//   → { satirlar: [...], toplam: N, sayfa, boyut }
+// GET /api/bayiler?secenekler=1 → { iller, dagiticilar, toplamBayi }  (dropdown besleme)
 import { db, hataYanit } from './_db.js';
-import { bayiVerisi } from '../../core/panelSorgu.js';
+import { korumali } from './_oturum.js';
+import { bayiVerisi, bayiSecenekleri } from '../../core/panelSorgu.js';
 
-export default async function handler(_req: unknown, res: any) {
+const tekil = (v: unknown): string | undefined => {
+  const s = Array.isArray(v) ? v[0] : v;
+  return typeof s === 'string' && s.trim() ? s.trim() : undefined;
+};
+
+export default korumali(async (req: any, res: any) => {
   try {
-    const satirlar = await bayiVerisi(db());
-    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
-    res.status(200).json(satirlar);
+    const s = req?.query ?? {};
+
+    if (tekil(s.secenekler)) {
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.status(200).json(await bayiSecenekleri(db()));
+      return;
+    }
+
+    const sonuc = await bayiVerisi(db(), {
+      q: tekil(s.q),
+      il: tekil(s.il),
+      dagitici: tekil(s.dagitici),
+      durum: tekil(s.durum),
+      sadeceBiz: tekil(s.sadeceBiz) === '1',
+      sirala: tekil(s.sirala),
+      artan: tekil(s.artan) !== '0',
+      sayfa: Number(tekil(s.sayfa) ?? 1),
+      boyut: Number(tekil(s.boyut) ?? 50),
+    });
+
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.status(200).json(sonuc);
   } catch (e) {
     hataYanit(res, e);
   }
-}
+});

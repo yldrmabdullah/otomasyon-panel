@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { Izleme } from './Izleme.js';
 import { Mevzuat } from './Mevzuat.js';
 import { Piyasa } from './Piyasa.js';
+import { Giris } from './Giris.js';
 import { IkonIzleme, IkonMevzuat, IkonPiyasa } from './ikon.js';
 
 type Modul = 'izleme' | 'mevzuat' | 'piyasa';
@@ -20,6 +21,22 @@ export function App() {
   const aktif = MODULLER.find((m) => m.id === modul)!;
   const basRef = useRef<HTMLHeadingElement>(null);
   const ilkRef = useRef(true);
+
+  // Oturum: null = henüz sorulmadı, '' = giriş yok, dolu = kullanıcı adı.
+  // Şifre/jeton JS'te TUTULMAZ — sunucu HttpOnly çerez kuruyor, biz yalnız
+  // "girişli mi" bilgisini soruyoruz.
+  const [kullanici, setKullanici] = useState<string | null>(null);
+  useEffect(() => {
+    fetch('/api/giris')
+      .then((r) => (r.ok ? r.json() : { girisli: false }))
+      .then((d) => setKullanici(d?.girisli ? (d.kullanici ?? 'kullanıcı') : ''))
+      .catch(() => setKullanici('')); // ağ hatası → giriş ekranı göster
+  }, []);
+
+  async function cikis() {
+    await fetch('/api/giris', { method: 'DELETE' }).catch(() => {});
+    setKullanici('');
+  }
 
   // Tema seçimi bir erişilebilirlik kontrolü: CSS'te data-theme override'ları
   // vardı ama hiçbir yer set etmiyordu → kullanıcı OS ayarına mahkumdu.
@@ -42,6 +59,10 @@ export function App() {
     }
     basRef.current?.focus();
   }, [modul]);
+
+  // Oturum sorgusu bitmeden panel çizilmez (korumalı veriye istek gitmesin).
+  if (kullanici === null) return <div className="giris-sar" aria-busy="true" />;
+  if (kullanici === '') return <Giris girisOldu={setKullanici} />;
 
   return (
     <div className="uygulama">
@@ -82,7 +103,17 @@ export function App() {
             </button>
           ))}
         </div>
-        <div className="kenar-dip">Turgut Dağıtım Enerji A.Ş.</div>
+        <div className="kenar-dip">
+          <div className="kenar-kullanici">
+            <span className="kenar-kul-ad" title={kullanici}>
+              {kullanici}
+            </span>
+            <button type="button" className="cikis-btn" onClick={cikis}>
+              Çıkış
+            </button>
+          </div>
+          Turgut Dağıtım Enerji A.Ş.
+        </div>
       </aside>
 
       <main className="icerik" id="ana-icerik">

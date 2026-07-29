@@ -26,6 +26,12 @@ export function useVeri<T>(url: string, dogrula?: (d: unknown) => T, aralikMs?: 
       try {
         setYukleniyor(true);
         const r = await fetch(url, { signal: sinyal });
+        // Oturum düştü (12 sa ömür) → sayfayı yenile, App giriş ekranını gösterir.
+        // Yoksa panel "Veri alınamadı (401)" ile donup kalırdı.
+        if (r.status === 401) {
+          location.reload();
+          return;
+        }
         if (!r.ok) throw new Error(`Veri alınamadı (${r.status} ${r.statusText})`);
         const d: ApiYanit<T> = await r.json();
         if (hataMi(d)) throw new Error(d.hata);

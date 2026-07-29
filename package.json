@@ -12,7 +12,9 @@
     "job:build": "tsc -p tsconfig.json",
     "db:migrate": "tsx core/migrate.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . --ext .ts,.tsx"
+    "lint": "eslint . --ext .ts,.tsx",
+    "panel:api": "tsx araclar/panelSunucu.ts",
+    "kullanici": "tsx araclar/kullaniciHash.ts"
   },
   "dependencies": {
     "fast-xml-parser": "^4.5.0",

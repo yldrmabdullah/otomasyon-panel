@@ -130,12 +130,83 @@ export async function durumVerisi(p: Pool) {
   };
 }
 
-/** Bayi tablosu. Panel client-side filtreliyor; sunucu-taraflı sayfalamaya
- *  geçilirse bu fonksiyon parametre alacak şekilde genişletilir. */
-export async function bayiVerisi(p: Pool) {
+/** Bayi tablosu sorgu parametreleri (panel filtre çubuğuyla birebir). */
+export interface BayiSorgu {
+  q?: string;          // ad / lisans no / ilçe arama
+  il?: string;
+  dagitici?: string;
+  durum?: string;      // ONAYLANDI | SONLANDIRILDI | IPTAL_EDILDI
+  sadeceBiz?: boolean;
+  sirala?: string;
+  artan?: boolean;
+  sayfa?: number;
+  boyut?: number;
+}
+
+/** Sıralanabilir kolonlar — WHITELIST.
+ *  ⚠️ Kullanıcı girdisi asla doğrudan ORDER BY'a konmaz (SQL injection). */
+const SIRALANABILIR = new Set([
+  'lisans_sahibi', 'dagitim_sirketi', 'il', 'ilce',
+  'lisans_durumu', 'kategori', 'bayi_lisans_no', 'sozlesme_bitis',
+]);
+
+/**
+ * Bayi tablosu — SUNUCU TARAFLI sayfalama + filtre + sıralama.
+ *
+ * ⚠️ NEDEN: tüm tabloyu döndürmek 30.303 satır / 8.88 MB / **26.5 saniye** sürüyordu.
+ * Vercel ücretsiz planında serverless limiti 10 sn → endpoint timeout'a düşüyor ve
+ * "Tüm Bayiler" tablosu canlıda HİÇ çalışmıyordu. Sayfalı sorgu ~103 ms.
+ * Mevcut indeksler (ix_bayi_il, ix_bayi_dagitim) yeterli; ölçüldü.
+ */
+export async function bayiVerisi(p: Pool, s: BayiSorgu = {}) {
+  const kosul: string[] = [];
+  const arg: unknown[] = [];
+  const ekle = (v: unknown) => { arg.push(v); return `$${arg.length}`; };
+
+  if (s.q?.trim()) {
+    const k = ekle(`%${s.q.trim()}%`);
+    kosul.push(`(lisans_sahibi ILIKE ${k} OR bayi_lisans_no ILIKE ${k} OR ilce ILIKE ${k})`);
+  }
+  if (s.il) kosul.push(`il = ${ekle(s.il)}`);
+  if (s.dagitici) kosul.push(`dagitim_sirketi = ${ekle(s.dagitici)}`);
+  if (s.durum) kosul.push(`lisans_durumu = ${ekle(s.durum)}`);
+  if (s.sadeceBiz) kosul.push(`dagitim_sirketi = ${ekle(BIZ)}`);
+
+  const where = kosul.length ? `WHERE ${kosul.join(' AND ')}` : '';
+  const kolon = s.sirala && SIRALANABILIR.has(s.sirala) ? s.sirala : 'lisans_sahibi';
+  const yon = s.artan === false ? 'DESC' : 'ASC';
+  const boyut = Math.min(200, Math.max(1, Number(s.boyut) || 50));
+  const sayfa = Math.max(1, Number(s.sayfa) || 1);
+
   const r = await p.query(
-    `SELECT bayi_lisans_no,lisans_sahibi,dagitim_sirketi,il,ilce,lisans_durumu,kategori,sozlesme_bitis
-     FROM bayiler_epdk ORDER BY lisans_sahibi`,
+    `SELECT bayi_lisans_no,lisans_sahibi,dagitim_sirketi,il,ilce,lisans_durumu,kategori,sozlesme_bitis,
+            count(*) OVER() AS toplam
+     FROM bayiler_epdk ${where}
+     ORDER BY ${kolon} ${yon} NULLS LAST
+     LIMIT ${boyut} OFFSET ${(sayfa - 1) * boyut}`,
+    arg,
   );
-  return r.rows;
+
+  const toplam = Number(r.rows[0]?.toplam ?? 0);
+  return {
+    satirlar: r.rows.map(({ toplam: _t, ...k }) => k),
+    toplam,
+    sayfa,
+    boyut,
+  };
+}
+
+/** Filtre açılırlarını besleyen ayrık değerler (il + dağıtıcı listesi).
+ *  Ayrı endpoint: tüm bayiyi indirmeden dropdown doldurulabilsin. */
+export async function bayiSecenekleri(p: Pool) {
+  const [il, dag, toplam] = await Promise.all([
+    p.query(`SELECT DISTINCT il FROM bayiler_epdk WHERE il IS NOT NULL ORDER BY il`),
+    p.query(`SELECT DISTINCT dagitim_sirketi FROM bayiler_epdk WHERE dagitim_sirketi IS NOT NULL ORDER BY dagitim_sirketi`),
+    p.query(`SELECT count(*) n FROM bayiler_epdk`),
+  ]);
+  return {
+    iller: il.rows.map((r) => r.il as string),
+    dagiticilar: dag.rows.map((r) => r.dagitim_sirketi as string),
+    toplamBayi: Number(toplam.rows[0].n),
+  };
 }
