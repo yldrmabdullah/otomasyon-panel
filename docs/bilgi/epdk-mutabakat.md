@@ -105,6 +105,51 @@ irsaliye no/litre, **irsaliye_hacim_fark** (irsaliye − tank).
    → Tek satırda irsaliye-vs-dolum karşılaştırması YANLIŞ. Gerçek mutabakat muhtemelen **irsaliye no
    bazında** (aynı irsaliyenin tüm tank dağılımı toplanıp irsaliye litresiyle) yapılıyor. `DOĞRULANMASI GEREK`
 
+## 4d. ⛔ `irsaliye_litre` ALANI GÜVENİLMEZ — dolum mutabakatı KURULAMADI (2026-07-29)
+
+Dolum verisiyle (B girdisi) bağımsız bir "irsaliye vs tank" mutabakatı kurmayı denedim.
+**Sonuç: bu alanla yapılamaz.** Üç katmanlı kanıt:
+
+**1. İrsaliye çok tanka bölünüyor ve litre her satırda TEKRAR ediyor.** Kanıtlandı:
+irsaliye 33.145 lt → 7 tank satırı, her satırda "33.145" yazılı, tank toplamı 33.295.
+Gerçek fark −150 lt (limit içinde) ama satır bazında bakan 7 ayrı "−31.000 lt sapma"
+görür. Son 90 günde dolumların **%58'i** böyle bölünmüş → ASIS'in `irsaliye_hacim_fark`
+alanı satır bazında **KULLANILAMAZ**. (Bu kısım doğru ve değerli bir bulgu.)
+
+**2. Ama `irsaliye_litre` irsaliyenin litresi DEĞİL.** Farklı irsaliye numaralarında
+aynı değer tekrar ediyor:
+| İrsaliye no | Gün | Tank dolumu | `irsaliye_litre` |
+|---|---|---|---|
+| PIR2026000007775 | 11 Tem | 18.066,69 | 17.779 |
+| PIR2026000008064 | 18 Tem | 18.146,28 | 17.779 |
+
+İki ayrı teslim, iki ayrı irsaliye, **aynı** "irsaliye litresi". Bu alan muhtemelen
+sabit bir tanker/dorse kapasitesi ya da başka bir şey — teslimin gerçek litresi değil.
+
+**3. Sonuç mantık dışı.** İrsaliye no bazında gruplayınca 788 teslimin **420'si (%53)**
+"EPDK ihlali" çıkıyor. Gerçek bir dağıtıcıda bu oran imkânsız — EPDK çoktan ceza
+kesmiş olurdu. Yani yorum hatalı, veri değil.
+
+**KURAL: bu alandan mutabakat/ihlal raporu üretilmez.** Üretilirse %53 yanlış alarmla
+güvenilirliğini yitirir ve otomasyon ekibi paneli kullanmayı bırakır.
+
+### Yine de KULLANILABİLİR olan (ölçülmüş, güvenilir)
+Bunlar `irsaliye_litre`'nin anlamına bağlı DEĞİL — varlığına/yokluğuna bakıyor:
+| Bulgu | 30 günde | Ne demek |
+|---|---|---|
+| İrsaliye NO hiç girilmemiş | 238 teslim | A1B bildirimi hiç yapılmamış |
+| İrsaliye no var, LİTRE boş/0 | 604 teslim | A1B eksik bildirim |
+| → toplam | **842 / 1.630 (%52)** | bir bayi/istasyon listesi çıkarılabilir |
+
+137 istasyonda bulgu var; bazılarında **%100 eksik** (GÖNÜLCÜ 83/83, YORPET 30/30).
+Bu somut, savunulabilir ve kimsenin takip etmediği bir eksiklik → panelde gösterilebilir.
+
+**Sorulacak (Parkoil / ASIS):**
+1. `IrsaliyeLitre` alanı tam olarak neyi taşıyor? Neden farklı irsaliyelerde aynı değer?
+2. Gerçek irsaliye litresi ASIS'te başka bir alanda mı, yoksa hiç yok mu?
+3. `GetPumpSaleRecord` ve `GetTankLevelRecord` bu guidKey'e neden KayitID=0 dönüyor?
+   (Canlı test: 1 gün / 3 gün / 7 gün / 15 gün / 30 gün — hepsinde 0. Yetki mi?)
+
 **Yapılacak (Parkoil'e sor):** POL "Mutabakat Raporu"/"Tank Uzlaştırma" tam olarak neyi karşılaştırıyor?
 İrsaliye no bazında mı, tank bazında mı? 288 lt limiti hangi büyüklüğe uygulanıyor (günlük tank stok
 farkı mı, dolum-irsaliye farkı mı)? Bu netleşince mutabakat kontrolü doğru kurulur. Şu an panel farkı
