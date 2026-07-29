@@ -157,6 +157,28 @@ Bu, önceki "%40 eksik bildirim" bulgusunun ta kendisi — ama anlamı değişiy
 veri POL'de VAR, **ASIS web servisine akmıyor**. Yani bir A1B eksikliği değil,
 bir **entegrasyon/senkronizasyon eksikliği**.
 
+### "Belki bugün olduğu için yansımamıştır" — TEST EDİLDİ, HAYIR (2026-07-29)
+Kullanıcı haklı bir hipotez sordu: boş kayıtlar yeni olabilir, POL'e sonradan
+girilmiştir. Test edildi — **doğrulanmadı**:
+
+| İrsaliye | Dolum günü | DB'de çekildi | ASIS ŞU AN | POL |
+|---|---|---|---|---|
+| 8249 | 21 Tem | 23 Tem | **0** | 1.959 |
+| 8250 | 21 Tem | 23 Tem | **0** | 16.172 |
+| 8406 | 24 Tem | 28 Tem | **0** | 9.862 |
+
+5–8 gün geçmiş, ASIS'te hâlâ 0. Yani gecikme değil — **irsaliye litresi ASIS'e
+hiç akmıyor.** (Aynı dönemde 10, 15, 25 Temmuz kayıtlarında dolu → kayıt bazında,
+zaman bazında değil.)
+
+### İrsaliye no YILLAR ARASI tekrar — ölçüldü, MARJİNAL
+"ASIS 9 satır döndürüyor ama DB'de 3 var → artımlı çekim eksik" diye yorumlamıştım,
+**yanlıştı**. Gerçek: `8406` DB'de 6 satır — 3'ü **2025** (irsaliye dolu: 30.787),
+3'ü **2026** (irsaliye 0). ASIS ikisini birlikte döndürüyor, çekim eksik değil.
+
+Kapsam ölçüldü: 16.685 irsaliyenin yalnız **9'u** iki yılda geçiyor → marjinal.
+Ama gruplamada **yıl/dönem filtresi ZORUNLU**, yoksa o 9 kayıt toplamları bozar.
+
 ### Bu ne demek — üç sonuç
 1. **Panel dolum tarafını ASIS'ten hesaplayabilir** (`EslesmeMiktari` doğru).
 2. **Fatura/sevk tarafı ASIS'te güvenilir DEĞİL** — %45 boş. Mutabakatın "Dağıtıcıdan
