@@ -1,19 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+
   "buildCommand": "cd panel && npm install && npm run build",
   "outputDirectory": "panel/dist",
-  "functions": {
-    "panel/api/*.ts": {
-      "maxDuration": 10
-    }
-  },
-  "rewrites": [
-    { "source": "/api/durum", "destination": "/panel/api/durum" },
-    { "source": "/api/piyasa", "destination": "/panel/api/piyasa" },
-    { "source": "/api/bayiler", "destination": "/panel/api/bayiler" },
-    { "source": "/api/giris", "destination": "/panel/api/giris" },
-    { "source": "/api/kullanicilar", "destination": "/panel/api/kullanicilar" }
-  ],
+
   "headers": [
     {
       "source": "/(.*)",

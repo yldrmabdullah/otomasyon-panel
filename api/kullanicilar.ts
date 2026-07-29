@@ -14,7 +14,7 @@ import { korumali } from './_oturum.js';
 import {
   kullaniciListesi, kullaniciEkle, kullaniciSil, rolDegistir, sifreDegistir,
   sifreUret, adNormal, type Rol,
-} from '../../core/kullanicilar.js';
+} from '../core/kullanicilar.js';
 
 const rolGecerli = (r: unknown): r is Rol => r === 'admin' || r === 'izleyici';
 

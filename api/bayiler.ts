@@ -9,7 +9,7 @@
 // GET /api/bayiler?secenekler=1 → { iller, dagiticilar, toplamBayi }  (dropdown besleme)
 import { db, hataYanit } from './_db.js';
 import { korumali } from './_oturum.js';
-import { bayiVerisi, bayiSecenekleri } from '../../core/panelSorgu.js';
+import { bayiVerisi, bayiSecenekleri } from '../core/panelSorgu.js';
 
 const tekil = (v: unknown): string | undefined => {
   const s = Array.isArray(v) ? v[0] : v;

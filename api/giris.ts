@@ -5,7 +5,7 @@
 //   PATCH  /api/giris  {mevcutSifre, yeniSifre}         → kendi şifresini değiştirir
 import { db, hataYanit } from './_db.js';
 import { jetonUret, cerezKur, cerezSil, oturumKullanici } from './_oturum.js';
-import { girisDogrula, sifreDegistir } from '../../core/kullanicilar.js';
+import { girisDogrula, sifreDegistir } from '../core/kullanicilar.js';
 
 /** Kaba brute-force yavaşlatma. Serverless'ta kalıcı sayaç yok (her çağrı izole),
  *  o yüzden IP kilidi YERİNE her başarısız denemeye sabit gecikme uygulanır.

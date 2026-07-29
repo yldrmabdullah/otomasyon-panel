@@ -17,6 +17,6 @@
     "declaration": false,
     "sourceMap": true
   },
-  "include": ["core/**/*.ts", "job/**/*.ts"],
+  "include": ["core/**/*.ts", "job/**/*.ts", "api/**/*.ts", "araclar/**/*.ts"],
   "exclude": ["node_modules", "dist", "panel"]
 }

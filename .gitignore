@@ -12,3 +12,9 @@ panel/.vercel/
 # araclar/panelSnapshot.ts DB'den yeniden üretiyor. 9.8 MB (30 bin bayi) ve her
 # tazelemede tamamı değişiyor → versiyonlamak depoyu hızla şişirir.
 panel/public/api/
+
+.vercel
+# Vercel CLI `.env*` eklemişti — `.env.example` ŞABLONU repoda kalmalı
+# (yeni kurulumda hangi değişkenler gerektiğini gösteren tek kaynak).
+.env*
+!.env.example

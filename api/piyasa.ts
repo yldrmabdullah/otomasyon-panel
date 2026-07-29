@@ -5,7 +5,7 @@
 //  aynı panel local'de 12.624, prod'da 30.303 aktif bayi gösteriyordu.)
 import { db, hataYanit } from './_db.js';
 import { korumali } from './_oturum.js';
-import { piyasaVerisi } from '../../core/panelSorgu.js';
+import { piyasaVerisi } from '../core/panelSorgu.js';
 
 // Bu endpoint en hassas veriyi taşıyor: kaybedilen bayiler, rakip hedef listesi,
 // pazar payı. korumali() + private cache ZORUNLU (paylaşımlı edge cache'e girmesin).

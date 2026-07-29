@@ -11,7 +11,7 @@
 
 import { createHmac, timingSafeEqual, randomBytes } from 'node:crypto';
 import { db } from './_db.js';
-import { kullaniciBul, type Kullanici } from '../../core/kullanicilar.js';
+import { kullaniciBul, type Kullanici } from '../core/kullanicilar.js';
 
 const COOKIE_AD = 'parkoil_oturum';
 const OMUR_SN = 12 * 60 * 60; // 12 saat
