@@ -5,7 +5,8 @@ import { KolonSecici, useKolonlar, type KolonTanim } from './KolonSecici.js';
 import { Tablo, type TabloKolon } from './Tablo.js';
 import { Sekmeler } from './Sekme.js';
 import { CubukYatay, IsiIzgara } from './Grafik.js';
-import { Bos, ModulBar, trTarih, useVeri } from './ortak.js';
+import { Bos, ModulBar, TazelikSerit, trTarih, useVeri } from './ortak.js';
+import type { Tazelik } from './tipler.js';
 
 // Bayi tablosu kolonları — varsayılan görünür + seçilebilir gizli.
 const BAYI_KOLONLARI: KolonTanim[] = [
@@ -42,6 +43,8 @@ interface PiyasaVeri {
   dagiticiBayiDagilim: DagiticiBayi[]; ilDagilim: IlDagilim[]; transferler: Transfer[];
   sozlesmeBitecek: SozlesmeBitecek[]; bolgesel: BolgeselSatir[]; beyazAlan: BeyazAlan[];
   kaybedilen: Kaybedilen[];
+  /** Eski sürüm API'den gelmeyebilir → opsiyonel. */
+  tazelik?: Tazelik[];
 }
 
 interface Bayi {
@@ -353,6 +356,9 @@ export function Piyasa() {
           {hata}
         </div>
       )}
+
+      {/* Piyasa çekimi günde 1 kez → burada bayatlama en muhtemel, göstergeyi gizleme */}
+      <TazelikSerit liste={veri?.tazelik} />
 
       {veri && (
         <>

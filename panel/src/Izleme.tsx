@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { Durum, Alarm, Istasyon, Baglanti } from './tipler.js';
 import { Tablo, type TabloKolon } from './Tablo.js';
-import { Bos, ModulBar, useVeri, veriYok, zamanFark } from './ortak.js';
+import { Bos, ModulBar, TazelikSerit, useVeri, veriYok, zamanFark } from './ortak.js';
 import { YiginSerit } from './Grafik.js';
 
 // ASIS IstasyonTip — üç satış noktası modeli. Kısa etiket + rozet sınıfı.
@@ -264,6 +264,9 @@ export function Izleme() {
           {hata}
         </div>
       )}
+
+      {/* Ekrandaki verinin gerçek yaşı — ModulBar'daki "Güncelleme" yanıt zamanı, bu kaynak zamanı */}
+      <TazelikSerit liste={durum?.tazelik} />
 
       {ozet && (
         <section className="kartlar" aria-label="Özet — tabloyu filtrelemek için tıklayın">

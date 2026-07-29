@@ -51,9 +51,24 @@ export interface Alarm {
   bildirim_sayisi: number;
   kapandi: string | null;
 }
+/** Bir veri kaynağının yaşı — panelde "X önce güncellendi" göstergesi. */
+export interface Tazelik {
+  anahtar: string;
+  ad: string;
+  /** ISO; null = kaynak hiç çekilmemiş. */
+  son: string | null;
+  /** Dakika; null = hesaplanamaz (son yok). */
+  yasDk: number | null;
+  esikDk: number;
+  /** yasDk > esikDk ya da hiç veri yok → panelde uyarı. */
+  bayat: boolean;
+}
+
 export interface Durum {
   uretim: string;
   istasyonlar: Istasyon[];
   baglanti: Baglanti[];
   alarmlar: Alarm[];
+  /** Eski sürüm API'den gelmeyebilir → opsiyonel. */
+  tazelik?: Tazelik[];
 }

@@ -6,6 +6,7 @@
      2) Hata gövdesi tip birleşimi olarak modellenmemişti → `(d as any).hata`. */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import type { Tazelik } from './tipler';
 
 export type ApiYanit<T> = T | { hata: string };
 
@@ -105,6 +106,51 @@ export function trTarih(iso: string | null | undefined): string {
 /** Boş hücre göstergesi — '—' ekran okuyucuda "kısa çizgi" diye okunuyordu. */
 export function Bos() {
   return <span aria-label="veri yok">—</span>;
+}
+
+/**
+ * Kaynak bazlı tazelik şeridi.
+ *
+ * NEDEN: ModulBar'ın "Güncelleme" değeri API YANITININ üretim zamanı — her zaman
+ * "az önce" görünür, çünkü isteği o an attık. Kullanıcının bilmesi gereken ise
+ * ARKADAKİ verinin yaşı: EPDK piyasa çekimi 2026-07-29'a kadar elle yapılıyordu ve
+ * panel 2 günlük snapshot'ı sessizce "canlı" gibi gösteriyordu.
+ *
+ * Bayat olan kaynak vurgulanır; hepsi tazeyse şerit tek satırda sessiz kalır.
+ */
+export function TazelikSerit({ liste }: { liste?: Tazelik[] }) {
+  if (!liste?.length) return null;
+  const bayatlar = liste.filter((t) => t.bayat);
+
+  return (
+    <div className="tazelik-serit">
+      {/* Bayat varsa önce onlar — göz ilk oraya gitsin */}
+      {bayatlar.length > 0 && (
+        <p className="tazelik-uyari" role="status">
+          <span aria-hidden="true">▲ </span>
+          {bayatlar.length === 1
+            ? `${bayatlar[0].ad} güncel değil (${zamanFark(bayatlar[0].son)})`
+            : `${bayatlar.length} veri kaynağı güncel değil`}
+        </p>
+      )}
+      <dl className="tazelik-liste">
+        {liste.map((t) => (
+          <div key={t.anahtar} className={t.bayat ? 'tazelik-oge bayat' : 'tazelik-oge'}>
+            <dt>{t.ad}</dt>
+            <dd>
+              {t.son ? (
+                <time dateTime={t.son}>{zamanFark(t.son)}</time>
+              ) : (
+                <span>hiç çekilmemiş</span>
+              )}
+              {/* Renk tek taşıyıcı olmasın: bayat olan ayrıca metinle işaretli */}
+              {t.bayat && <span className="sr-only"> — güncel değil</span>}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
 }
 
 /** Modül üst çubuğu: açıklama + tazelik + Yenile. İki modülde birebir aynıydı. */

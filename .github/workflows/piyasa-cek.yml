@@ -1,0 +1,65 @@
+name: Piyasa Çekim (EPDK)
+
+# EPDK piyasa istihbaratı: 32 aktif dağıtıcı + bayileri → DB + günlük snapshot + transfer tespiti.
+#
+# NEDEN AYRI WORKFLOW: izleme job'u 15 dakikada bir koşuyor ve ~1 dk sürüyor. Bu çekim
+# EPDK throttle'ı (429 → 9 sn bekle) yüzünden 15-70 dk sürebilir; aynı job'a konsa
+# izlemeyi bloke eder ve alarm bildirimleri gecikir.
+#
+# ⚠️ 2026-07-29'a kadar bu çekim ELLE yapılıyordu → panelde sadece 2 günlük snapshot
+# vardı. Transfer tespiti günlük snapshot karşılaştırmasına dayandığı için, çekim
+# yapılmayan her gün Piyasa modülü bayatlıyor ve transfer takibi TAMAMEN duruyor.
+#
+# ⚠️ KAPSAM: `--tum-durumlar` ZORUNLU. Snapshot'a kapsam yazılıyor ve `transferleriTespitEt`
+# farklı kapsamdaki iki günü karşılaştırmayı REDDEDİYOR (doğru davranış). Mevcut
+# snapshot'lar `tum` kapsamında; bu bayrak kaldırılırsa sadece ONAYLANDI çekilir
+# (30.303 → 12.624 bayi) ve transfer tespiti her gün başarısız olur.
+
+on:
+  # Sabah 06:00 TR (03:00 UTC). Günde 1 kez yeterli: EPDK lisans verisi gün içinde
+  # sık değişmiyor, snapshot da gün bazlı (snapshot_gun).
+  # NOT: GH Actions ücretsiz planda schedule'ı kısıyor (izleme job'unda ölçüldü:
+  # */15 istenirken gerçek ~95 dk). Günlük işte bu tolere edilebilir — birkaç saat
+  # kayması snapshot gününü değiştirmez. Kaçarsa elle workflow_dispatch.
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: piyasa-cek
+  cancel-in-progress: false # uzun sürüyor; çalışanı yarıda kesmek yarım snapshot bırakır
+
+jobs:
+  cekim:
+    runs-on: ubuntu-latest
+    # EPDK throttle'ı kötü günde 15 deneme × 9 sn/çağrı → teorik ~70 dk.
+    # 120 dk tavan: takılırsa runner'ı saatlerce meşgul etmesin.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          # Repo kökü = bu proje (otomasyon-panel/ öneki YOK — izleme job'unda
+          # bu hata 15 dk'da bir fail üretmişti).
+          cache-dependency-path: package-lock.json
+
+      - name: Bağımlılıklar
+        run: npm ci
+
+      - name: Şema (idempotent)
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Piyasa çekim + transfer tespiti
+        run: npm run piyasa
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # Çıkış kodları (araclar/piyasaCek.ts):
+      #   0 = başarılı
+      #   2 = transfer tespiti YAPILMADI (yarım/kapsamsız snapshot koruması devreye girdi)
+      #   1 = çekim hatası
+      # 2 ve 1 job'u KIRMIŞ sayılır — sessizce "başarılı" görünmesin, çarpı görünsün.

@@ -132,3 +132,32 @@ ile snapshot üretiliyor (panel/public/api/piyasa + bayiler).
 - ⬜ Parkoil dağıtıcısını tespit et
 
 İlgili: [[epdk-mutabakat]], docs/EPDK_WEB_SERVISLERI.md
+
+## Çekim otomatikleşti + tazelik göstergesi (2026-07-29)
+
+**Sorun:** EPDK piyasa çekimi (`piyasaCek.ts`) hiçbir cron'da yoktu — elle çalıştırılıyordu.
+Panelde yalnız **2 günlük** snapshot vardı (28-29 Tem) ve kullanıcı baktığı verinin bayat
+olduğunu **göremiyordu**. Transfer tespiti günlük snapshot karşılaştırmasına dayandığı için
+çekim yapılmayan her gün transfer takibi **tamamen duruyordu**.
+
+**Çözüm:**
+1. `.github/workflows/piyasa-cek.yml` — günde 1 kez 06:00 TR (03:00 UTC) + `workflow_dispatch`.
+   İzlemeden **ayrı workflow**: bu çekim EPDK throttle'ı yüzünden 15-70 dk sürebiliyor, aynı
+   job'a konsa 15 dakikalık izlemeyi bloke edip alarm bildirimlerini geciktirirdi.
+   `timeout-minutes: 120`, `concurrency: piyasa-cek` (yarıda kesilirse yarım snapshot kalır).
+2. `npm run piyasa` script'i — **`--tum-durumlar` bayrağı GÖMÜLÜ.**
+   ⚠️ Bu bayrak zorunlu: snapshot'a kapsam yazılıyor ve `transferleriTespitEt` farklı
+   kapsamdaki iki günü karşılaştırmayı reddediyor (doğru davranış). Mevcut snapshot'lar
+   `tum` kapsamında; bayrak düşerse sadece ONAYLANDI çekilir (30.303 → 12.624) ve transfer
+   tespiti **her gün** başarısız olur. (Bu hata 2026-07-29'da bir kez yapıldı.)
+3. `tazelikVerisi()` (core/panelSorgu.ts) + `<TazelikSerit>` — 7 kaynağın yaşı panelde
+   görünür, eşiği geçen kaynak ▲ + kalın + sr-only "güncel değil" ile işaretlenir.
+   Eşikler: ASIS kaynakları 180 dk (cron 15 dk ama dış tetikleyici düşerse ~95 dk'ya
+   çıkıyor), dolum 1440 dk, EPDK/snapshot 2880 dk (günde 1 çekim).
+
+**Neden ModulBar'daki "Güncelleme" yetmiyordu:** o değer API **yanıtının** üretim zamanı —
+isteği o an attığımız için her zaman "az önce" gösteriyor. Kullanıcının bilmesi gereken
+arkadaki **kaynağın** yaşı. İkisi ayrı şey.
+
+**Çıkış kodları** (job'un çarpı vermesi kasıtlı): 0 başarılı · 2 transfer tespiti yapılmadı
+(bütünlük koruması) · 1 çekim hatası. 2 ve 1 sessizce "başarılı" görünmemeli.

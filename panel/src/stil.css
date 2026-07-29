@@ -826,3 +826,68 @@ td.yok { color: var(--soluk-2); font-style: italic; }
 button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   outline: 2px solid var(--accent); box-shadow: 0 0 0 4px var(--accent-bg);
 }
+
+/* ── Tazelik şeridi ─────────────────────────────────────────────────────────
+   Ekrandaki verinin GERÇEK yaşı. ModulBar'daki "Güncelleme" API yanıtının
+   üretim zamanıdır (her zaman "az önce") — kullanıcının bilmesi gereken ise
+   arkadaki kaynağın yaşı. EPDK piyasa çekimi günde 1 kez koştuğu için asıl
+   bayatlama riski orada.
+
+   Erişilebilirlik: bayat durum renk-tek-taşıyıcı DEĞİL — ▲ işareti + kalın
+   metin + sr-only "güncel değil" ibaresi eşlik eder. */
+.tazelik-serit {
+  margin: 0 0 14px;
+}
+
+.tazelik-uyari {
+  margin: 0 0 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--uyari);
+  background: var(--uyari-bg);
+  color: var(--metin);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tazelik-liste {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--kenar);
+  border-radius: 8px;
+  background: var(--panel-2);
+  /* Çok kaynak olunca dar ekranda taşmasın */
+  overflow-x: auto;
+}
+
+.tazelik-oge {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.tazelik-oge dt {
+  color: var(--soluk-2);
+}
+
+.tazelik-oge dd {
+  margin: 0;
+  color: var(--metin-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bayat kaynak: renk + kalınlık birlikte (renk tek başına taşıyıcı değil) */
+.tazelik-oge.bayat dt,
+.tazelik-oge.bayat dd {
+  color: var(--uyari);
+  font-weight: 700;
+}
+
+.tazelik-oge.bayat dt::before {
+  content: '▲ ';
+}

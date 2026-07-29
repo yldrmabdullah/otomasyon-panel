@@ -15,6 +15,44 @@ import type { Pool } from 'pg';
 /** Parkoil'in EPDK'daki tüzel kimliği (bkz docs/bilgi/piyasa-istihbarat.md). */
 export const BIZ = 'TURGUT DAĞITIM ENERJİ ANONİM ŞİRKETİ';
 
+/**
+ * Her veri kaynağının en son ne zaman güncellendiği (panelde "X önce güncellendi").
+ *
+ * NEDEN: 2026-07-29'a kadar EPDK piyasa çekimi ELLE yapılıyordu ve panelde sadece
+ * 2 günlük snapshot vardı — kullanıcı baktığı verinin bayat olduğunu göremiyordu.
+ * "Canlı veri ilkesi" gereği ekranda gösterilen her şeyin yaşı görünmeli.
+ *
+ * `esik_dk`: bu süreyi geçerse panel uyarı gösterir. Kaynağın kendi ritmine göre:
+ * izleme cron'u 15 dk (dış tetikleyici düşerse ~95 dk'ya çıkabiliyor → 180 tolerans),
+ * piyasa çekimi günde 1 kez (→ 48 saat).
+ */
+export async function tazelikVerisi(p: Pool) {
+  const r = await p.query(`
+    SELECT * FROM (VALUES
+      ('istasyonlar', 'İstasyon kütüğü',   (SELECT max(guncelleme) FROM istasyonlar),    180),
+      ('baglanti',    'Bağlantı durumu',   (SELECT max(guncelleme) FROM baglanti_durum), 180),
+      ('tank',        'Tank durumu',       (SELECT max(guncelleme) FROM tank_durum),     180),
+      ('dolum',       'Tank dolumları',    (SELECT max(dolum_baslama) FROM tank_dolum),  1440),
+      ('bayiler',     'EPDK bayi kütüğü',  (SELECT max(guncelleme) FROM bayiler_epdk),   2880),
+      ('dagiticilar', 'EPDK dağıtıcılar',  (SELECT max(guncelleme) FROM dagiticilar),    2880),
+      ('snapshot',    'Piyasa snapshot',   (SELECT max(snapshot_gun)::timestamptz FROM bayi_snapshot), 2880)
+    ) t(anahtar, ad, son, esik_dk)
+    ORDER BY son NULLS FIRST`);
+
+  return r.rows.map((x) => {
+    // son=NULL → o kaynak hiç çekilmemiş; yaş hesaplanamaz, "bilinmiyor" olarak işaretle.
+    const yasDk = x.son ? Math.round((Date.now() - new Date(x.son).getTime()) / 60000) : null;
+    return {
+      anahtar: x.anahtar as string,
+      ad: x.ad as string,
+      son: x.son ? new Date(x.son).toISOString() : null,
+      yasDk,
+      esikDk: Number(x.esik_dk),
+      bayat: yasDk === null || yasDk > Number(x.esik_dk),
+    };
+  });
+}
+
 /** Piyasa modülünün tüm verisi. */
 export async function piyasaVerisi(p: Pool) {
   const [dagiticiBayi, ilDagilim, sonTransfer, ozet, sozlesme, bolgesel, beyazAlan, kaybedilen] =
@@ -78,6 +116,8 @@ export async function piyasaVerisi(p: Pool) {
   return {
     uretim: new Date().toISOString(),
     biz: BIZ,
+    // Piyasa verisi günde 1 kez çekiliyor → bayatlaması EN muhtemel olan burası.
+    tazelik: await tazelikVerisi(p),
     ozet: ozet.rows[0],
     dagiticiBayiDagilim: dagiticiBayi.rows,
     ilDagilim: ilDagilim.rows,
@@ -94,7 +134,7 @@ export async function piyasaVerisi(p: Pool) {
  *  ve 60 saniyede bir çekiliyordu (günde ~164 MB boşa trafik). Tank verisi
  *  gerektiğinde ayrı /api/tanklar endpoint'i açılır, ana polling'e binmez. */
 export async function durumVerisi(p: Pool) {
-  const [ist, bag, alarm] = await Promise.all([
+  const [ist, bag, alarm, tazelik] = await Promise.all([
     // tip = ASIS IstasyonTip (İstasyonlu / Köy pompası / Köy tankeri) — hepsi gerçek
     // satış noktası, farklı iş modelleri. Panelde kolon + filtre olarak kullanılır.
     p.query('SELECT istasyon_kod,ad,epdk_kod,sehir,bolge,aktif,tip FROM istasyonlar ORDER BY ad'),
@@ -120,6 +160,8 @@ export async function durumVerisi(p: Pool) {
     p.query(`SELECT id::text,tip,istasyon_kod,tank_no,istasyon_ad,epdk_no,mesaj,acildi,
                     son_bildirim,bildirim_sayisi,kapandi
              FROM alarmlar ORDER BY (kapandi IS NULL) DESC,acildi DESC LIMIT 300`),
+    // 7 satır — ana yanıta yük bindirmiyor, karşılığında her ekranda veri yaşı görünür.
+    tazelikVerisi(p),
   ]);
 
   return {
@@ -127,6 +169,7 @@ export async function durumVerisi(p: Pool) {
     istasyonlar: ist.rows,
     baglanti: bag.rows,
     alarmlar: alarm.rows,
+    tazelik,
   };
 }
 
