@@ -1,8 +1,10 @@
 // Piyasa İstihbarat modülü — EPDK resmi verisiyle tüm Türkiye akaryakıt piyasası.
 // Dağıtıcılar, bayi dağılımı, il dağılımı, bayi transferleri. Kaynak: /api/piyasa.
-import { useEffect, useMemo, useReducer, useState } from 'react';
+import { useEffect, useMemo, useReducer, useState, type ReactElement } from 'react';
 import { KolonSecici, useKolonlar, type KolonTanim } from './KolonSecici.js';
 import { Tablo, type TabloKolon } from './Tablo.js';
+import { Sekmeler } from './Sekme.js';
+import { CubukYatay, IsiIzgara } from './Grafik.js';
 import { Bos, ModulBar, trTarih, useVeri } from './ortak.js';
 
 // Bayi tablosu kolonları — varsayılan görünür + seçilebilir gizli.
@@ -122,7 +124,7 @@ function piyasaDogrula(d: unknown): PiyasaVeri {
 
 export function Piyasa() {
   const { veri, hata, yukleniyor, yenile } = useVeri<PiyasaVeri>('/api/piyasa', piyasaDogrula);
-  const [arama, setArama] = useState('');
+
 
   // Bayi tablosu — SUNUCU TARAFLI sayfalama.
   // Eskiden 30.303 satırın tamamı indirilip client'ta filtrelenip sıralanıyordu:
@@ -204,8 +206,15 @@ export function Piyasa() {
   /** Sıralanabilir başlık — gerçek buton, klavyeyle erişilebilir, aria-sort'lu.
    *  Önceden tıklanabilir <th> vardı: 30 bin satırlık tablo klavyeyle
    *  sıralanamıyordu ve yön yalnız ▲/▼ karakteriyle (görsel) belirtiliyordu. */
+  /* ⚠️ JSX ELEMENTİ OLARAK DEĞİL, FONKSİYON ÇAĞRISI olarak kullanılır:
+     `{SiraBas({...})}` — `<SiraBas .../>` DEĞİL.
+     Sebebi: bileşen Piyasa gövdesinde tanımlı olduğu için her render'da yeni
+     fonksiyon referansı oluyor; JSX elementi olarak kullanılınca React bunu
+     YENİ BİR TİP sayıp 8 <th>'yi unmount/mount ediyor ve sıralama başlığına
+     odaklanmış klavye kullanıcısı odağını kaybediyordu. Çağrı olarak
+     kullanıldığında yeni tip oluşmaz, DOM korunur. */
   const SiraBas = ({ alan, ad, sag }: { alan: SiralamaAlan; ad: string; sag?: boolean }) => (
-    <th scope="col" className={`sirali ${sag ? 'sag' : ''}`} aria-sort={siraYon(alan)}>
+    <th key={alan} scope="col" className={`sirali ${sag ? 'sag' : ''}`} aria-sort={siraYon(alan)}>
       <button type="button" className="th-btn" onClick={() => dispatch({ tip: 'sirala', alan })}>
         {ad}
         <span aria-hidden="true">{siraOk(alan)}</span>
@@ -222,20 +231,13 @@ export function Piyasa() {
     return liste;
   }, [veri, sozlesmeKapsam]);
 
-  const enBuyukBayi = useMemo(
-    () => (veri?.dagiticiBayiDagilim[0] ? Number(veri.dagiticiBayiDagilim[0].n) : 1),
-    [veri],
-  );
+  // Ölçekleme ve dağıtıcı araması artık CubukYatay bileşeninin içinde
+  // (enBuyukBayi / filtreliDagitici burada gereksizdi).
   const bizim = useMemo(() => {
     const i = veri?.dagiticiBayiDagilim.findIndex((d) => d.dagitim_sirketi === BIZ) ?? -1;
     if (i < 0) return null;
     return { sayi: Number(veri!.dagiticiBayiDagilim[i].n), sira: i + 1 };
   }, [veri]);
-  const aramaLower = arama.trim().toLocaleLowerCase('tr');
-  const filtreliDagitici = useMemo(
-    () => (veri?.dagiticiBayiDagilim ?? []).filter((d) => !aramaLower || d.dagitim_sirketi.toLocaleLowerCase('tr').includes(aramaLower)),
-    [veri, aramaLower],
-  );
 
   // ── Tablo kolon tanımları (hücre + sıralama + arama tek yerde) ──────────────
 
@@ -371,174 +373,214 @@ export function Piyasa() {
             )}
           </section>
 
-          {/* TRANSFERLER — en değerli, öne */}
-          <section>
-            {veri.transferler.length === 0 ? (
-              <>
-                <h2>Bayi Transferleri <span className="sayi">0 kayıt</span></h2>
-                <div className="takvim-bos">
-                  Henüz transfer tespiti yok. İlk snapshot alındı; <b>ikinci günden itibaren</b> dağıtıcı
-                  değiştiren, yeni açılan veya ayrılan bayiler burada görünecek. (Günlük snapshot karşılaştırması.)
-                </div>
-              </>
-            ) : (
-              <Tablo
-                anahtar="transferler"
-                basId="tr-baslik"
-                baslik="Bayi Transferleri"
-                kolonlar={TRANSFER_KOLONLARI}
-                satirlar={veri.transferler}
-                satirAnahtar={(t) => `${t.bayi_lisans_no}-${t.tespit_gun}-${t.tip}`}
-                aramaEtiket="Bayi, il veya dağıtıcı ara"
-              />
-            )}
-          </section>
+          {/* Modül 7 bölüm içeriyordu (5 sekmeye toplandı) ve sayfa çok uzuyordu → sekmeler.
+              Sıralama İŞE göre: önce rekabet konumu (nerede duruyoruz),
+              sonra fırsat/kayıp (aksiyon alınacaklar), sonra ham liste. */}
+          <Sekmeler
+            anahtar="piyasa"
+            tanimlar={[
+              {
+                id: 'konum',
+                ad: 'Rekabet Konumu',
+                icerik: () => (
+                  <>
+                    <CubukYatay
+                      veri={veri.dagiticiBayiDagilim}
+                      ad={(d) => (d.dagitim_sirketi === BIZ ? 'Turgut Dağıtım' : d.dagitim_sirketi)}
+                      deger={(d) => Number(d.n)}
+                      vurgu={(d) => d.dagitim_sirketi === BIZ}
+                      baslik="Dağıtıcı Bazında Bayi Sayısı"
+                      altBaslik={`${veri.dagiticiBayiDagilim.length} aktif dağıtıcı · EPDK kütüğü`}
+                      limit={12}
+                    />
 
-          {/* KAYBEDİLEN BAYİLER — ASIS'te offline + EPDK'da rakipte aktif (kritik istihbarat) */}
-          {veri.kaybedilen && veri.kaybedilen.length > 0 && (
-            <section>
-              <div className="analiz-not krit-not">
-                Bu istasyonlar ASIS'te <b>bize veri göndermiyor</b> ama EPDK'da <b>başka dağıtıcıda aktif</b> —
-                yani Parkoil'den ayrılıp rakibe geçmişler.
-              </div>
-              <Tablo
-                anahtar="kaybedilen"
-                basId="kayip-baslik"
-                baslik="Kaybedilen Bayiler"
-                kolonlar={KAYIP_KOLONLARI}
-                satirlar={veri.kaybedilen}
-                satirAnahtar={(k) => k.epdk_kod}
-                aramaEtiket="İstasyon, il veya rakip ara"
-              />
-            </section>
-          )}
+                    {veri.bolgesel.length > 0 && (
+                      <IsiIzgara
+                        veri={veri.bolgesel}
+                        ad={(b) => b.il}
+                        deger={(b) => Number(b.pay)}
+                        altDeger={(b) => `${b.bizim}/${b.toplam} bayi`}
+                        baslik="Parkoil'in İl Bazında Pazar Payı"
+                        altBaslik={`Bayimizin bulunduğu ${veri.bolgesel.length} il · koyu = yüksek pay`}
+                        birim="%"
+                      />
+                    )}
 
-          {/* ANALİZ 1 — Sözleşmesi bitecek bayiler (hedef liste + yenileme) */}
-          {veri.sozlesmeBitecek.length > 0 && (
-            <section>
-              <div className="analiz-not">
-                <b>Parkoil bayileri</b> = yenileme takibi (kaybetmemek için). <b>Rakip bayiler</b> = kapma fırsatı (hedef liste).
-              </div>
-              <Tablo
-                anahtar="sozlesme"
-                basId="soz-baslik"
-                baslik="Sözleşmesi Bitecek Bayiler (6 ay)"
-                kolonlar={SOZLESME_KOLONLARI}
-                /* TAM liste verilir — arama/sıralama tümünde çalışsın, dilimleme
-                   Tablo'nun içinde sonradan yapılsın. Önceden dışarıda slice
-                   edildiği için arama görünmeyen 250 kaydı atlıyor ve yanlışlıkla
-                   "kayıt yok" diyordu. */
-                satirlar={sozlesmeFiltreli}
-                ilkGosterim={50}
-                adim={100}
-                satirAnahtar={(s) => s.bayi_lisans_no}
-                satirSinif={(s) => (s.bizim ? 'satir-biz' : undefined)}
-                aramaEtiket="Bayi, dağıtıcı veya il ara"
-                ustSag={
-                  <div className="segment" role="group" aria-label="Sözleşme kapsamı">
-                    {([
-                      ['hepsi', 'Tümü'],
-                      ['bizim', 'Parkoil'],
-                      ['rakip', 'Rakip'],
-                    ] as const).map(([id, ad]) => (
-                      <button
-                        key={id}
-                        type="button"
-                        className={sozlesmeKapsam === id ? 'akt' : ''}
-                        aria-pressed={sozlesmeKapsam === id}
-                        onClick={() => setSozlesmeKapsam(id)}
-                      >
-                        {ad}
-                      </button>
-                    ))}
-                  </div>
-                }
-              />
-              {/* "Daha fazla göster" artık Tablo bileşeninin içinde
-                  (dilimleme arama/sıralama SONRASI yapılıyor). */}
-            </section>
-          )}
+                    {/* Piyasa yoğunluğu ADET, üstteki pazar payı YÜZDE. Aynı rampayı
+                        paylaşıyorlar; ayrımı çubuk formu taşıyor (ısı ızgarası değil)
+                        → "koyu kırmızı" iki farklı anlamda görünmüyor. */}
+                    {veri.ilDagilim.length > 0 && (
+                      <CubukYatay
+                        veri={veri.ilDagilim}
+                        ad={(x) => x.il}
+                        deger={(x) => Number(x.n)}
+                        baslik="Piyasa Yoğunluğu — İl Bazında Toplam Bayi"
+                        altBaslik="En yoğun 20 il (tüm dağıtıcılar, tüm markalar)"
+                        limit={20}
+                      />
+                    )}
+                  </>
+                ),
+              },
+              {
+                id: 'firsat',
+                ad: 'Fırsat & Kayıp',
+                /* Yalnız kaybedilen BAYİ sayısı. Önceden beyazAlan (İL sayısı) da
+                   toplanıyordu — iki farklı birim; üstelik beyazAlan LIMIT 15 ile
+                   kesik olduğu için toplam gerçeği yansıtmıyordu. */
+                sayi: veri.kaybedilen.length,
+                acil: veri.kaybedilen.length > 0,
+                icerik: () => (
+                  <>
+                    {veri.kaybedilen.length > 0 && (
+                      <Tablo
+                        anahtar="kaybedilen"
+                        basId="kayip-baslik"
+                        baslik="Kaybedilen Bayiler"
+                        kolonlar={KAYIP_KOLONLARI}
+                        satirlar={veri.kaybedilen}
+                        satirAnahtar={(k) => k.epdk_kod}
+                        aramaEtiket="İstasyon, il veya rakip ara"
+                        aciklama={
+                          <div className="analiz-not krit-not">
+                            Bu istasyonlar ASIS'te <b>bize veri göndermiyor</b> ama EPDK'da{' '}
+                            <b>başka dağıtıcıda aktif</b> — yani Parkoil'den ayrılıp rakibe geçmişler.
+                          </div>
+                        }
+                      />
+                    )}
 
-          {/* ANALİZ 3 — Parkoil'in il bazında rekabet konumu */}
-          {veri.bolgesel.length > 0 && (
-            <section>
-              <h2>Parkoil'in İl Bazında Konumu <span className="sayi">{veri.bolgesel.length} il</span></h2>
-              <div className="il-grid">
-                {veri.bolgesel.map((b) => (
-                  <div key={b.il} className="rekabet-kart">
-                    <div className="rekabet-ust">
-                      <span className="il-ad">{b.il}</span>
-                      <span className="rekabet-pay mono">%{b.pay}</span>
+                    {veri.beyazAlan.length > 0 && (
+                      <CubukYatay
+                        veri={veri.beyazAlan}
+                        ad={(b) => b.il}
+                        deger={(b) => Number(b.toplam)}
+                        baslik="Beyaz Alan — Hiç Bayimiz Olmayan Yoğun İller"
+                        altBaslik="Piyasa büyük, bizim payımız sıfır · en yoğun 15 il"
+                        limit={15}
+                      />
+                    )}
+                  </>
+                ),
+              },
+              {
+                id: 'sozlesme',
+                ad: 'Sözleşme Takibi',
+                sayi: veri.sozlesmeBitecek.length,
+                icerik: () => (
+                  veri.sozlesmeBitecek.length > 0 ? (
+                    <Tablo
+                      aciklama={
+                        <div className="analiz-not">
+                          <b>Parkoil bayileri</b> = yenileme takibi (kaybetmemek için).{' '}
+                          <b>Rakip bayiler</b> = kapma fırsatı (hedef liste).
+                        </div>
+                      }
+                      anahtar="sozlesme"
+                      basId="soz-baslik"
+                      baslik="Sözleşmesi Bitecek Bayiler (6 ay)"
+                      kolonlar={SOZLESME_KOLONLARI}
+                      /* TAM liste verilir — arama/sıralama tümünde çalışsın, dilimleme
+                         Tablo'nun içinde sonradan yapılsın. Önceden dışarıda slice
+                         edildiği için arama görünmeyen kayıtları atlıyor ve yanlışlıkla
+                         "kayıt yok" diyordu. */
+                      satirlar={sozlesmeFiltreli}
+                      ilkGosterim={50}
+                      adim={100}
+                      satirAnahtar={(s) => s.bayi_lisans_no}
+                      satirSinif={(s) => (s.bizim ? 'satir-biz' : undefined)}
+                      aramaEtiket="Bayi, dağıtıcı veya il ara"
+                      ustSag={
+                        <div className="segment" role="group" aria-label="Sözleşme kapsamı">
+                          {([
+                            ['hepsi', 'Tümü'],
+                            ['bizim', 'Parkoil'],
+                            ['rakip', 'Rakip'],
+                          ] as const).map(([id, ad]) => (
+                            <button
+                              key={id}
+                              type="button"
+                              className={sozlesmeKapsam === id ? 'akt' : ''}
+                              aria-pressed={sozlesmeKapsam === id}
+                              onClick={() => setSozlesmeKapsam(id)}
+                            >
+                              {ad}
+                            </button>
+                          ))}
+                        </div>
+                      }
+                    />
+                  ) : (
+                    <div className="takvim-bos">Önümüzdeki 6 ayda sözleşmesi bitecek bayi yok.</div>
+                  )
+                ),
+              },
+              {
+                id: 'transfer',
+                ad: 'Transferler',
+                sayi: veri.transferler.length,
+                icerik: () => (
+                  veri.transferler.length === 0 ? (
+                    <div className="takvim-bos">
+                      Henüz transfer tespiti yok. İlk snapshot alındı; <b>ikinci günden itibaren</b>{' '}
+                      dağıtıcı değiştiren, yeni açılan veya ayrılan bayiler burada görünecek.
+                      (Günlük snapshot karşılaştırması.)
                     </div>
-                    <div className="rekabet-alt mono">
-                      <b>{b.bizim}</b> / {b.toplam} bayi
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {veri.beyazAlan.length > 0 && (
-                <>
-                  <h2>Beyaz Alan — Parkoil'in Hiç Bayisi Olmayan Yoğun İller</h2>
-                  <div className="il-grid">
-                    {veri.beyazAlan.map((b) => (
-                      <div key={b.il} className="il-kart beyaz-kart">
-                        <span className="il-ad">{b.il}</span>
-                        <span className="il-sayi mono">{Number(b.toplam).toLocaleString('tr')}</span>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-            </section>
-          )}
+                  ) : (
+                    <Tablo
+                      anahtar="transferler"
+                      basId="tr-baslik"
+                      baslik="Bayi Transferleri"
+                      kolonlar={TRANSFER_KOLONLARI}
+                      satirlar={veri.transferler}
+                      satirAnahtar={(t) => `${t.bayi_lisans_no}-${t.tespit_gun}-${t.tip}`}
+                      aramaEtiket="Bayi, il veya dağıtıcı ara"
+                    />
+                  )
+                ),
+              },
+              {
+                id: 'bayiler',
+                ad: 'Tüm Bayiler',
+                sayi: secenekler.toplamBayi,
+                icerik: () => (
+                  <TumBayiler
+                    sayfaliBayiler={sayfaliBayiler}
+                    toplamEslesen={toplamEslesen}
+                    bayiHata={bayiHata}
+                    bayiYukleniyor={bayiYukleniyor}
+                    secenekler={secenekler}
+                    sorgu={sorgu}
+                    dispatch={dispatch}
+                    sayfa={sayfa}
+                    toplamSayfa={toplamSayfa}
+                    kol={kol}
+                    SiraBas={SiraBas}
+                  />
+                ),
+              },
+            ]}
+          />
+        </>
+      )}
+    </>
+  );
+}
 
-          {/* DAĞITICI BAZINDA BAYİ DAĞILIMI — bar */}
-          <section>
-            <h2>Dağıtıcı Bazında Bayi Sayısı <span className="sayi">{filtreliDagitici.length}</span></h2>
-            <div className="filtre-cubugu">
-              <input
-                className="arama"
-                aria-label="Dağıtıcı ara"
-                placeholder="Dağıtıcı ara…"
-                value={arama}
-                onChange={(e) => setArama(e.target.value)}
-              />
-            </div>
-            <div className="bar-liste">
-              {filtreliDagitici.map((d) => {
-                const n = Number(d.n);
-                const biz = d.dagitim_sirketi === BIZ;
-                return (
-                  <div key={d.dagitim_sirketi} className={`bar-satir ${biz ? 'bar-biz' : ''}`}>
-                    <span className="bar-ad" title={d.dagitim_sirketi}>
-                      {biz && <span className="marka-rozet">PARKOIL</span>}
-                      {biz ? 'Turgut Dağıtım' : d.dagitim_sirketi}
-                    </span>
-                    <div className="bar-yol">
-                      <div className="bar-dolu" style={{ width: `${(n / enBuyukBayi) * 100}%` }} />
-                    </div>
-                    <span className="bar-deger mono">{n.toLocaleString('tr')}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* İL DAĞILIMI */}
-          <section>
-            <h2>İl Bazında Bayi (En Yoğun 20)</h2>
-            <div className="il-grid">
-              {veri.ilDagilim.map((x) => (
-                <div key={x.il} className="il-kart">
-                  <span className="il-ad">{x.il}</span>
-                  <span className="il-sayi mono">{Number(x.n).toLocaleString('tr')}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* TÜM BAYİLER — dinamik tablo (arama + filtre + sırala + sayfala) */}
-          <section>
+/* Tüm Bayiler bölümü — kendi sayfalama + çoklu dropdown filtresi olduğu için
+   ortak Tablo bileşenine geçmedi (30 bin satır, sunucu taraflı sayfalama). */
+function TumBayiler(p: {
+  sayfaliBayiler: Bayi[] | null; toplamEslesen: number; bayiHata: string | null;
+  bayiYukleniyor: boolean; secenekler: { iller: string[]; dagiticilar: string[]; toplamBayi: number };
+  sorgu: Sorgu; dispatch: (e: Eylem) => void; sayfa: number; toplamSayfa: number;
+  kol: { gorunurMu: (id: string) => boolean; degistir: (id: string) => void; gorunurSayi: number };
+  SiraBas: (o: { alan: SiralamaAlan; ad: string; sag?: boolean }) => ReactElement;
+}) {
+  const { sayfaliBayiler, toplamEslesen, bayiHata, bayiYukleniyor, secenekler,
+          sorgu, dispatch, sayfa, toplamSayfa, kol, SiraBas } = p;
+  // Dinamik tablo: arama + çoklu filtre + sıralama + sunucu taraflı sayfalama
+  return (
+    <section>
             <div className="bolum-baslik">
               <h2 id="bayi-baslik">
                 Tüm Bayiler{' '}
@@ -613,14 +655,14 @@ export function Piyasa() {
                 </caption>
                 <thead>
                   <tr>
-                    <SiraBas alan="lisans_sahibi" ad="Bayi" />
-                    {kol.gorunurMu('dagitici') && <SiraBas alan="dagitim_sirketi" ad="Dağıtıcı" />}
-                    {kol.gorunurMu('il') && <SiraBas alan="il" ad="İl" />}
-                    {kol.gorunurMu('ilce') && <SiraBas alan="ilce" ad="İlçe" />}
-                    {kol.gorunurMu('durum') && <SiraBas alan="lisans_durumu" ad="Durum" />}
-                    {kol.gorunurMu('kategori') && <SiraBas alan="kategori" ad="Kategori" />}
-                    {kol.gorunurMu('epdk') && <SiraBas alan="bayi_lisans_no" ad="EPDK No" />}
-                    {kol.gorunurMu('sozlesme') && <SiraBas alan="sozlesme_bitis" ad="Sözleşme Bitiş" sag />}
+                    {SiraBas({ alan: 'lisans_sahibi', ad: 'Bayi' })}
+                    {kol.gorunurMu('dagitici') && SiraBas({ alan: 'dagitim_sirketi', ad: 'Dağıtıcı' })}
+                    {kol.gorunurMu('il') && SiraBas({ alan: 'il', ad: 'İl' })}
+                    {kol.gorunurMu('ilce') && SiraBas({ alan: 'ilce', ad: 'İlçe' })}
+                    {kol.gorunurMu('durum') && SiraBas({ alan: 'lisans_durumu', ad: 'Durum' })}
+                    {kol.gorunurMu('kategori') && SiraBas({ alan: 'kategori', ad: 'Kategori' })}
+                    {kol.gorunurMu('epdk') && SiraBas({ alan: 'bayi_lisans_no', ad: 'EPDK No' })}
+                    {kol.gorunurMu('sozlesme') && SiraBas({ alan: 'sozlesme_bitis', ad: 'Sözleşme Bitiş', sag: true })}
                   </tr>
                 </thead>
                 <tbody>
@@ -686,9 +728,6 @@ export function Piyasa() {
                 </button>
               </div>
             )}
-          </section>
-        </>
-      )}
-    </>
+    </section>
   );
 }

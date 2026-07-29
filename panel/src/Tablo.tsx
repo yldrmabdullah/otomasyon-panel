@@ -55,6 +55,9 @@ interface TabloProps<T> {
   /** Başlığın sağına ek kontrol (segment filtre vb.). */
   ustSag?: ReactNode;
   baslik: ReactNode;
+  /** Başlığın ALTINA açıklama şeridi. Tablo'nun dışına konursa başlığın ÜSTÜNDE
+   *  kalıp önceki bölüme aitmiş gibi görünüyor (canlıda görüldü). */
+  aciklama?: ReactNode;
 }
 
 export function Tablo<T>({
@@ -71,6 +74,7 @@ export function Tablo<T>({
   basId,
   ustSag,
   baslik,
+  aciklama,
 }: TabloProps<T>) {
   const [arama, setArama] = useState('');
   // Yazarken bloklamayı önle: input anlık, filtre bir tık geride.
@@ -174,6 +178,8 @@ export function Tablo<T>({
           )}
         </div>
       </div>
+
+      {aciklama}
 
       {aramaEtiket && (
         <div className="filtre-cubugu">

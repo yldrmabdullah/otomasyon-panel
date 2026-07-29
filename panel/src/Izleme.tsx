@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import type { Durum, Alarm, Istasyon, Baglanti } from './tipler.js';
 import { Tablo, type TabloKolon } from './Tablo.js';
 import { Bos, ModulBar, useVeri, veriYok, zamanFark } from './ortak.js';
+import { YiginSerit } from './Grafik.js';
 
 // ASIS IstasyonTip — üç satış noktası modeli. Kısa etiket + rozet sınıfı.
 // Hepsi gerçek bayi; tanker "dağıtıcı aracı" DEĞİL, köy tankeri satış noktası.
@@ -321,6 +322,21 @@ export function Izleme() {
             <div className="kart-baslik">Kapandı</div>
           </button>
         </section>
+      )}
+
+      {/* Durum dağılımı — part-to-whole. Kartlar ham sayıyı verir, bu şerit
+          ORANI gösterir: "269 noktanın ne kadarı bize veri gönderiyor?" */}
+      {ozet && (
+        <YiginSerit
+          baslik="Satış Noktası Durum Dağılımı"
+          altBaslik={`${ozet.toplam} nokta · ASIS bağlantısı ile EPDK kaydının kesişimi`}
+          dilimler={[
+            { ad: 'Online', deger: ozet.online, sinif: 'iyi' },
+            { ad: 'Kopuk (bizde)', deger: ozet.kopuk, sinif: 'krit' },
+            { ad: 'Rakibe geçti', deger: ozet.rakibe, sinif: 'uyari' },
+            { ad: 'Kapandı', deger: ozet.kapandi, sinif: 'notr' },
+          ]}
+        />
       )}
 
       <div className="filtre-cubugu">

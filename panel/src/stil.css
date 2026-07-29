@@ -546,21 +546,6 @@ td.yok { color: var(--soluk-2); font-style: italic; }
 }
 .bosluk-ust { margin-top: var(--s-3); }
 
-/* ── Piyasa: bar dağılım + il grid ── */
-.bar-liste { display: flex; flex-direction: column; gap: 7px; }
-.bar-satir { display: grid; grid-template-columns: 260px 1fr 70px; align-items: center; gap: var(--s-3); }
-.bar-ad { font-size: var(--t-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--metin); }
-.bar-yol { background: var(--panel-2); border-radius: 4px; height: 22px; overflow: hidden; }
-/* Düz dolgu — gradyan yerine tek ton (bilgi taşımayan süs kaldırıldı) */
-.bar-dolu { height: 100%; background: var(--soluk); border-radius: 4px; min-width: 2px; }
-.bar-deger { text-align: right; font-size: var(--t-md); color: var(--soluk); }
-.bar-satir.bar-biz .bar-ad { color: var(--accent); font-weight: 700; }
-.bar-satir.bar-biz .bar-dolu { background: var(--marka); }
-.il-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(140px, 100%), 1fr)); gap: 10px; }
-@media (min-width: 1200px) { .il-grid { grid-template-columns: repeat(auto-fill, minmax(min(160px, 100%), 1fr)); } }
-.il-kart { display: flex; justify-content: space-between; align-items: center; background: var(--panel); border: 1px solid var(--cizgi); border-radius: var(--r); padding: 11px 15px; box-shadow: var(--golge); }
-.il-ad { font-size: var(--t-md); font-weight: 500; }
-.il-sayi { font-size: var(--t-lg); font-weight: 700; color: var(--metin); font-variant-numeric: tabular-nums; }
 
 /* Analiz notu (açıklama şeridi) */
 .analiz-not { background: var(--panel); border: 1px solid var(--cizgi); border-left: 3px solid var(--marka);
@@ -568,14 +553,153 @@ td.yok { color: var(--soluk-2); font-style: italic; }
 .analiz-not b { color: var(--metin); }
 .analiz-not.krit-not { border-left-color: var(--krit); }
 
-/* Rekabet kartı (Parkoil'in il konumu) */
-.rekabet-kart { background: var(--panel); border: 1px solid var(--cizgi); border-radius: var(--r); padding: var(--s-3) 15px; box-shadow: var(--golge); }
-.rekabet-ust { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s-2); }
-.rekabet-pay { font-size: var(--t-lg); font-weight: 700; color: var(--iyi); font-variant-numeric: tabular-nums; }
-.rekabet-alt { font-size: var(--t-sm); color: var(--soluk); margin-top: 5px; }
-.rekabet-alt b { color: var(--metin); }
-.beyaz-kart { border-left: 3px solid var(--uyari); }
-.beyaz-kart .il-sayi { color: var(--uyari); }
+
+/* ── Sekmeler (gerçek tab pattern) ── */
+.sekme-serit {
+  display: flex; gap: 2px; margin-bottom: var(--s-5); overflow-x: auto;
+  border-bottom: 1px solid var(--cizgi); scrollbar-width: none;
+}
+.sekme-serit::-webkit-scrollbar { display: none; }
+.sekme {
+  background: transparent; border: none; border-bottom: 2px solid transparent;
+  color: var(--soluk); padding: 10px var(--s-4); cursor: pointer; white-space: nowrap;
+  font-size: var(--t-lg); font-weight: 500; flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: 7px;
+  transition: color .13s, border-color .13s;
+}
+.sekme:hover { color: var(--metin); }
+.sekme.akt { color: var(--accent-2); border-bottom-color: var(--marka); font-weight: 600; }
+.sekme-sayi {
+  background: var(--panel-2); color: var(--metin-2); border-radius: 20px;
+  padding: 1px 8px; font-size: var(--t-xs); font-weight: 700;
+}
+.sekme.akt .sekme-sayi { background: var(--accent-bg); color: var(--accent-2); }
+.sekme-sayi.acil { background: var(--krit-bg); color: var(--krit); }
+.sekme-panel:focus { outline: none; }
+.sekme-panel:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: var(--r-sm); }
+@media (pointer: coarse) { .sekme { min-height: 44px; } }
+
+/* ══ GRAFİKLER ═════════════════════════════════════════════════════════════
+   dataviz rehberi + validate_palette.js ile doğrulanmış.
+   Sequential rampa İKİ MODDA AYRI seçildi: koyu temada en açık uç zeminden
+   ayrışmıyordu (1.32:1). Geçen setler:
+     koyu → #8f2831…#ffaab0 (en açık uç 2.04:1)  · açık → #f79aa2…#661016 (2.08:1)
+   Nominal kategoriler değerine göre RENKLENDİRİLMEZ — çubuk uzunluğu büyüklüğü
+   gösterir, renk kimlik (emphasis) için ayrılır.
+   ═════════════════════════════════════════════════════════════════════════ */
+:root {
+  --r0: #8f2831; --r1: #b5343e; --r2: #c93b46;
+  --r3: #f25863; --r4: #ff8189; --r5: #ffaab0;
+  /* De-emphasis çubuk rengi. --panel-3 kullanılıyordu ama çubuğun oturduğu
+     --panel-2 yolundan yalnız 1.15:1 ayrışıyordu → gri çubukların UZUNLUĞU
+     görünmüyordu, yani grafiğin ana bilgisi kayıptı (WCAG 1.4.11 non-text 3:1).
+     --soluk-2 ile 4.66:1 (koyu) / 5.29:1 (açık). */
+  --grafik-notr: var(--soluk-2);
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --r0: #f79aa2; --r1: #e8707c; --r2: #c43e4f;
+    --r3: #b2333f; --r4: #8c2029; --r5: #661016;
+  }
+}
+:root[data-theme='dark'] {
+  --r0: #8f2831; --r1: #b5343e; --r2: #c93b46;
+  --r3: #f25863; --r4: #ff8189; --r5: #ffaab0;
+}
+:root[data-theme='light'] {
+  --r0: #f79aa2; --r1: #e8707c; --r2: #c43e4f;
+  --r3: #b2333f; --r4: #8c2029; --r5: #661016;
+}
+
+.grafik { margin: 0 0 var(--s-5); }
+.grafik figcaption { display: flex; flex-direction: column; gap: 2px; margin-bottom: var(--s-3); }
+.grafik-baslik { font-size: var(--t-lg); font-weight: 600; color: var(--metin); }
+.grafik-alt { font-size: var(--t-sm); color: var(--soluk); }
+
+/* ── Yatay çubuk (emphasis) ── */
+.cubuk-liste { display: flex; flex-direction: column; gap: 6px; }
+.cubuk-satir { display: grid; grid-template-columns: 26px minmax(0, 260px) 1fr 92px; align-items: center; gap: var(--s-3); }
+/* Sıra atlandıysa (vurgulu öğe listeye sonradan eklendi) görsel ayraç */
+.cubuk-satir.atlamali { border-top: 1px dashed var(--cizgi-2); padding-top: 8px; margin-top: 4px; }
+.cubuk-sira { font-size: var(--t-xs); color: var(--soluk-2); text-align: right; }
+.cubuk-ad { font-size: var(--t-md); color: var(--metin-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cubuk-ad.biz { color: var(--accent); font-weight: 700; }
+.cubuk-yol { background: var(--panel-2); border-radius: 3px; height: 18px; overflow: hidden; }
+/* Çubuk: veri ucu 4px yuvarlak, tabanda köşeli (rehber spesifikasyonu) */
+.cubuk-dolu { height: 100%; background: var(--grafik-notr); border-radius: 0 4px 4px 0; min-width: 3px; transition: width .2s; }
+.cubuk-dolu.biz { background: var(--marka); }
+.cubuk-deger { font-size: var(--t-md); color: var(--metin-2); text-align: right; }
+
+/* ── Isı ızgarası (sequential) ── */
+.isi-izgara { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(126px, 100%), 1fr)); gap: 6px; }
+.isi-hucre {
+  display: flex; flex-direction: column; gap: 1px; padding: 10px var(--s-3);
+  border-radius: var(--r-sm); min-width: 0;
+}
+/* Rampa adımları — hücre zemini. Metin rengi luminansa göre seçilir:
+   açık adımlarda koyu ink, koyu adımlarda beyaz (rehber: fill içindeki etiket). */
+.isi-hucre.r0 { background: var(--r0); }
+.isi-hucre.r1 { background: var(--r1); }
+.isi-hucre.r2 { background: var(--r2); }
+.isi-hucre.r3 { background: var(--r3); }
+.isi-hucre.r4 { background: var(--r4); }
+.isi-hucre.r5 { background: var(--r5); }
+.isi-ad { font-size: var(--t-xs); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.isi-deger { font-size: var(--t-lg); font-weight: 700; }
+/* opacity: .85 kontrastı 11px metinde 2.78-3.58'e düşürüyordu → kaldırıldı.
+   İkincil olduğu görsel hiyerarşiden (küçük punto + alt sıra) yeterince anlaşılıyor. */
+.isi-alt { font-size: var(--t-xs); }
+/* Fill içi metin rengi LUMINANSA GÖRE seçilir (rehber: fill içindeki etiket tek
+   istisna). Her adım 11px metin için AA (4.5:1) ölçülerek gruplandı:
+     koyu:  r0 8.35 · r1 5.96 · r2 5.00 (beyaz) | r3 5.72 · r4 7.89 · r5 10.48 (koyu ink)
+     açık:  r0 9.10 · r1 6.34 (koyu ink) | r2 5.06 · r3 6.11 · r4 8.92 · r5 12.72 (beyaz)
+   ⚠️ r3 koyu temada beyazla 3.31:1 idi (FAIL) → koyu ink grubuna alındı. */
+.isi-hucre.r0, .isi-hucre.r1, .isi-hucre.r2 { color: #fff; }
+.isi-hucre.r3, .isi-hucre.r4, .isi-hucre.r5 { color: #24070a; }
+@media (prefers-color-scheme: light) {
+  .isi-hucre.r0, .isi-hucre.r1 { color: #24070a; }
+  .isi-hucre.r2, .isi-hucre.r3, .isi-hucre.r4, .isi-hucre.r5 { color: #fff; }
+}
+:root[data-theme='dark'] .isi-hucre.r0, :root[data-theme='dark'] .isi-hucre.r1,
+:root[data-theme='dark'] .isi-hucre.r2 { color: #fff; }
+:root[data-theme='dark'] .isi-hucre.r3, :root[data-theme='dark'] .isi-hucre.r4,
+:root[data-theme='dark'] .isi-hucre.r5 { color: #24070a; }
+:root[data-theme='light'] .isi-hucre.r0, :root[data-theme='light'] .isi-hucre.r1 { color: #24070a; }
+:root[data-theme='light'] .isi-hucre.r2, :root[data-theme='light'] .isi-hucre.r3,
+:root[data-theme='light'] .isi-hucre.r4, :root[data-theme='light'] .isi-hucre.r5 { color: #fff; }
+
+/* Rampa göstergesi — koyunun ne demek olduğu yazılı olmalı */
+.rampa-gosterge { display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-3); font-size: var(--t-xs); }
+.rampa-serit { display: flex; flex: 1; max-width: 180px; height: 8px; border-radius: 2px; overflow: hidden; }
+.rampa-serit span { flex: 1; }
+.rampa-serit .r0 { background: var(--r0); } .rampa-serit .r1 { background: var(--r1); }
+.rampa-serit .r2 { background: var(--r2); } .rampa-serit .r3 { background: var(--r3); }
+.rampa-serit .r4 { background: var(--r4); } .rampa-serit .r5 { background: var(--r5); }
+
+
+/* ── Yığın şerit ── */
+.yigin { display: flex; height: 26px; border-radius: 4px; overflow: hidden; gap: 2px; background: var(--panel-2); }
+.yigin-dilim { min-width: 3px; }
+.yigin-dilim.iyi { background: var(--iyi); }
+.yigin-dilim.krit { background: var(--krit); }
+.yigin-dilim.uyari { background: var(--uyari); }
+.yigin-dilim.notr { background: var(--soluk-2); }
+.yigin-gosterge { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-4); margin-top: var(--s-3); font-size: var(--t-sm); color: var(--metin-2); }
+.gosterge-oge { display: inline-flex; align-items: center; gap: 6px; }
+.gosterge-nokta { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+.gosterge-nokta.iyi { background: var(--iyi); }
+.gosterge-nokta.krit { background: var(--krit); }
+.gosterge-nokta.uyari { background: var(--uyari); }
+.gosterge-nokta.notr { background: var(--soluk-2); }
+
+
+@media (max-width: 760px) {
+  .cubuk-satir { grid-template-columns: 22px 1fr 74px; grid-template-areas: 'sira ad ad' 'yol yol deger'; gap: 4px var(--s-2); }
+  .cubuk-sira { grid-area: sira; }
+  .cubuk-ad { grid-area: ad; white-space: normal; }
+  .cubuk-yol { grid-area: yol; }
+  .cubuk-deger { grid-area: deger; }
+}
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
@@ -597,11 +721,6 @@ td.yok { color: var(--soluk-2); font-style: italic; }
   .segment { display: flex; flex-wrap: wrap; width: 100%; }
   .segment button { flex: 1 1 auto; min-width: 84px; }
 
-  /* Bar: ad üstte tam satır → ellipsis bilgi kaybı biter */
-  .bar-satir { grid-template-columns: 1fr auto; grid-template-areas: 'ad ad' 'yol deger'; gap: var(--s-1) 10px; }
-  .bar-ad { grid-area: ad; white-space: normal; }
-  .bar-yol { grid-area: yol; height: var(--s-4); }
-  .bar-deger { grid-area: deger; }
 
   .alarm-liste, .konu-liste { grid-template-columns: 1fr; }
   .takvim-sayac { min-width: 68px; font-size: 28px; }
