@@ -70,17 +70,19 @@ function govdeKur(metot: string, parametreler: string[]): string {
 <soap:Body><${metot} xmlns="${K.namespace}">${ic}</${metot}></soap:Body></soap:Envelope>`;
 }
 
-/** Yanıttaki tekrar eden kayıt bloğunu bul (en çok tekrar eden etiket). */
+/** Yanıttaki tekrar eden kayıt bloğunu bul (en çok tekrar eden etiket).
+ *  ⚠️ Aday bulma ile SAYMA ayrı: `<(\w+)>\s*<\w+>` deseni ardışık bloklarda
+ *  (`</PumpSale><PumpSale>`) örtüşme yüzünden bir eksik sayıyordu (10.000 → 9999).
+ *  Bu yüzden aday etiket belirlendikten sonra kapanış etiketi ayrıca sayılır. */
 function kayitBlogu(xml: string): { etiket: string; sayi: number } | null {
-  const say = new Map<string, number>();
-  for (const m of xml.matchAll(/<(\w+)>\s*<\w+>/g)) {
-    // Alt elemanı olan etiketler aday
-    say.set(m[1], (say.get(m[1]) ?? 0) + 1);
-  }
+  const adaylar = new Set<string>();
+  for (const m of xml.matchAll(/<(\w+)>\s*<\w+[\s>]/g)) adaylar.add(m[1]);
+
   let enIyi: { etiket: string; sayi: number } | null = null;
-  for (const [e, n] of say) {
-    if (n < 2) continue;
-    if (!enIyi || n > enIyi.sayi) enIyi = { etiket: e, sayi: n };
+  for (const e of adaylar) {
+    const sayi = xml.split(`</${e}>`).length - 1;
+    if (sayi < 2) continue;
+    if (!enIyi || sayi > enIyi.sayi) enIyi = { etiket: e, sayi };
   }
   return enIyi;
 }

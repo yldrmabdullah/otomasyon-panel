@@ -73,7 +73,14 @@ veya `SonVeriTarihi` çok eski.
 
 - **Eşik (varsayılan):** son veri > **3 saat** önce → kopuk say (env: `KOPUK_ESIK_SAAT`).
   > (2026-07-23, kullanıcı) "örnek olarak 3-4 saati geçmiş kullanıcılar" → 3 saat başlangıç.
-- **Kaynak:** `GetStationList.SonTarih` (IstasyonOnlineDurum boş dönüyor — bkz asis-pol-notlar).
+- **Kaynak:** `GetStationList.SonTarih`.
+  > **DÜZELTME 2026-07-29:** Eskiden buraya "IstasyonOnlineDurum boş dönüyor" yazılıydı;
+  > **yanlıştı** — metot çalışıyor (179 kayıt), sorun parametre adıydı (`<Key>` şart).
+  > Ama kaynak yine SonTarih kalıyor, iki sağlam sebeple: (1) IstasyonOnlineDurum'un
+  > `SonVeriTarihi` alanı **her kayıtta boş** → eşik hesabı yapılamaz; (2) listede
+  > **179** istasyon var, kütükte **268** → yokluğu "offline" saymak ~90 yanlış alarm
+  > üretir. IstasyonOnlineDurum'u kopukluk kaynağı olarak DEĞİL, ek teşhis verisi
+  > (`IP`, `TankVersiyon`, `PompaVersiyon`) olarak kullan.
 - **Pasif filtresi (KRİTİK):** son veri > `PASIF_ESIK_GUN` (varsayılan 7) gün ise istasyon
   "pasif/ölü" sayılır, alarm ATILMAZ. Yoksa aylardır kapalı ~90 kayıt her turda alarm üretir.
   Ayrıca `kayitliAktif=false` (ASIS kütüğünde pasif) istasyonlara da alarm yok — bkz yukarıdaki

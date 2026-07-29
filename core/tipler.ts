@@ -17,9 +17,15 @@ export interface AsisIstasyon {
 }
 
 /**
- * Bağlantı izleme kaynağı. IstasyonOnlineDurum SOAP metodu bu guidKey ile BOŞ dönüyor
- * (dağıtıcı seviyesinde yetki yok — canlı doğrulandı). Bunun yerine GetStationList'in
- * SonTarih alanı kullanılır (ekrandaki "Son Veri Gönderim Zamanı"nın aynısı).
+ * Bağlantı izleme kaynağı = `GetStationList.SonTarih` (ekrandaki "Son Veri Gönderim
+ * Zamanı"nın aynısı).
+ *
+ * ⚠️ DÜZELTME (2026-07-29): Eskiden burada "IstasyonOnlineDurum bu guidKey ile BOŞ
+ * dönüyor, yetki yok" yazıyordu — **YANLIŞTI**. Metot çalışıyor (179 kayıt); sorun
+ * parametre ADIydı: `<Key>` (büyük K) şart. `key`/`guidKey`/`KEY` → HTTP 200, hata
+ * yok, sessizce BOŞ. Yine de kopukluk tespiti SonTarih'ten yapılır, çünkü
+ * IstasyonOnlineDurum'un `SonVeriTarihi` alanı her kayıtta boş geliyor ve listede
+ * 179 istasyon var (kütükte 268) → yokluğu "offline" saymak ~90 yanlış alarm üretir.
  *
  * ⚠️ `online` ≠ `kayitliAktif` (2026-07-28 düzeltmesi). ASIS'in `IstasyonDurum` alanı
  * "bu istasyon kütükte aktif mi" demek — 5 gün veri göndermeyen istasyon da `true`
@@ -101,8 +107,13 @@ export interface AsisDolum {
   irsaliyeHacimFark: number;   // irsaliye − tank (satır bazında; toplama uygun DEĞİL)
   irsaliyeMiktarFark: number;
   irsaliyeBirimFiyat: number;
-  /** Tank seviyesi (lt) — dolum ÖNCESİ/SONRASI. ⭐ Mutabakatın A/D girdisi:
-   *  `GetTankLevelRecord` KayitID=0 dönüyor ama seviye DOLUM kaydında zaten var. */
+  /** Tank seviyesi (lt) — dolum ÖNCESİ/SONRASI.
+   *  ⚠️ 2026-07-29: Eskiden "GetTankLevelRecord KayitID=0 dönüyor, seviyeyi buradan
+   *  almak zorundayız" yazıyordu. O engel YOK (bkz. epdk-mutabakat §4 soru 3 —
+   *  `bitis` ertesi gün 00:00 olmalıydı). Mutabakatın A/D girdisi için asıl kaynak
+   *  `GetTankLevelList` (30 dk grid, tek damgada 662 tank, `YakitSeviyeLTNet`).
+   *  Buradaki alanlar dolum anına özgü olduğu için yine değerli ama A/D için tek
+   *  dayanak değil. */
   seviyeBaslangicLt: number;
   seviyeBitisLt: number;
   /** 1240 kararı: kalibrasyon değişiminde 24 saat içinde yedek zorunlu → takip. */

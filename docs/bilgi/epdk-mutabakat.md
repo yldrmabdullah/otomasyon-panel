@@ -124,8 +124,15 @@ da taşıyor. Ama bir tarafı **eksik dolduruluyor**.
 | `YakitDolumBaslama/BitisMiktariLT` | tank seviyesi (mutabakat A/D girdisi!) | 567,71 → 2.574,21 |
 | `TankerSicakligi`, `Baslangic/BitisSicakligi` | hacim düzeltmesi | |
 
-⭐ `YakitDolumBaslamaMiktariLT` / `BitisMiktariLT` → **tank seviyesi geçmişi**.
-`GetTankLevelRecord` KayitID=0 dönüyordu ama seviye bilgisi DOLUM kaydında zaten var.
+`YakitDolumBaslamaMiktariLT` / `BitisMiktariLT` → dolum anındaki tank seviyesi.
+
+> **DÜZELTME 2026-07-29:** Burada "`GetTankLevelRecord` KayitID=0 dönüyor, o yüzden
+> seviyeyi dolum kaydından almak zorundayız" yazıyordu. Bu bir **çıkmaz sokak değildi**
+> — `bitis` parametresi hatalıydı (soru 3'e bak). Mutabakat A/D için asıl kaynak
+> **`GetTankLevelList`**: 30 dakikalık temiz grid (günde 49 damga), tek zaman
+> damgasında **662 tank** (filo 669), sıcaklık düzeltilmiş **`YakitSeviyeLTNet`**
+> (%96 dolu) ve hazır `EpdkID`. Geçmiş 2025-02-26'ya kadar var.
+> Dolum kaydındaki seviye alanları yine değerli (dolum anına özgü) ama tek dayanak değil.
 
 ### DOĞRULAMA — RAHA, PIR2026000008470 (25.07.2026)
 | | ASIS | POL | |
@@ -422,8 +429,21 @@ Bu somut, savunulabilir ve kimsenin takip etmediği bir eksiklik → panelde gö
 **Sorulacak (Parkoil / ASIS):**
 1. `IrsaliyeLitre` alanı tam olarak neyi taşıyor? Neden farklı irsaliyelerde aynı değer?
 2. Gerçek irsaliye litresi ASIS'te başka bir alanda mı, yoksa hiç yok mu?
-3. `GetPumpSaleRecord` ve `GetTankLevelRecord` bu guidKey'e neden KayitID=0 dönüyor?
-   (Canlı test: 1 gün / 3 gün / 7 gün / 15 gün / 30 gün — hepsinde 0. Yetki mi?)
+3. ~~`GetPumpSaleRecord` ve `GetTankLevelRecord` neden KayitID=0 dönüyor?~~
+   **ÇÖZÜLDÜ 2026-07-29 — sorulmasına gerek yok.** Yetki sorunu değildi: `bitis`
+   parametresinin **saat kısmı yok sayılıyor**, sadece tarih kullanılıyor. Bu yüzden
+   `baslangic=28T00:00, bitis=28T23:59:59` sıfır genişlikte aralık olup `Code 900 ·
+   KayitID 0` veriyordu. Doğru kullanım: **`bitis` = ertesi günün 00:00:00.**
+   Kanıt (aynı gün, tek fark bitiş saati):
+   | baslangic | bitis | Sonuç |
+   |---|---|---|
+   | `28T00:00:00` | `28T23:59:59` | Code 900 · KayitID **0** |
+   | `28T00:00:00` | `28T12:00:00` | Code 900 · KayitID **0** |
+   | `28T00:00:00` | `29T00:00:00` | Code 0 · KayitID **7402284** |
+   | `28T00:00:00` | `29T12:00:00` | Code 0 · KayitID **7402284** (aynı) |
+   Aynı kural `GetTankLevelRecord` ve `GetTankFillingRecord` için de geçerli
+   (`29T00:00→29T23:59:59` = 900/0 ama `29T00:00→30T00:00` = 10184060).
+   → **Çözünürlük 1 GÜN**; gün içi aralık sorgulanamaz.
 
 **Yapılacak (Parkoil'e sor):** POL "Mutabakat Raporu"/"Tank Uzlaştırma" tam olarak neyi karşılaştırıyor?
 İrsaliye no bazında mı, tank bazında mı? 288 lt limiti hangi büyüklüğe uygulanıyor (günlük tank stok
