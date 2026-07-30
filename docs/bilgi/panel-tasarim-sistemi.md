@@ -358,3 +358,34 @@ bunlar sıraya girip sayfayı yavaşlatıyordu (canlı ölçüm 2155 ms).
 
 ⚠️ **Vercel ortam değişkeni değişti** → yeniden deploy ZORUNLU, yoksa eski değer
 kullanılmaya devam eder.
+
+### ⚠️ DATABASE_URL ÜÇ YERDE — hepsi güncellenmeli
+
+Transaction pooler'a geçerken bunu atladım ve CI kırıldı: Vercel'i güncelledim ama
+**GitHub secret'ı eski kaldı** → izleme job'u `Şema (idempotent)` adımında 18 saniyede
+`(EMAXCONNSESSION) ... in session mode` ile düştü. Hata mesajındaki **"session mode"**
+ibaresi ipucuydu: Vercel artık transaction modundaydı, demek ki hata BAŞKA bir yerden
+geliyordu.
+
+Bağlantı dizesinin bulunduğu yerler:
+
+| Yer | Nasıl güncellenir |
+|---|---|
+| **Vercel** (panel/API) | `npx vercel env rm/add DATABASE_URL production` |
+| **GitHub secret** (cron job'ları) | `gh secret set DATABASE_URL < dosya` |
+| **local `.env`** | elle / betikle (yedek al) |
+
+Değeri hiçbir zaman komut satırına yazma — dosyadan `<` ile besle, sonra dosyayı sil.
+
+### Çekim gerçek sıklığı: ~13 dk (dış tetikleyici sayesinde)
+
+Ölçüm (2026-07-30, 40 koşu):
+
+| Tetikleyici | Koşu | Gerçek aralık |
+|---|---|---|
+| `workflow_dispatch` (cron-job.org) | 37 | **~15 dk** ✓ |
+| `schedule` (GitHub cron `*/15`) | 3 | **135-170 dk** ❌ |
+
+Ortalama 13 dk. GitHub'ın kendi cron'u ücretsiz planda hâlâ ciddi şekilde kısıtlı —
+dış tetikleyici olmadan sistem ~2,5 saatte bir çalışırdı. YAML'daki `schedule` yalnız
+YEDEK; asıl iş cron-job.org'dan geliyor.
