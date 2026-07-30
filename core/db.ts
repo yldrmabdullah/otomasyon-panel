@@ -36,10 +36,28 @@ export function pool(): pg.Pool {
     const url = new URL(config.db.url);
     const sslIster = url.searchParams.has('sslmode') || url.hostname.includes('supabase');
     url.searchParams.delete('sslmode');
+    // ⚠️ HAVUZ BOYUTU — Supabase session pooler'da SERT LİMİT 15 bağlantı.
+    //
+    // CANLIDA YANDI (2026-07-30): `max: 4` sabitti. Vercel'de her API ucu AYRI
+    // serverless örneği ve her biri kendi havuzunu açıyor:
+    //   4 uç (durum/piyasa/operasyon/bayiler) × 4 bağlantı = 16 > 15
+    // → panel rastgele `(EMAXCONNSESSION) max clients reached` hatası veriyordu;
+    // yenilemek "düzeltiyor" gibi görünüyordu çünkü başka bir örnek boşalıyordu.
+    // `durum` ucu 60 sn'de bir çekildiği için örnekler sürekli canlı kalıyor.
+    //
+    // Serverless'ta bir örnek TEK istek işler → 1 bağlantı yeter (+1 pay).
+    // Job/araç tarafında (uzun süreli, çok sorgulu) 4 kalır.
+    // VERCEL / AWS_LAMBDA_FUNCTION_NAME: platformun kendi işaretleri.
+    const serverless = !!(process.env.VERCEL ?? process.env.AWS_LAMBDA_FUNCTION_NAME);
     _pool = new Pool({
       connectionString: url.toString(),
       ssl: sslIster ? { rejectUnauthorized: false } : undefined,
-      max: 4,
+      max: serverless ? 2 : 4,
+      // Boşta kalan bağlantıyı çabuk bırak — serverless örneği donduğunda
+      // bağlantı sunucuda "asılı" kalıp limiti yiyordu.
+      idleTimeoutMillis: serverless ? 5_000 : 30_000,
+      // Limit doluysa sonsuz bekleme yerine anlaşılır hata ver.
+      connectionTimeoutMillis: 10_000,
     });
   }
   return _pool;

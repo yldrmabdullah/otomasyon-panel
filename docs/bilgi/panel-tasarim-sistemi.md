@@ -317,3 +317,44 @@ içinde görünmüyordu, çünkü *yokluğu* sorundu.
 saymaz — onlar bilinçli. Çalıştır: `PANEL_SIFRE=<sifre> npm run mobil`
 
 **Son ölçüm: 6 cihaz (320-1024px) × 4 modül = 24/24 temiz.**
+
+## ⚠️ CANLI HATA: Supabase bağlantı limiti (EMAXCONNSESSION) — 2026-07-30
+
+Kullanıcı canlıda rastgele hata gördü: `(EMAXCONNSESSION) max clients reached in
+session mode - max clients are limited to pool_size: 15`. Yenilemek "düzeltiyor"
+gibi görünüyordu → anlık kopma sanıldı, **değildi.**
+
+### Matematik
+- Supabase **session pooler** (port 5432): sert limit **15 bağlantı**
+- `core/db.ts` sabit `max: 4` kullanıyordu
+- Vercel'de her API ucu **AYRI serverless örneği**, her biri kendi havuzunu açıyor:
+  **4 uç × 4 bağlantı = 16 > 15** ❌
+- `durum` ucu 60 sn'de bir çekildiği için örnekler sürekli canlı kalıyor
+
+Doğrulandı: local'den de bağlanmaya çalıştım, aynı hatayı aldım — yani limit gerçekten
+doluydu, geçici bir dalgalanma değildi.
+
+### İki katmanlı çözüm
+
+**1. Havuz serverless'ta küçültüldü** (`core/db.ts`):
+```ts
+const serverless = !!(process.env.VERCEL ?? process.env.AWS_LAMBDA_FUNCTION_NAME);
+max: serverless ? 2 : 4
+idleTimeoutMillis: serverless ? 5_000 : 30_000   // donmuş örnek bağlantı tutmasın
+connectionTimeoutMillis: 10_000                   // sonsuz bekleme yerine açık hata
+```
+Serverless'ta bir örnek tek istek işler → 1 bağlantı yeter (+1 pay). Job/araç
+tarafı (uzun süreli, çok sorgulu) 4'te kalır.
+
+**2. Transaction pooler'a geçildi** (port **5432 → 6543**, kullanıcı kararı):
+- Limit 15 → **~200**; bağlantı SORGU BAŞINA paylaşılır (serverless için tasarlanmış mod)
+- Uyumluluk doğrulandı: kod prepared statement / session-level ayar / LISTEN
+  kullanmıyor (transaction modunda bunlar desteklenmez)
+- Canlı test: bağlantı 452 ms, **9 eş zamanlı sorgu 606 ms**
+
+**Neden ikisi birden:** havuz küçültmesi tek başına yetersizdi — `operasyonVerisi`
+**7**, `piyasaVerisi` **9** sorguyu `Promise.all` ile eş zamanlı açıyor. `max: 2` ile
+bunlar sıraya girip sayfayı yavaşlatıyordu (canlı ölçüm 2155 ms).
+
+⚠️ **Vercel ortam değişkeni değişti** → yeniden deploy ZORUNLU, yoksa eski değer
+kullanılmaya devam eder.
