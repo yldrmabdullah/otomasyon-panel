@@ -389,3 +389,43 @@ Değeri hiçbir zaman komut satırına yazma — dosyadan `<` ile besle, sonra d
 Ortalama 13 dk. GitHub'ın kendi cron'u ücretsiz planda hâlâ ciddi şekilde kısıtlı —
 dış tetikleyici olmadan sistem ~2,5 saatte bir çalışırdı. YAML'daki `schedule` yalnız
 YEDEK; asıl iş cron-job.org'dan geliyor.
+
+## Dışa aktarma: CSV + yazdırma/PDF (2026-07-30)
+
+Kullanıcı istedi: *"bu analizleri excel pdf vs. gibi yerlere çıkarmak kolay mı"*.
+Öncesinde **hiç export yoktu** ve `@media print` de yoktu.
+
+### Neden kütüphane YOK
+`xlsx`/`exceljs` 200-900 KB. Excel `.csv`'yi zaten açıyor; PDF için tarayıcının
+kendi diyaloğu var (Ctrl+P → "PDF olarak kaydet"). Maliyet: **JS +1,6 KB, CSS +1,3 KB.**
+
+### Tek noktadan 14 tablo
+Buton `Tablo` bileşenine eklendi → panelde `<Tablo>` kullanan **14 çağrı** (İzleme 2,
+Operasyon 5, Piyasa 6, Kullanıcılar 1) otomatik kazandı. `TabloKolon`'a opsiyonel
+`metin?: (satir) => string` alanı eklendi; verilmezse sırayla `ara` → `hucre`'den
+JSX metni çıkarılır.
+
+**Aktarılan = kullanıcının GÖRDÜĞÜ hal:** arama filtresi + sıralama + kolon seçimi
+uygulanmış. Kademeli gösterim (`ilkGosterim`) UYGULANMAZ — "daha fazla"ya basılmamış
+olsa da eşleşen TÜM satırlar iner (yarım dosya sessiz veri kaybı olurdu).
+
+### ⚠️ Çözülen 4 tuzak (hepsi test edildi)
+1. **Ayırıcı `;`** — TR Windows Excel'in liste ayırıcısı noktalı virgül; virgüllü CSV
+   tek sütuna düşer.
+2. **UTF-8 BOM** — BOM'suz dosyayı Excel ANSI sanıp Türkçe karakteri bozuyor
+   (İSTASYON → Ä°STASYON).
+3. **Formül enjeksiyonu** — `= + - @` ile başlayan hücreyi Excel FORMÜL sanar. Başına
+   `'` konur (CSV injection'a karşı standart koruma).
+4. **`aria-hidden` atlanır, `sr-only` ALINIR** — ▲ gibi görsel işaretler CSV'ye
+   girmez ama "— acil" gibi anlam taşıyan metin korunur. Doğrulandı: 124 satırlık
+   dosyada ▲ sayısı 0, "acil" metni mevcut.
+
+Doğrulama (gerçek tarayıcı, Playwright): dosya adı `yakit-kac-gun-yeter-124-istasyon-urun-20260730-1548.csv`,
+BOM ✓, `;` ✓, Türkçe ✓, formül riski 0, arama "HATAY" → 9 satır ve hepsi HATAY.
+
+### Yazdırma/PDF (`@media print`)
+Koyu tema kâğıda basılamaz → beyaz zemin/siyah metin. Gizlenenler: menü, butonlar,
+arama, tema seçici, sayfalama. Kaydırma alanları açılır (kesik tablo işe yaramaz),
+`break-inside: avoid` ile satır/kart sayfa ortasından bölünmez.
+**Renk kâğıtta taşıyıcı olamaz** → `td.krit::after { content: ' (KRİTİK)' }` ile
+aciliyet metne dönüşür (siyah-beyaz çıktıda da okunur).

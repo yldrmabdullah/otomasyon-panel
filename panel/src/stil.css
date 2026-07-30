@@ -357,11 +357,17 @@ button.kart.sec { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accen
 .bolum-baslik { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); flex-wrap: wrap; }
 .bolum-baslik h2 { margin: var(--s-7) 0 var(--s-3); }
 .kolon-secici { position: relative; }
+/* Aktar butonu kolon-btn ile AYNI görsel dili paylaşır — yeni buton stili
+   uydurulmadı; ikisi de "tablo aracı" ve yan yana duruyor. */
+.aktar-btn,
 .kolon-btn { background: var(--panel-2); color: var(--metin-2); border: 1px solid var(--cizgi-2);
   border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); cursor: pointer; font-size: var(--t-md); font-weight: 500;
   display: inline-flex; align-items: center; gap: 7px; transition: border-color .13s, color .13s; }
+.aktar-btn:hover:not(:disabled),
 .kolon-btn:hover { border-color: var(--accent); color: var(--metin); }
+.aktar-btn:active:not(:disabled),
 .kolon-btn:active { background: var(--panel-3); }
+.aktar-btn:disabled { opacity: .5; cursor: not-allowed; }
 .kolon-sayi { background: var(--accent-bg); color: var(--accent-2); border-radius: 20px; padding: 0 7px; font-size: var(--t-xs); font-weight: 700; }
 .kolon-menu {
   position: absolute; right: 0; top: calc(100% + 6px); z-index: 40;
@@ -977,4 +983,55 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   .harita-ust { gap: var(--s-2); }
   .harita-olcek { order: 2; }
   .harita-bilgi { font-size: var(--t-xs); }
+}
+
+/* ── YAZDIRMA / PDF ──────────────────────────────────────────────────────────
+   PDF için ayrı kütüphane YOK: tarayıcının kendi diyaloğu (Ctrl+P → "PDF olarak
+   kaydet") kullanılır. Bu blok sayfayı buna hazırlar.
+
+   Ekranda işe yarayan ama kâğıtta anlamsız olan her şey gizlenir: menü, butonlar,
+   arama kutusu, tema seçici. Kalan: başlık + veri. */
+@media print {
+  /* Koyu tema kâğıda basılamaz (mürekkep + okunmazlık) → beyaz zemin, siyah metin */
+  :root {
+    --bg: #fff; --panel: #fff; --panel-2: #fff; --panel-3: #f4f4f4;
+    --metin: #000; --metin-2: #222; --soluk: #444; --soluk-2: #444;
+    --cizgi: #bbb; --cizgi-2: #999; --golge: none;
+  }
+  body { background: #fff; }
+
+  /* Etkileşimli/gezinme öğeleri kâğıtta yok */
+  .kenar, .aktar-btn, .kolon-secici, .yenile, .arama, .filtre-cubugu,
+  .tema-secim, .cikis-btn, .dahasi, .sayfalama, .sekme-basliklari {
+    display: none !important;
+  }
+
+  .uygulama { display: block; }
+  .icerik-ic { max-width: none; padding: 0; }
+
+  /* Kaydırma alanları kâğıtta açılır — kesilmiş tablo işe yaramaz */
+  .tablo-sar, .tablo-sar.kaydirmali {
+    max-height: none !important; overflow: visible !important;
+    border: none; box-shadow: none;
+  }
+  table { font-size: 9pt; }
+  th { position: static !important; background: #eee !important; color: #000 !important; }
+  /* Satır ve bölüm sayfa ortasından bölünmesin */
+  tr, .kart, .harita-blok, .grafik-blok { break-inside: avoid; }
+  h1, h2, h3 { break-after: avoid; }
+
+  /* Renk kâğıtta (özellikle siyah-beyaz çıktıda) taşıyıcı olamaz →
+     aciliyet metinle işaretlenir. Ekranda ▲ zaten var, burada da kalır. */
+  td.krit::after { content: ' (KRİTİK)'; font-weight: 700; }
+  td.uyari::after { content: ' (UYARI)'; }
+
+  /* Kartlar yan yana sığsın, boşluk yemesin */
+  .kartlar { display: flex; flex-wrap: wrap; gap: 8px; }
+  .kart { border: 1px solid #bbb; padding: 6px 10px; box-shadow: none; }
+
+  /* Harita: 81 il siyah-beyazda ayırt edilemez ama yoğunluk gri tonlarıyla okunur */
+  .harita-svg { max-height: 12cm; }
+
+  /* Bağlantı adresleri kâğıtta görünsün (tıklanamaz) */
+  a[href^="http"]::after { content: ' (' attr(href) ')'; font-size: 8pt; color: #555; }
 }

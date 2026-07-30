@@ -11,6 +11,7 @@
 
 import { useDeferredValue, useId, useMemo, useState, type ReactNode } from 'react';
 import { KolonSecici, useKolonlar, type KolonTanim } from './KolonSecici.js';
+import { csvIndir, dugumMetni } from './disaAktar.js';
 
 /** Türkçe sıralama — collator SORT DIŞINDA bir kez kurulur (her karşılaştırmada
  *  opsiyon nesnesi vermek yeni Intl.Collator kurdurur; 30 bin öğede felaket). */
@@ -30,6 +31,9 @@ export interface TabloKolon<T> extends KolonTanim {
   sirala?: (satir: T) => string | number | null;
   /** Aramanın tarayacağı metin. Verilmezse bu kolon aramaya dahil olmaz. */
   ara?: (satir: T) => string;
+  /** CSV hücresi için düz metin. Verilmezse sırayla `ara` → `hucre`'den JSX
+   *  metni çıkarılır. Yalnız gösterim ile aktarım farklı olacaksa doldurulur. */
+  metin?: (satir: T) => string;
 }
 
 interface TabloProps<T> {
@@ -125,6 +129,18 @@ export function Tablo<T>({
     });
   }, [filtreli, sirala, artan, kolonlar]);
 
+  /** CSV indir — KULLANICININ GÖRDÜĞÜ hali aktarılır:
+   *  arama filtresi + sıralama (`sirali`) + kolon seçimi (`gorunur`) uygulanmış.
+   *  Kademeli gösterim (`ilkGosterim`) UYGULANMAZ: "daha fazla"ya basmamış olsa da
+   *  eşleşen TÜM satırlar iner — yarım dosya vermek sessiz veri kaybı olurdu. */
+  function csvAktar() {
+    const basliklar = gorunur.map((k) => k.ad);
+    const satirMetni = sirali.map((satir) =>
+      gorunur.map((k) => (k.metin ? k.metin(satir) : k.ara ? k.ara(satir) : dugumMetni(k.hucre(satir)))),
+    );
+    csvIndir(dugumMetni(baslik) || 'tablo', basliklar, satirMetni);
+  }
+
   function basTikla(id: string) {
     if (sirala === id) {
       // 3. tıklama sıralamayı KALDIRIR (orijinal sıraya dön) — kullanıcı
@@ -176,6 +192,23 @@ export function Tablo<T>({
         </h2>
         <div className="bolum-araclar">
           {ustSag}
+          {/* CSV: Excel doğrudan açıyor. Yazdırma/PDF için tarayıcının kendi
+              diyaloğu kullanılır (Ctrl+P → "PDF olarak kaydet") — @media print
+              stili sayfayı buna hazırlıyor. */}
+          <button
+            type="button"
+            className="aktar-btn"
+            onClick={csvAktar}
+            disabled={sirali.length === 0}
+            title={
+              sirali.length === 0
+                ? 'Aktarılacak satır yok'
+                : `${sirali.length} satır CSV olarak inecek (Excel açar)`
+            }
+          >
+            <span aria-hidden="true">⭳ </span>CSV
+            <span className="sr-only"> olarak indir, {sirali.length} satır</span>
+          </button>
           {anahtar && (
             <KolonSecici tanimlar={kolonlar} gorunurMu={kol.gorunurMu} degistir={kol.degistir} />
           )}
