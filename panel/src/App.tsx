@@ -116,6 +116,11 @@ export function App() {
               className={`kenar-oge ${aktif.id === m.id ? 'akt' : ''}`}
               onClick={() => setModul(m.id)}
               aria-current={aktif.id === m.id ? 'true' : undefined}
+              // Mobilde (≤560px) modül ADI gizlenip yalnız ikon kalıyor (5 modül
+              // 390px şeride sığmıyordu). aria-label olmadan ekran okuyucu butonu
+              // adlandıramaz → ad her koşulda erişilebilir kalsın.
+              aria-label={`${m.ad} — ${m.alt}`}
+              title={m.ad}
             >
               <span className="kenar-ikon"><m.Ikon /></span>
               <span className="kenar-metin">
@@ -137,7 +142,11 @@ export function App() {
             <span className="kenar-kul-ad" title={`${oturum.kullanici}${oturum.rol === 'admin' ? ' (yönetici)' : ''}`}>
               {oturum.adSoyad || oturum.kullanici}
             </span>
-            <button type="button" className="cikis-btn" onClick={cikis}>Çıkış</button>
+            {/* Mobilde metin CSS ile gizlenip ikona iniyor (şeride yer açmak için) →
+                aria-label olmadan buton isimsiz kalır. */}
+            <button type="button" className="cikis-btn" onClick={cikis} aria-label="Çıkış yap" title="Çıkış yap">
+              Çıkış
+            </button>
           </div>
           <button type="button" className="cikis-btn tam-genis" onClick={() => setSifreEkrani(true)}>
             Şifremi değiştir

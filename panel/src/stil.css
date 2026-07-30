@@ -54,7 +54,11 @@
 
   --r: 10px; --r-sm: 7px;
   --kenar-en: 224px;
-  --kenar-yuk: 58px;   /* mobil yatay şerit yüksekliği — sticky th offset'i */
+  /* Mobil yatay şerit yüksekliği — sticky th offset'i.
+     ⚠️ ÖLÇÜLDÜ 2026-07-30: ikon-öncelikli menüye geçince şerit 108px oldu
+     (44px dokunmatik hedef + padding). Değer gerçekle uyuşmazsa sticky başlık
+     menünün arkasına kayar; ikisi BİRLİKTE güncellenir. */
+  --kenar-yuk: 108px;
   --golge: 0 1px 3px rgba(0,0,0,.3), 0 1px 2px rgba(0,0,0,.2);
 }
 
@@ -1040,4 +1044,119 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 
   /* Bağlantı adresleri kâğıtta görünsün (tıklanamaz) */
   a[href^="http"]::after { content: ' (' attr(href) ')'; font-size: 8pt; color: #555; }
+}
+
+/* ── MOBİL OKUNABİLİRLİK (2026-07-30, kullanıcı geri bildirimi) ──────────────
+   Önceki mobil testim yalnız "sayfa yatay kayıyor mu" diye bakıyordu; okunabilirlik
+   ve kullanılabilirlik ÖLÇÜLMEMİŞTİ. Kullanıcı haklı olarak "sidebar, tabloları
+   incelemek zor, font büyük" dedi. Ölçüm (390px, iPhone 14):
+
+     · sidebar: 5 menü öğesinden AYNI ANDA 1 tanesi görünüyordu (nav 147px / 570px içerik)
+     · tablo:   1305px genişlik / 356px kutu — İstasyon kolonu tek başına 1119px
+                (uzun şirket adları `white-space: nowrap` yüzünden hiç sarmıyordu)
+     · font:    th 11px, kart-başlık 11px — telefonda okunamayacak kadar küçük  */
+@media (max-width: 760px) {
+  /* 1) SIDEBAR — alt açıklamalar ("Bağlantı & tank") mobilde yer yiyor, ad yeter.
+     Böylece 5 öğe ~114px'ten ~64px'e düşüp aynı anda 3-4'ü görünür. */
+  .kenar-alt { display: none; }
+  .kenar-ad { font-size: var(--t-md); }
+  .kenar-oge { padding: var(--s-2) 10px; gap: 6px; }
+  .kenar-ikon svg { width: 16px; height: 16px; }
+  /* Logo daralt — menüye yer aç */
+  .marka-logo-img { width: 62px; }
+
+  /* 2) TABLO — nowrap kaldırılır: uzun şirket adı sarar, tablo kutuya sığar.
+     Yatay kaydırma yine mümkün (.tablo-sar) ama artık ZORUNLU değil. */
+  th, td { white-space: normal; padding: 8px 10px; }
+  /* Sayısal kolonlar sarmasın — "1.234" iki satıra bölünmemeli */
+  td.sag, th.sag, td.mono, th.mono { white-space: nowrap; }
+  /* Uzun ad hücresi: kelime ortasından da kırılabilsin (tek kelime 40 karakter olabiliyor) */
+  td.ad-hucre, td:first-child { overflow-wrap: anywhere; }
+
+  /* ⚠️ SATIR YÜKSEKLİĞİ: şirket unvanları çok uzun ("... LİMİTED ŞİRKETİ") ve
+     sarınca hücre 150px'e çıkıyordu → telefonda ekranda 4 satır görünüyor,
+     tabloyu incelemek zorlaşıyor. İlk 3 satıra kırp + tamamı `title`'da.
+     line-clamp yalnız GÖRSEL kırpma — metin DOM'da tam, arama ve CSV etkilenmez. */
+  td:first-child, td.ad-hucre {
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    overflow: hidden; max-width: 0;
+  }
+
+  /* 3) FONT — 11px telefonda okunmuyor */
+  th { font-size: var(--t-sm); }
+  td { font-size: var(--t-md); }
+  .kart-baslik { font-size: var(--t-sm); }
+  /* ⚠️ Burada `--t-xs` (11px) verilmişti — telefonda okunmuyor. Ölçüm 40 öğeyi
+     12px altında buldu. Mobilde 12px TABAN: küçük yazı yoksa hiyerarşi
+     kalınlık/renkle kurulur, boyutu daha da düşürmekle değil. */
+  .alt-satir, .soluk, .mini-rozet, .rozet, .durum-etiket, .tip-rozet,
+  .kart-alt-not, .harita-olcek-ad, .tazelik-oge { font-size: var(--t-sm); }
+}
+
+@media (max-width: 430px) {
+  th, td { padding: 7px 8px; }
+  .icerik-ic { padding: var(--s-4) var(--s-3) var(--s-7); }
+}
+
+/* ── TABLET (761-1100px) — daha önce HİÇ KAPSANMAMIŞTI ───────────────────────
+   Breakpoint'ler 860/760/520'de bitiyordu; 768px ve 1024px hiçbirine tam
+   girmiyordu. Ölçüm: İzleme satır yüksekliği 424px (!), Operasyon tablosu
+   1611px/734px kutuda. Yani tablette tablo mobilden DAHA kötüydü. */
+@media (min-width: 761px) and (max-width: 1100px) {
+  /* Uzun şirket unvanları sarsın ama satır şişmesin */
+  th, td { white-space: normal; padding: 8px 10px; }
+  td.sag, th.sag, td.mono, th.mono { white-space: nowrap; }
+  td:first-child, td.ad-hucre {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; max-width: 0; overflow-wrap: anywhere;
+  }
+  /* 424px satır: not/açıklama hücreleri de kırpılmalı */
+  td.not-hucre { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .alt-satir, .soluk, .rozet, .durum-etiket, .tip-rozet { font-size: var(--t-sm); }
+  /* `th` genel kuralı --t-xs (11px) — tablette de okunmuyor. th.sirali içindeki
+     buton da miras alıyor, ikisi birlikte verilir. */
+  th, th.sirali .th-btn { font-size: var(--t-sm); }
+}
+
+/* ── MOBİL MENÜ: ikon-öncelikli, ŞERİDE SIĞAR ────────────────────────────────
+   ⚠️ ÖLÇÜM (390px): 5 menü öğesi toplam 466px, nav'a yalnız 171px kalıyordu
+   (marka 72 + dip 99). Alt açıklamaları gizlemek yetmedi — 5 modül adı yan yana
+   fiziksel olarak sığmıyor. Kullanıcı "sidebar" derken tam bunu gördü: aynı anda
+   1 modül görünüyor, diğerleri için yatay kaydırmak gerekiyordu.
+
+   Çözüm: modül ADI gizlenir, İKON kalır (5 × ~52px = 260px → şeride sığar).
+   Aktif modülün adı GÖRÜNÜR kalır → kullanıcı nerede olduğunu bilir.
+   Ad kaybı erişilebilirlik sorunu DEĞİL: aria-label ile korunuyor (App.tsx). */
+@media (max-width: 640px) {
+  .kenar-oge { padding: 9px 10px; gap: 0; }
+  /* Aktif olmayan modüllerde yalnız ikon */
+  .kenar-oge:not(.akt) .kenar-metin { display: none; }
+  /* Aktif modülde ad görünür — "neredeyim?" cevabı */
+  .kenar-oge.akt { gap: 7px; }
+  .kenar-oge.akt .kenar-ad { font-size: var(--t-md); white-space: nowrap; }
+  .kenar-ikon svg { width: 19px; height: 19px; }
+  /* Dokunmatik hedef 44px korunur (WCAG 2.5.5) */
+  .kenar-oge { min-height: 44px; align-items: center; }
+
+  /* ⚠️ Menüye yer açmak için şeridin İKİ UCU daraltılır. Ölçüm (390px):
+     marka 72px + dip 99px = 171px yiyordu, menüye 171px kalıyordu ama menü
+     282px istiyor. Logo küçültülüp çıkış ikona indirilince ~120px açılıyor. */
+  .marka-logo-img { width: 44px; }
+  .marka { padding: 0 4px 0 0; }
+  /* Çıkış: metin yerine ikon (⏻). Erişilebilir ad aria-label'da kalır. */
+  .cikis-btn { font-size: 0; padding: 8px 10px; min-width: 36px; }
+  .cikis-btn::before { content: '⏻'; font-size: 15px; }
+  .kenar-kullanici { font-size: 0; gap: 0; }
+  /* Son 25px: aktif modül adı da kısalır (ikon + kısa ad yeterli ipucu).
+     Şerit tek satırda kalsın → sticky th offset'i (--kenar-yuk) bozulmaz. */
+  .kenar { flex-wrap: nowrap; }
+  .kenar-oge.akt .kenar-ad { max-width: 68px; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* 400px altı: aktif modül adı da gizlenir, yalnız ikonlar kalır (5 × ~44px = 220px).
+   "Neredeyim?" bilgisi kaybolmuyor: aktif ikon `.akt::before` şeridiyle ve
+   sayfanın kendi <h1> başlığıyla belli. aria-current + aria-label duruyor. */
+@media (max-width: 400px) {
+  .kenar-oge.akt .kenar-metin { display: none; }
+  .kenar-oge { padding: 9px 8px; min-width: 44px; justify-content: center; }
 }

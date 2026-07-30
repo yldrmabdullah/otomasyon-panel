@@ -477,3 +477,48 @@ butonu ona uygulanmıyordu; client'ta yalnız 50 satır olduğundan naif çözü
 dosya** indirirdi. Aktif filtreyle TÜM eşleşen satırlar 200'lük sayfalarla çekilir.
 Ölçüm: **30.308 satır · 4,05 MB · 69,5 sn**. Sessiz bekleme "takıldı mı?" hissi
 verdiği için butonda ilerleme gösterilir ("5.600 / 30.308…").
+
+## ⚠️ MOBİL: taşma testi geçiyordu ama panel KULLANILAMAZ haldeydi (2026-07-30)
+
+Kullanıcı "tamamen mobil uyumlu değil gibi, sidebar, tabloları incelemek zor, font
+büyük" dedi ve **haklıydı.** Benim testim yalnız `scrollWidth > clientWidth` ölçüyordu
+— yani "sayfa yatay kayıyor mu". Okunabilirlik ve kullanılabilirlik HİÇ ölçülmemişti.
+
+### Ölçüm (390px, iPhone 14) — testin görmediği gerçek durum
+
+| Sorun | Ölçüm |
+|---|---|
+| Sidebar | 5 modülden **aynı anda 1'i** görünüyor (nav 147px / içerik 570px) |
+| Tablo | **1305px** genişlik / 356px kutu — İstasyon kolonu tek başına **1119px** |
+| Satır | **150px** yükseklik (uzun unvan sarıyor) → ekranda 4 satır |
+| Font | `th` 11px, `.kart-baslik` 11px — telefonda okunmuyor |
+| **Tablet** | 768/1024px **hiçbir breakpoint'e girmiyordu**: satır 424px, tablo 1611px/734px |
+
+Tablo genişliğinin sebebi: `th, td { white-space: nowrap }` mobilde de geçerliydi,
+uzun şirket unvanları ("… LİMİTED ŞİRKETİ") hiç sarmıyordu.
+
+### Çözümler
+1. **Tablo sarar** (`white-space: normal`) ama sayısal kolonlar (`.sag`, `.mono`) nowrap
+   kalır — "1.234" iki satıra bölünmez. Ad hücresi `-webkit-line-clamp: 3` ile kırpılır
+   (görsel kırpma; DOM'da metin TAM, arama ve CSV etkilenmez).
+2. **İkon-öncelikli menü** (≤640px): modül adı gizlenir, ikon kalır. ≤400px'de aktif
+   modülün adı da gizlenir (5 × 44px = 220px). Ad `aria-label`+`title` ile korunur —
+   aksi halde ekran okuyucu isimsiz buton okur.
+3. **Şeridin iki ucu daraltıldı**: logo 86→44px, çıkış metni → `⏻` ikonu
+   (`aria-label="Çıkış yap"` eklendi).
+4. **12px TABAN** (mobil+tablet): `--t-xs` (11px) verilen yerler `--t-sm`'e çekildi.
+   Hiyerarşi boyutu daha da düşürmekle değil, kalınlık/renkle kurulur.
+5. **Tablet bloğu eklendi** (761-1100px) — daha önce hiç yoktu.
+
+⚠️ `--kenar-yuk` **58 → 108px**: ikon menüye geçince şerit yükseldi. Bu değer sticky
+`th` offset'i olarak kullanılıyor; uyuşmazsa tablo başlığı menünün arkasına kayar.
+İkisi BİRLİKTE güncellenir. Doğrulandı: kaydırmada th y=449, menü y=108'de bitiyor.
+
+### Test artık okunabilirliği de ölçüyor
+`araclar/mobilTest.ts`'e eklendi: tablo/kutu oranı (>1,5× uyarı), satır yüksekliği
+(>110px), menüde görünen modül sayısı, 12px altı öğe sayısı.
+**Sonuç: 6 cihaz × 4 modül = 24/24 temiz** (önce 14 sorun buluyordu).
+
+**Ders:** bir testin "geçmesi" yalnız ÖLÇTÜĞÜ şey için geçerlidir. "Responsive mi?"
+sorusunu taşma testiyle yanıtlamak eksikti; kullanıcı gözüyle bakınca hemen görülen
+şeyler ölçüm listesinde yoktu.

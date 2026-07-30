@@ -90,6 +90,26 @@ async function main() {
           });
         }
         const cikis = document.querySelector('.cikis-btn');
+
+        // ⚠️ OKUNABİLİRLİK — ilk sürümde YOKTU ve kullanıcı haklı olarak
+        // "tabloları incelemek zor, font büyük, sidebar" dedi. Taşma testi
+        // geçiyordu ama tablo 1305px/356px kutuda yatay kayıyor, menüde 5
+        // öğeden 1'i görünüyordu. Bunlar artık ölçülüyor.
+        const tb = document.querySelector('table');
+        const sar = tb?.closest('.tablo-sar') as HTMLElement | null;
+        const td = tb?.querySelector('tbody td');
+        const nav = document.querySelector('.kenar-nav');
+        const ogeler = Array.from(document.querySelectorAll('.kenar-oge'));
+        const navK = nav?.getBoundingClientRect();
+        const gorunurOge = navK
+          ? ogeler.filter((e) => {
+              const k = e.getBoundingClientRect();
+              return k.left >= navK.left - 1 && k.right <= navK.right + 1;
+            }).length
+          : 0;
+        const kucukYazi = Array.from(document.querySelectorAll('td, th, .kart-baslik, .alt-satir'))
+          .filter((e) => parseFloat(getComputedStyle(e).fontSize) < 12).length;
+
         return {
           viewport: de.clientWidth,
           scrollW: de.scrollWidth,
@@ -97,16 +117,37 @@ async function main() {
           tasan: tasan.slice(0, 5),
           // Çıkış butonu mobilde erişilebilir kalmalı (menü şeridi kırpılırken kaybolabiliyor)
           cikisErisilebilir: !!cikis && cikis.getBoundingClientRect().right <= de.clientWidth + 1,
+          // Tablo kendi kutusunda yatay kayıyor mu (kaydırılabilir ama ZORUNLU olmamalı)
+          tabloKayiyor: sar ? sar.scrollWidth > sar.clientWidth + 2 : false,
+          tabloEn: tb ? Math.round(tb.getBoundingClientRect().width) : 0,
+          kutuEn: sar ? sar.clientWidth : 0,
+          satirYuk: td ? Math.round(td.getBoundingClientRect().height) : 0,
+          // Menüde aynı anda kaç modül görünüyor
+          menuGorunur: gorunurOge,
+          menuToplam: ogeler.length,
+          // 12px altı yazı sayısı (telefonda okunmuyor)
+          kucukYazi,
         };
       });
 
-      const durum = sonuc.yatay ? '⚠ YATAY KAYDIRMA' : '✓';
-      const cikis = sonuc.cikisErisilebilir ? '' : ' · ⚠ ÇIKIŞ BUTONU ERİŞİLEMEZ';
-      console.log(`  ${modul.padEnd(10)} ${durum}  scrollW=${sonuc.scrollW}/${sonuc.viewport}${cikis}`);
+      const uyari: string[] = [];
+      if (sonuc.yatay) uyari.push('SAYFA YATAY KAYIYOR');
+      if (!sonuc.cikisErisilebilir) uyari.push('ÇIKIŞ ERİŞİLEMEZ');
+      // Tablo kutusundan geniş olması KENDİ İÇİNDE kaydırma demek — dar ekranda
+      // kabul edilebilir sınır: kutunun 1,5 katı. Ötesi "incelemek zor".
+      if (sonuc.tabloKayiyor && sonuc.tabloEn > sonuc.kutuEn * 1.5)
+        uyari.push(`TABLO ${sonuc.tabloEn}px/${sonuc.kutuEn}px`);
+      if (sonuc.satirYuk > 110) uyari.push(`SATIR ${sonuc.satirYuk}px`);
+      if (sonuc.menuToplam > 0 && sonuc.menuGorunur < sonuc.menuToplam - 1)
+        uyari.push(`MENÜ ${sonuc.menuGorunur}/${sonuc.menuToplam}`);
+      if (sonuc.kucukYazi > 0) uyari.push(`${sonuc.kucukYazi} öğe <12px`);
+
+      const durum = uyari.length ? `⚠ ${uyari.join(' · ')}` : '✓';
+      console.log(`  ${modul.padEnd(10)} ${durum}`);
       for (const t of sonuc.tasan) {
         console.log(`      taşan: <${t.etiket} class="${t.sinif}"> genişlik ${t.en}`);
       }
-      if (sonuc.yatay || !sonuc.cikisErisilebilir) hataSayisi++;
+      if (uyari.length) hataSayisi++;
     }
 
     if (sayfaHatalari.length) {
