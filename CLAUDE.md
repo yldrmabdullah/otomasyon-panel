@@ -2,6 +2,11 @@
 
 > Bu alt-projede herhangi bir şey yapmadan önce bunu oku. Bu, ParkoilProd içinde **ayrı,
 > bağımsız** bir otomasyon projesi. BFF (API/) veya b2b/ ile aynı DB'yi paylaşmaz.
+>
+> ## ⭐ ÖNCE [`DEVAM.md`](DEVAM.md) OKU
+> Oturumlar arası devir teslim dosyası: canlı adres, local'de ayağa kaldırma,
+> **yarın ilk bakılacaklar**, sıradaki işler ve bugün çözülmüş tuzaklar orada.
+> Bu dosya (CLAUDE.md) kalıcı mimariyi, `DEVAM.md` **anlık durumu** anlatır.
 
 ## Bu proje nedir
 
