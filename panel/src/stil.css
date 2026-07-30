@@ -733,17 +733,28 @@ td.yok { color: var(--soluk-2); font-style: italic; }
 }
 
 @media (max-width: 860px) {
-  .uygulama { grid-template-columns: 1fr; }
+  .uygulama { grid-template-columns: minmax(0, 1fr); }
   .kenar {
     position: sticky; top: 0; height: auto; flex-direction: row; align-items: center;
     padding: 10px var(--s-4); border-right: none; border-bottom: 1px solid var(--cizgi);
     z-index: 30; gap: var(--s-2);
+    /* ⚠️ KRİTİK (2026-07-30, gerçek tarayıcıda ölçüldü): bunlar olmadan şerit
+       İÇERİĞİ kadar genişliyordu — 430px viewport'ta .kenar 770px oluyor ve TÜM
+       sayfayı yatay kaydırmaya sokuyordu (kartlar/tazelik şeridi kesik görünüyor,
+       sebep içerik değil MENÜ). Flex öğesinin varsayılanı min-width:auto, yani
+       içeriğinden küçülmez; nav 533px + dip 93px yan yana sığmayınca şerit büyür. */
+       `overflow-x: clip` kullanılır, `hidden` DEĞİL: hidden bir kaydırma bağlamı
+       kurar ve `position: sticky`'yi bozabilir; clip sadece kırpar. */
+    min-width: 0; max-width: 100%; overflow-x: clip;
   }
   .marka { padding: 0 10px 0 0; flex-direction: row; align-items: center; }
   .marka-yazi { display: none; }
   .marka-logo-img { width: 86px; }
   .kenar-nav {
-    flex-direction: row; gap: var(--s-1); flex: 1;
+    flex-direction: row; gap: var(--s-1); flex: 1 1 0;
+    /* flex-basis 0 + min-width 0: nav kendi içinde kayar, şeridi GENİŞLETMEZ.
+       `flex: 1` (basis auto) içerik genişliğini taban alıyordu → şerit taşıyordu. */
+    min-width: 0;
     overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity;
   }
   .kenar-nav::-webkit-scrollbar { display: none; }

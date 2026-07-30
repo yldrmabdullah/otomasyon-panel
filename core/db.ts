@@ -362,6 +362,35 @@ export async function transferleriTespitEt(bugun: string): Promise<number> {
     );
     return -1;
   }
+  // DAĞITICI BÜTÜNLÜĞÜ — satır oranından ÖNCE kontrol edilir.
+  //
+  // ⚠️ NEDEN GEREKLİ (2026-07-30, canlıda yakalandı): sabahki çekim 27.484/30.307'de
+  // yarıda kesildi. Oran %90,7 → satır kontrolünün %90 eşiğini KIL PAYI GEÇİYORDU ve
+  // tespit çalışsaydı eksik 2.823 bayi hayalet "ayrildi" olarak yazılacaktı.
+  // Satır oranı tek başına yetersiz: 32 dağıtıcıdan biri tamamen eksik olsa bile
+  // (ör. küçük bir dağıtıcı) oran %90'ın üstünde kalabilir.
+  // Dağıtıcı KÜMESİ karşılaştırmak bunu yakalar — eksik dağıtıcı = eksik çekim.
+  const dagR = await p.query<{ gun: string; dagiticilar: string[] }>(
+    `SELECT snapshot_gun::text gun, array_agg(DISTINCT dagitim_sirketi) dagiticilar
+     FROM bayi_snapshot WHERE snapshot_gun IN ($1,$2) AND dagitim_sirketi IS NOT NULL
+     GROUP BY snapshot_gun`,
+    [onceki, bugun],
+  );
+  const dag = new Map(dagR.rows.map((r) => [r.gun, new Set(r.dagiticilar)]));
+  const oncekiDag = dag.get(onceki) ?? new Set<string>();
+  const bugunDag = dag.get(bugun) ?? new Set<string>();
+  const eksikDag = [...oncekiDag].filter((d) => !bugunDag.has(d));
+  if (oncekiDag.size > 0 && eksikDag.length > 0) {
+    console.warn(
+      `⚠ Transfer tespiti ATLANDI — ${eksikDag.length} DAĞITICI EKSİK (çekim yarıda kesilmiş).\n` +
+        `   ${bugun}: ${bugunDag.size} dağıtıcı · ${onceki}: ${oncekiDag.size} dağıtıcı\n` +
+        `   Eksik: ${eksikDag.slice(0, 5).join(', ')}${eksikDag.length > 5 ? ` … (+${eksikDag.length - 5})` : ''}\n` +
+        `   Bu dağıtıcıların TÜM bayileri hayalet "ayrildi" olarak yazılırdı.\n` +
+        `   Çekimi tamamla ya da bu günü sil: DELETE FROM bayi_snapshot WHERE snapshot_gun='${bugun}';`,
+    );
+    return -1;
+  }
+
   if (oncekiSayi > 0 && bugunSayi < oncekiSayi * SNAPSHOT_BUTUNLUK_ORANI) {
     const yuzde = ((bugunSayi / oncekiSayi) * 100).toFixed(1);
     console.warn(

@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx",
     "panel:api": "tsx araclar/panelSunucu.ts",
-    "kullanici": "tsx araclar/kullaniciHash.ts"
+    "kullanici": "tsx araclar/kullaniciHash.ts",
+    "mobil": "tsx araclar/mobilTest.ts"
   },
   "dependencies": {
     "fast-xml-parser": "^4.5.0",
@@ -26,6 +27,7 @@
     "@types/node": "^22.10.2",
     "@types/nodemailer": "^6.4.17",
     "@types/pg": "^8.11.10",
+    "playwright": "^1.62.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vercel": "^58.1.0"

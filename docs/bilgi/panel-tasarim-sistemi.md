@@ -283,3 +283,37 @@ Doğrulananlar:
 
 ⚠️ **TypeScript tuzağı:** plaka kodlarını `[09, 'AYDIN', ...]` diye yazmak **sekizlik
 literal** hatası verir (TS1121). Öneki sıfır kullanılmaz; gösterimde `padStart(2,'0')`.
+
+## ⭐ MOBİL TAŞMANIN KÖK NEDENİ: menü şeridi, içerik değil (2026-07-30)
+
+Kullanıcı 430px ekran görüntüsü gönderdi: kartlar ve tazelik şeridi sağa kesik.
+**Sebep içerik değildi.** Gerçek tarayıcıda ölçünce çıktı:
+
+`.kenar` (mobil menü şeridi) **430px viewport'ta 770px** genişliğindeydi. Sayfa bu yüzden
+yatay kayıyordu, içerik de onunla birlikte. Kırılım: `.kenar-nav` 533px + `.kenar-dip` 93px
+yan yana, ve şerit küçülmüyor.
+
+**Neden:** flex öğesinin varsayılanı `min-width: auto` — yani **içeriğinden küçülmez.**
+`flex: 1` de `flex-basis: auto` demek, yani taban içerik genişliği. Üç düzeltme:
+
+```css
+.kenar     { min-width: 0; max-width: 100%; overflow-x: clip; }
+.kenar-nav { flex: 1 1 0; min-width: 0; }   /* basis 0 → içerik tabanı değil */
+.uygulama  { grid-template-columns: minmax(0, 1fr); }
+```
+
+`overflow-x: clip` kullanıldı, **`hidden` değil**: hidden bir kaydırma bağlamı kurar ve
+`position: sticky`'yi bozabilir; clip sadece kırpar. Doğrulandı: sticky korundu, menü
+kendi içinde kayıyor (570>193), çıkış butonu erişilebilir.
+
+### Ders: yerleşim iddiaları statik analizle kanıtlanamaz
+
+Bu hata iki kez gözden kaçtı çünkü **CSS kurallarını okuyup "doğru görünüyor" dedim.**
+Kurallar gerçekten doğruydu — eksik olan tek satır (`min-width: 0`) hiçbir kuralın
+içinde görünmüyordu, çünkü *yokluğu* sorundu.
+
+→ `araclar/mobilTest.ts` eklendi (playwright, devDependency). `scrollWidth > clientWidth`
+ölçer ve taşan ÖĞEYİ adlandırır. Kendi içinde kaydırılabilir öğeler (`.tablo-sar`) taşma
+saymaz — onlar bilinçli. Çalıştır: `PANEL_SIFRE=<sifre> npm run mobil`
+
+**Son ölçüm: 6 cihaz (320-1024px) × 4 modül = 24/24 temiz.**

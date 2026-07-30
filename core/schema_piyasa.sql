@@ -36,11 +36,23 @@ CREATE TABLE IF NOT EXISTS bayiler_epdk (
   lisans_bitis         DATE,
   sozlesme_baslangic   DATE,               -- dağıtıcıyla sözleşme başlangıcı
   sozlesme_bitis       DATE,
+  -- Lisans iptal/sonlandırma bilgisi. EPDK: iptalSonaErdirmeTarihi/Aciklama.
+  -- ⚠️ ONAYLANDI kayıtlarda tanım gereği BOŞ; yalnız SONLANDIRILDI/IPTAL_EDILDI
+  -- durumlarında dolu (%95+). İzleme modülü "kapandı" kategorisi bunu kullanıyor.
+  iptal_tarihi         DATE,
+  iptal_aciklama       TEXT,
   ilk_gorulme          TIMESTAMPTZ NOT NULL DEFAULT now(),
   guncelleme           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS ix_bayi_dagitim ON bayiler_epdk (dagitim_sirketi);
 CREATE INDEX IF NOT EXISTS ix_bayi_il ON bayiler_epdk (il);
+
+-- Şema kayması onarımı: bu iki kolon canlıya `db.ts` üzerinden elle eklenmişti ama
+-- şema dosyasına yazılmamıştı (2026-07-30'da fark edildi). Sıfırdan migrate edilen
+-- ortamda `bayileriKaydet` "column does not exist" ile patlıyordu. Mevcut kurulumlar
+-- için idempotent ALTER — CREATE TABLE IF NOT EXISTS var olan tabloyu değiştirmez.
+ALTER TABLE bayiler_epdk ADD COLUMN IF NOT EXISTS iptal_tarihi   DATE;
+ALTER TABLE bayiler_epdk ADD COLUMN IF NOT EXISTS iptal_aciklama TEXT;
 
 -- Günlük snapshot — her gün her bayinin hangi dağıtıcıda/durumda olduğu. Transfer bundan türetilir.
 --
