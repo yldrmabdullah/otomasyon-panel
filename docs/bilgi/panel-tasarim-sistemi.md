@@ -244,9 +244,31 @@ birlikte güncellenmeli, ayrı iş.
 
 ## Türkiye il haritası (Harita.tsx)
 
-**NEDEN IZGARA, GERÇEK SINIR DEĞİL:** il sınırı GeoJSON'u 1-3 MB; Leaflet + tile sunucusu
-internet bağımlılığı getirir ve panelin "kendi kendine yeten" ilkesini bozar. 81 il coğrafi
-konumuna YAKLAŞIK bir 18×9 ızgaraya yerleştirildi. Maliyet: **+4 KB** (Leaflet ~150 KB olurdu).
+### ⚠️ IZGARA DENEMESİ REDDEDİLDİ (2026-07-30) — sonra gerçek sınırlara geçildi
+
+İlk sürüm 81 ili bir **18×9 ızgaraya** yerleştiriyordu, "coğrafi konumlarına yaklaşık"
+gerekçesiyle. **Sonuç Türkiye'ye benzemiyordu:** Sinop tek başına tepede, Trakya Anadolu'ya
+bitişik, Hakkari/Iğdır kopuk adalar gibi. Kullanıcı haklı olarak reddetti.
+
+**Ders:** "yaklaşık" diyerek geçilen GÖRSEL bir çıktı, ölçülmeden/bakılmadan kabul
+edilemez. Sayısal doğrulama (81 il tam, çakışma yok, adlar eşleşiyor) yapılmıştı ama
+**şeklin kendisi** hiç denetlenmemişti — hâlbuki bakınca anlaşılan bir hataydı.
+
+**Şimdiki çözüm — gerçek il sınırları:**
+`panel/src/haritaYollari.ts` (81 il, 5.956 nokta, **70 KB**), `araclar/haritaUret.ts`
+ile GeoJSON'dan üretiliyor. Kaynak: github.com/cihadturhan/tr-geojson. Dış istek YOK
+(Leaflet + tile sunucusu ~150 KB + internet bağımlılığı olurdu). Bundle: gzip 110 KB.
+
+Projeksiyon: eşit dikdörtgen + orta enlem (39°) kosinüs düzeltmesi — bu çarpan olmadan
+harita yatay olarak ~%29 gerilir. En/boy oranı korunur (çarpılma yok).
+
+**Bu kez şekil de doğrulandı — 8 coğrafya testi geçti:**
+Edirne x=47 (batı) · Van x=944 (doğu) · Sinop y=24 (kuzey) · Antalya y=382 (güney) ·
+Ankara ortada. Testler: Edirne<Van, Sinop<Antalya (kuzey), İstanbul<Ankara,
+Hakkari>Şanlıurfa, İzmir<Antalya, Ankara merkeze yakın.
+
+Haritada plaka/sayı METNİ YOK: 81 ilin şekli farklı, küçük illere metin sığmıyor ve
+üst üste biniyordu. Sayı hover/odak şeridinde veriliyor.
 
 Doğrulananlar:
 - 81 il tam, plaka/ad tekil, ızgara çakışması yok (betikle denetlendi)

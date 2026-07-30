@@ -927,40 +927,30 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 .harita-kutu.k5 { background: var(--r0); }
 
 /* Dar ekranda harita küçülür ama okunur kalır → yatay kaydırma yerine ölçekleme */
-.harita-sar { width: 100%; overflow-x: auto; }
-.harita-svg { width: 100%; height: auto; min-width: 520px; display: block; }
+.harita-sar { width: 100%; }
+/* Gerçek harita geniş oranlı (1000x420 ≈ 2.4:1) → dar ekranda da şekli
+   tanınır kalır, min-width'e gerek yok: sayfa yatay kaymaz. */
+.harita-svg { width: 100%; height: auto; display: block; }
 
-.harita-il rect {
-  fill: var(--panel-3); stroke: var(--cizgi); stroke-width: 1;
+/* Gerçek il sınırları — <path> boyanır. Izgara döneminin rect/text seçicileri
+   kaldırıldı (plaka/sayı metni artık haritada YOK; sayı hover şeridinde veriliyor —
+   81 ilin şekli farklı, küçük illere metin sığmıyor ve üst üste biniyordu). */
+.harita-il {
+  fill: var(--panel-3); stroke: var(--panel); stroke-width: 1;
   transition: fill .12s, stroke .12s;
+  cursor: default; outline: none;
 }
-.harita-il.k1 rect { fill: var(--r5); } .harita-il.k2 rect { fill: var(--r4); }
-.harita-il.k3 rect { fill: var(--r3); } .harita-il.k4 rect { fill: var(--r2); }
-.harita-il.k5 rect { fill: var(--r0); }
-.harita-il { cursor: default; }
-.harita-il:hover rect, .harita-il.sec rect { stroke: var(--metin); stroke-width: 2; }
-.harita-il:focus { outline: none; }
-.harita-il:focus-visible rect { stroke: var(--accent); stroke-width: 2.5; }
+.harita-il.k1 { fill: var(--r5); } .harita-il.k2 { fill: var(--r4); }
+.harita-il.k3 { fill: var(--r3); } .harita-il.k4 { fill: var(--r2); }
+.harita-il.k5 { fill: var(--r0); }
 
-.harita-plaka {
-  text-anchor: middle; font-size: 13px; font-weight: 600;
-  fill: var(--metin-2); pointer-events: none; font-variant-numeric: tabular-nums;
+/* Vurgu: komşu illerden ayrılsın diye kalın kontur + öne alma */
+.harita-il:hover, .harita-il.sec {
+  stroke: var(--metin); stroke-width: 2;
+  /* SVG'de z-index yok; paint order son çizilene ait → hover'ı öne almak için
+     yol yeniden sıralanmalı. Bunun yerine kalın kontur yeterli görünürlük veriyor. */
 }
-/* Dolu hücrede metin rengi — HER TEMA İÇİN AYRI, çünkü ramp yönü ters:
-   koyu temada k1 en AÇIK (#ffaab0) → koyu metin; açık temada k1 en KOYU (#661016)
-   → beyaz metin. Tek sabit atama bir temada kesin kalır (ölçüldü: 1.29:1).
-   Aşağıdaki her eşleşme WCAG AA (>=4.5) doğrulandı 2026-07-30.
-   Kademe değişkeni --harita-ink ile tek yerden verilir. */
-.harita-il.k1 { --harita-ink: #16202e; }  /* koyu tema: 9.08 */
-.harita-il.k2 { --harita-ink: #16202e; }  /* 6.84 */
-.harita-il.k3 { --harita-ink: #16202e; }  /* 4.96 */
-.harita-il.k4 { --harita-ink: #ffffff; }  /* 5.00 */
-.harita-il.k5 { --harita-ink: #ffffff; }  /* 8.35 */
-.harita-il .harita-plaka, .harita-il .harita-sayi { fill: var(--harita-ink, var(--metin-2)); }
-.harita-sayi {
-  text-anchor: middle; font-size: 12px; font-weight: 700;
-  pointer-events: none; font-variant-numeric: tabular-nums;
-}
+.harita-il:focus-visible { stroke: var(--accent); stroke-width: 2.5; }
 
 .harita-bilgi {
   margin: var(--s-3) 0 0; padding: 8px 12px; min-height: 38px;
@@ -968,21 +958,6 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   font-size: var(--t-sm); line-height: 1.4;
 }
 
-/* Açık temada ramp YÖNÜ TERS (k1 en koyu) → metin renkleri de ters çevrilir.
-   Ölçüm: k1 beyaz 12.72 · k2 8.92 · k3 6.11 · k4 5.06 · k5 koyu 7.89 (hepsi AA).
-   İki seçici birlikte: sistem tercihi + kullanıcının tema düğmesi. */
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme='dark']) .harita-il.k1,
-  :root:not([data-theme='dark']) .harita-il.k2,
-  :root:not([data-theme='dark']) .harita-il.k3,
-  :root:not([data-theme='dark']) .harita-il.k4 { --harita-ink: #ffffff; }
-  :root:not([data-theme='dark']) .harita-il.k5 { --harita-ink: #16202e; }
-}
-:root[data-theme='light'] .harita-il.k1,
-:root[data-theme='light'] .harita-il.k2,
-:root[data-theme='light'] .harita-il.k3,
-:root[data-theme='light'] .harita-il.k4 { --harita-ink: #ffffff; }
-:root[data-theme='light'] .harita-il.k5 { --harita-ink: #16202e; }
 
 /* Harita mobilde: min-width 520px korunur (altında plaka okunmaz) → yatay kaydırma
    BİLİNÇLİ, .harita-sar içinde kalır, sayfa gövdesi kaymaz. */
