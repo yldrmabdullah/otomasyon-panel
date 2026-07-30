@@ -18,6 +18,11 @@ const BAYI_KOLONLARI: KolonTanim[] = [
   { id: 'durum', ad: 'Durum', varsayilan: true },
   { id: 'kategori', ad: 'Kategori', varsayilan: false },
   { id: 'epdk', ad: 'EPDK No', varsayilan: false },
+  // "Bize geliş" = bayinin bizimle sözleşme imzaladığı gün (EPDK
+  // dagiticiIleYapilanSozlesmeBaslangicTarihi). 167 aktif bayimizde %100 dolu.
+  // ⚠️ RAKİP bayilerde bu tarih RAKİPLE yapılan sözleşmedir — kolon adı bu yüzden
+  // "Sözleşme Başl." (nötr); "Bize geliş" yalnız kendi bayilerimiz için doğru olur.
+  { id: 'sozlesmeBas', ad: 'Sözleşme Başl.', varsayilan: false },
   { id: 'sozlesme', ad: 'Sözleşme Bitiş', varsayilan: false },
 ];
 
@@ -53,14 +58,14 @@ interface PiyasaVeri {
 interface Bayi {
   bayi_lisans_no: string; lisans_sahibi: string | null; dagitim_sirketi: string | null;
   il: string | null; ilce: string | null; lisans_durumu: string | null;
-  kategori: string | null; sozlesme_bitis: string | null;
+  kategori: string | null; sozlesme_baslangic: string | null; sozlesme_bitis: string | null;
 }
 // Sıralanabilir alanlar. Sıralama/filtreleme/arama SUNUCUDA yapılır
 // (core/panelSorgu.ts, whitelist'li ORDER BY) — client'ta 30 bin satır
 // tutulmadığı için Intl.Collator ve _ara ön-normalizasyonuna gerek kalmadı.
 type SiralamaAlan =
   | 'lisans_sahibi' | 'dagitim_sirketi' | 'il' | 'ilce'
-  | 'lisans_durumu' | 'kategori' | 'bayi_lisans_no' | 'sozlesme_bitis';
+  | 'lisans_durumu' | 'kategori' | 'bayi_lisans_no' | 'sozlesme_baslangic' | 'sozlesme_bitis';
 
 function gunFark(iso: string): string {
   const g = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
@@ -683,6 +688,15 @@ function TumBayiler(p: {
                     {kol.gorunurMu('durum') && SiraBas({ alan: 'lisans_durumu', ad: 'Durum' })}
                     {kol.gorunurMu('kategori') && SiraBas({ alan: 'kategori', ad: 'Kategori' })}
                     {kol.gorunurMu('epdk') && SiraBas({ alan: 'bayi_lisans_no', ad: 'EPDK No' })}
+                    {/* "Sadece bizim" filtresi açıkken bu tarih kesin olarak BİZE geliş
+                        tarihidir → başlık netleşir. Tüm piyasa görünümünde rakiple
+                        yapılan sözleşmeyi de kapsadığı için nötr kalır. */}
+                    {kol.gorunurMu('sozlesmeBas') &&
+                      SiraBas({
+                        alan: 'sozlesme_baslangic',
+                        ad: sorgu.sadeceBiz ? 'Bize Geliş' : 'Sözleşme Başl.',
+                        sag: true,
+                      })}
                     {kol.gorunurMu('sozlesme') && SiraBas({ alan: 'sozlesme_bitis', ad: 'Sözleşme Bitiş', sag: true })}
                   </tr>
                 </thead>
@@ -707,6 +721,17 @@ function TumBayiler(p: {
                         )}
                         {kol.gorunurMu('kategori') && <td className="soluk">{b.kategori ?? <Bos />}</td>}
                         {kol.gorunurMu('epdk') && <td className="mono soluk">{b.bayi_lisans_no}</td>}
+                        {kol.gorunurMu('sozlesmeBas') && (
+                          <td className="sag mono soluk">
+                            {b.sozlesme_baslangic ? (
+                              <time dateTime={b.sozlesme_baslangic.slice(0, 10)}>
+                                {trTarih(b.sozlesme_baslangic)}
+                              </time>
+                            ) : (
+                              <Bos />
+                            )}
+                          </td>
+                        )}
                         {kol.gorunurMu('sozlesme') && (
                           <td className="sag mono soluk">
                             {b.sozlesme_bitis ? (

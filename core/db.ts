@@ -7,6 +7,24 @@ import { epdkNo } from './asisClient.js';
 
 const { Pool } = pg;
 
+/**
+ * DATE alanlarını STRING olarak oku — `Date` nesnesine çevirme.
+ *
+ * ⚠️ NEDEN (2026-07-30, canlıda yakalandı): `pg` varsayılan olarak `DATE`'i
+ * yerel-saatli `Date` nesnesine çeviriyor. `2025-02-11` → `2025-02-10T21:00:00Z`
+ * (TR = UTC+3). API yanıtı JSON'a `toISOString()` ile yazıldığında tarih
+ * **BİR GÜN GERİYE KAYIYOR**: DB'de 11 Şubat, API'de 10 Şubat.
+ *
+ * Ekranda fark görünmüyordu çünkü `trTarih()` yerel saatle biçimlendirip günü
+ * geri düzeltiyor — ama `<time dateTime="2025-02-10">` özniteliği (makine-okur
+ * değer, ekran okuyucu + sıralama) yanlış kalıyordu. Sözleşme başlangıç/bitiş
+ * gibi alanlarda bir günlük kayma sözleşme takibinde kabul edilemez.
+ *
+ * DATE saat taşımaz; string olarak okumak doğru davranış. 1082 = DATE OID.
+ * (TIMESTAMPTZ dokunulmaz — o gerçekten an bilgisi taşır ve Date olması doğru.)
+ */
+pg.types.setTypeParser(1082, (v: string) => v);
+
 let _pool: pg.Pool | null = null;
 
 export function pool(): pg.Pool {

@@ -18,6 +18,9 @@
 // Not: kendi içinde kaydırılabilir öğeler (tablolar — `.tablo-sar`) taşma sayılmaz;
 // onlar bilinçli yatay kaydırma alanları.
 
+/// <reference lib="dom" />
+// ⚠️ `page.evaluate` içindeki kod TARAYICIDA çalışır (document/getComputedStyle).
+// Node tsconfig'inde DOM lib yok → yukarıdaki referans olmadan typecheck kırılıyor.
 import { chromium } from 'playwright';
 
 const CIHAZLAR: [number, number, string][] = [
@@ -65,7 +68,9 @@ async function main() {
       const sonuc = await sayfa.evaluate(() => {
         const de = document.documentElement;
         const tasan: { etiket: string; sinif: string; en: number }[] = [];
-        for (const el of document.querySelectorAll('body *')) {
+        // Array.from: NodeListOf iterasyonu Node tsconfig'inde (downlevelIteration
+        // kapalı) tip hatası veriyor; davranış aynı.
+        for (const el of Array.from(document.querySelectorAll('body *'))) {
           const k = el.getBoundingClientRect();
           if (k.width === 0) continue;
           if (k.right <= de.clientWidth + 1) continue;

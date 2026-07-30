@@ -161,3 +161,48 @@ arkadaki **kaynağın** yaşı. İkisi ayrı şey.
 
 **Çıkış kodları** (job'un çarpı vermesi kasıtlı): 0 başarılı · 2 transfer tespiti yapılmadı
 (bütünlük koruması) · 1 çekim hatası. 2 ve 1 sessizce "başarılı" görünmemeli.
+
+## "Bize geliş" kolonu + DATE saat kayması bug'ı (2026-07-30)
+
+### Kolon eklendi: sözleşme başlangıcı
+Kullanıcı "bize geliş / bizden gidiş tarihi" istedi. EPDK'nın verdiği:
+
+| İstenen | Kaynak | Durum |
+|---|---|---|
+| **Bize geliş** | `sozlesme_baslangic` (EPDK `dagiticiIleYapilanSozlesmeBaslangicTarihi`) | ✅ 167 aktif bayimizde **167/167 dolu** |
+| Sözleşme bitiş | `sozlesme_bitis` | ✅ %100 |
+| **Bizden gidiş** | — | ❌ **EPDK VERMİYOR** |
+| Not/açıklama | `iptal_aciklama` | ❌ kaybedilen 49 bayide %0 (ONAYLANDI'da tanım gereği boş) |
+
+Güvenilirlik: Turgut dağıtıcı lisansı 29.01.2025 başlıyor, en eski bayi sözleşmesi
+11.02.2025 — lisanstan ÖNCE sözleşmesi olan bayi 0. Tutarlı.
+
+**⚠️ KOLON ADI KOŞULLU:** rakip bayilerde bu tarih RAKİPLE yapılan sözleşmedir.
+Bu yüzden başlık "Sadece bizim" filtresi açıkken **"Bize Geliş"**, tüm piyasa
+görünümünde nötr **"Sözleşme Başl."** olur. Sabit "Bize Geliş" yazmak 30 bin rakip
+bayi için yanlış bilgi olurdu.
+
+### ❌ EPDK GEÇMİŞ TUTMUYOR — "gidiş tarihi" alınamaz
+Canlı test: bayi dağıtıcı değiştirince EPDK kaydını **yeni dağıtıcıya taşıyor**, eskisinde
+iz bırakmıyor. Turgut'un tüm-durum listesinde (207 kayıt) kaybedilen 49 bayiden **kesişim 0**.
+Her lisans no yanıtta tam bir kez geçiyor.
+→ Gidiş tarihi ancak KENDİ günlük snapshot'ımızla öğrenilir (`transferler.tespit_gun`),
+28 Temmuz 2026'dan itibaren ve günlük çekim düzenli çalışırsa.
+
+### ⚠️⚠️ BULUNAN BUG: pg sürücüsü DATE'i BİR GÜN GERİ kaydırıyordu
+
+`pg` varsayılan olarak `DATE`'i yerel-saatli `Date` nesnesine çeviriyor:
+`2025-02-11` → `2025-02-10T21:00:00Z` (TR = UTC+3). API JSON'a `toISOString()` ile
+yazınca tarih **bir gün geriye kayıyordu**: DB'de 11 Şubat, API'de **10 Şubat**.
+
+Ekranda fark GÖRÜNMÜYORDU çünkü `trTarih()` yerel saatle biçimlendirip günü geri
+düzeltiyor — ama `<time dateTime="2025-02-10">` özniteliği (makine-okur değer,
+ekran okuyucunun okuduğu) yanlış kalıyordu. Sözleşme takibinde bir günlük kayma
+kabul edilemez.
+
+**Çözüm:** `core/db.ts` başında `pg.types.setTypeParser(1082, v => v)` — DATE (OID 1082)
+string olarak okunur. DATE saat taşımaz, string doğru davranış. TIMESTAMPTZ dokunulmadı
+(o gerçekten an bilgisi taşır, Date olması doğru).
+
+**Bu düzeltme TÜM tarih alanlarını etkiliyor:** sözleşme başlangıç/bitiş, lisans
+tarihleri, iptal tarihi. Doğrulandı: API artık 2025-02-11 (DB'deki gerçek değer).

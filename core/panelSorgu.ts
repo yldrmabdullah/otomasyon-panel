@@ -201,6 +201,9 @@ export interface BayiSorgu {
 const SIRALANABILIR = new Set([
   'lisans_sahibi', 'dagitim_sirketi', 'il', 'ilce',
   'lisans_durumu', 'kategori', 'bayi_lisans_no', 'sozlesme_bitis',
+  // "Bize geliş" kolonu — bayinin bizimle sözleşme imzaladığı gün.
+  // Whitelist ZORUNLU: ORDER BY doğrudan dizeye giriyor.
+  'sozlesme_baslangic',
 ]);
 
 /**
@@ -232,7 +235,8 @@ export async function bayiVerisi(p: Pool, s: BayiSorgu = {}) {
   const sayfa = Math.max(1, Number(s.sayfa) || 1);
 
   const r = await p.query(
-    `SELECT bayi_lisans_no,lisans_sahibi,dagitim_sirketi,il,ilce,lisans_durumu,kategori,sozlesme_bitis,
+    `SELECT bayi_lisans_no,lisans_sahibi,dagitim_sirketi,il,ilce,lisans_durumu,kategori,
+            sozlesme_baslangic,sozlesme_bitis,
             count(*) OVER() AS toplam
      FROM bayiler_epdk ${where}
      ORDER BY ${kolon} ${yon} NULLS LAST
