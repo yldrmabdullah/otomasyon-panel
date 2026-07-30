@@ -206,3 +206,36 @@ string olarak okunur. DATE saat taşımaz, string doğru davranış. TIMESTAMPTZ
 
 **Bu düzeltme TÜM tarih alanlarını etkiliyor:** sözleşme başlangıç/bitiş, lisans
 tarihleri, iptal tarihi. Doğrulandı: API artık 2025-02-11 (DB'deki gerçek değer).
+
+## ⭐ Cron neden yarıda kesildi — KÖK NEDEN ÖLÇÜLDÜ (2026-07-30)
+
+İlk gerçek koşu `cancelled` oldu. GH Actions log'undan tam neden:
+
+| Ölçüm | Değer |
+|---|---|
+| Başlangıç → 30. dağıtıcı | **115 dk** (26.740 bayi) |
+| Kesilme | 120. dakikada (`timeout-minutes: 120`) |
+| Ortalama | **3,8 dk/dağıtıcı** |
+| 32 dağıtıcı için gereken | **~123 dk** |
+
+**Yani arıza yok — benim koyduğum limit %3 eksikti.** Teorik hesap (throttle üzerinden
+~70 dk) gerçeğin yarısıydı. `timeout-minutes: 120 → 240` (ölçülen sürenin ~2 katı pay).
+Log'da hiç `throttle` satırı yok — yani yavaşlık throttle'dan değil, EPDK'nın normal
+yanıt süresinden geliyor.
+
+### İKİ KATMANLI TEMİZLİK (yarım snapshot artık kalmaz)
+
+Yarım snapshot ZARARLI: 27.484/30.307 = %90,7, bütünlük eşiği %90 → **kıl payı geçiyordu**
+ve 2.823 hayalet "ayrildi" kaydı üretebilirdi.
+
+1. **SIGTERM handler** (`piyasaCek.ts`): CI timeout'ta ya da elle iptalde sinyal yakalanır,
+   o günün snapshot'ı silinir, çıkış kodu 143.
+   ⚠️ **Windows'ta doğrulanamadı** (POSIX sinyalleri güvenilir değil). GH Actions runner'ı
+   Ubuntu olduğu için orada çalışması beklenir ama **canlıda teyit edilmedi.**
+2. **Başlangıç temizliği** (aynı dosya, adım 0): her koşu, o güne ait mevcut snapshot'ı
+   silerek başlar. Sinyale DEĞİL bir sonraki koşuya dayandığı için SIGKILL/runner çökmesi
+   durumunda da işler. **Canlı test edildi:** 246 satırlık yarım snapshot bırakıldı, sonraki
+   koşu `"246 eski satır silindi (yarım kalmış önceki koşu)"` yazıp temiz başladı.
+   Çekim sıfırdan yazdığı için silme kayıp değil.
+
+`core/db.ts` → `snapshotSil(gun)` eklendi.

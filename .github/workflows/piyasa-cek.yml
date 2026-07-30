@@ -32,9 +32,13 @@ concurrency:
 jobs:
   cekim:
     runs-on: ubuntu-latest
-    # EPDK throttle'ı kötü günde 15 deneme × 9 sn/çağrı → teorik ~70 dk.
-    # 120 dk tavan: takılırsa runner'ı saatlerce meşgul etmesin.
-    timeout-minutes: 120
+    # ⚠️ ÖLÇÜLDÜ (2026-07-30, ilk gerçek koşu): çekim 32 dağıtıcı için ~123 dk
+    # sürüyor (30. dağıtıcı 115. dakikada, ortalama 3,8 dk/dağıtıcı, 30.307 bayi).
+    # İlk denemede limit 120 dk konmuştu → iş 30/32'de `cancelled` oldu ve yarım
+    # snapshot bıraktı. Teorik hesap (70 dk) gerçeğin yarısıydı.
+    # 240 dk: ölçülen sürenin ~2 katı pay. EPDK yavaşlarsa yine bitsin; sonsuz
+    # takılmaya karşı tavan yine var.
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
 

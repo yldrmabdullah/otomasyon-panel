@@ -6,7 +6,7 @@
 // (o dağıtıcının bayisi yok / erişilemedi) atlanır, döngü durmaz. Bugünün snapshot'ı da yazılır.
 
 import { epdk } from '../core/epdkClient.js';
-import { dagiticilariKaydet, bayileriKaydet, transferleriTespitEt, kapat } from '../core/db.js';
+import { dagiticilariKaydet, bayileriKaydet, transferleriTespitEt, snapshotSil, kapat } from '../core/db.js';
 
 // Bugünün günü (TR) — Node ortamında sabit değil, çalışma anına göre. Snapshot anahtarı.
 function bugunTr(): string {
@@ -14,10 +14,56 @@ function bugunTr(): string {
   return tr.toISOString().slice(0, 10);
 }
 
+/** Yarim kalan snapshot'i sil. Cagrildigi yerler: SIGTERM (CI timeout) ve
+ *  eksik dagitici tespiti. */
+async function yarimTemizle(gun: string, sebep: string): Promise<void> {
+  console.error(`
+[TEMIZLIK] ${sebep} -> ${gun} snapshot'i siliniyor (yarim veri birakilmaz).`);
+  try {
+    const n = await snapshotSil(gun);
+    console.error(`[TEMIZLIK] ${n} satir silindi.`);
+  } catch (e) {
+    console.error(`[TEMIZLIK] BASARISIZ: ${e instanceof Error ? e.message : e}`);
+    console.error(`[TEMIZLIK] ELLE SIL: DELETE FROM bayi_snapshot WHERE snapshot_gun='${gun}';`);
+  }
+}
+
 async function main() {
   const tumDurumlar = process.argv.includes('--tum-durumlar');
   const snapshotGun = bugunTr();
+
+  // GH Actions `timeout-minutes` asildiginda SIGTERM gonderir. Yakalanmazsa surec
+  // ortasinda olur ve YARIM SNAPSHOT DB'de kalir.
+  // 2026-07-30'da tam bu oldu: 30/32 dagiticida kesildi, 27.484 satirlik yarim
+  // snapshot kaldi ve elle silinmek zorunda kalindi. Daha kotusu: oran %90,7 ile
+  // butunluk esigini KIL PAYI geciyordu -> 2.823 hayalet "ayrildi" kaydi uretebilirdi.
+  let kapaniyor = false;
+  for (const sinyal of ['SIGTERM', 'SIGINT'] as const) {
+    process.on(sinyal, () => {
+      if (kapaniyor) return; // ikinci sinyalde tekrar girme
+      kapaniyor = true;
+      void (async () => {
+        await yarimTemizle(snapshotGun, `${sinyal} alindi (CI timeout ya da elle iptal)`);
+        await kapat().catch(() => {});
+        process.exit(143);
+      })();
+    });
+  }
+
   console.log(`Piyasa çekim başladı. Snapshot günü: ${snapshotGun}. Durum: ${tumDurumlar ? 'TÜM' : 'ONAYLANDI'}`);
+
+  // 0) BASLANGIC TEMIZLIGI — bugune ait yarim snapshot varsa sil.
+  //
+  // NEDEN IKINCI KORUMA: SIGTERM handler'i (yukarida) surec duzgun sinyal alirsa
+  // calisir, ama SIGKILL / runner'in aniden olmesi / islemci cokmesi durumunda
+  // calismaz. O zaman yarim snapshot DB'de kalir ve ERTESI GUN butunluk kontrolu
+  // bunu "onceki gun" sanip karsilastirir.
+  // Cekim zaten sifirdan yazdigi icin baslangicta silmek KAYIP DEGIL: ayni gun
+  // tekrar cekiliyorsa eski yarim veri gereksiz. Boylece her kosu temiz baslar.
+  const eski = await snapshotSil(snapshotGun);
+  if (eski > 0) {
+    console.log(`Baslangic temizligi: ${snapshotGun} gunune ait ${eski} eski satir silindi (yarim kalmis onceki kosu).`);
+  }
 
   // 1) Dağıtıcılar — HER ZAMAN sadece aktif (ONAYLANDI, 32 firma). Kapanmış 191 dağıtıcının
   //    tarihsel bayilerini çekmek çok uzun ve düşük değerli. tumDurumlar sadece BAYİ durumuna uygulanır

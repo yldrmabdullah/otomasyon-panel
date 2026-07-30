@@ -340,6 +340,20 @@ const SNAPSHOT_BUTUNLUK_ORANI = 0.9;
  * sayısının %10 düşmesi mümkün değil — böyle bir düşüş her zaman veri
  * toplama arızasıdır, piyasa olayı değil.)
  */
+/**
+ * Bir günün snapshot'ını sil. Yarım kalan çekimi temizlemek için.
+ *
+ * ⚠️ Yarım snapshot ZARARLIDIR: bütünlük kontrolünü geçerse binlerce hayalet
+ * "ayrildi" kaydı üretir (2026-07-30: 27.484/30.307 = %90,7, eşik %90 → kıl payı
+ * geçiyordu). Bu yüzden çekim yarıda kesilirse snapshot BIRAKILMAZ, silinir.
+ *
+ * Döner: silinen satır sayısı.
+ */
+export async function snapshotSil(gun: string): Promise<number> {
+  const r = await pool().query('DELETE FROM bayi_snapshot WHERE snapshot_gun = $1', [gun]);
+  return r.rowCount ?? 0;
+}
+
 export async function transferleriTespitEt(bugun: string): Promise<number> {
   const p = pool();
   // Bir önceki snapshot günü (bugünden önceki en yakın)
