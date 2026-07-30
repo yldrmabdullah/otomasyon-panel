@@ -202,3 +202,62 @@ ASIS "hiç veri göndermemiş" için **1900-12-31** döndürüyor. Ham gösteril
 
 Ayrıca bu satırlar **kırmızı ▲▲ ile gösterilmemeli**: veri gelmemesi bir aciliyet değil, bilgi
 eksikliği. Ayrı sınıf `td.yok` (nötr + italik, işaret yok).
+
+## UI tutarlılık denetimi + il haritası (2026-07-30)
+
+### Bulunan 2 gerçek bug (dün eklenen kodda)
+
+1. **`.etiket` sınıfı CSS'te HİÇ YOKTU.** `Operasyon.tsx` rozetleri `className="etiket uyari"`
+   ile yazılmıştı ama projenin rozet sınıfı `.rozet` (stil.css:437). Sonuç: Operasyon →
+   Alarm sekmesindeki **"Eşik ayarı" / "Gerçek arıza" rozetleri renksiz düz metin** olarak
+   çıkıyordu — hem de modülün en önemli kolonu. → `.rozet` yapıldı.
+2. **`var(--kenar)` bir renk token'ı DEĞİL.** Tanımlı olanlar `--kenar-en: 224px` ve
+   `--kenar-yuk: 58px` (uzunluk). Renk yerine kullanınca `border-color` geçersiz olup
+   `currentColor`'a düşüyor → kenarlık metin rengiyle çiziliyor, panelin sessiz
+   `--cizgi` dilinden çok daha belirgin. → `var(--cizgi)` yapıldı (2 yer).
+
+**Ders:** yeni sınıf yazmadan önce `grep` ile o sınıfın CSS'te VAR olduğunu doğrula.
+TypeScript CSS sınıf adını denetlemiyor — yanlış sınıf sessizce stilsiz çıkar.
+
+### Yapısal düzeltme: `basId` prop'u kaldırıldı
+
+`Tablo`'nun `basId?: string` prop'u çağrı tarafında verilmesi UNUTULABİLİYORDU:
+Operasyon'un **5 tablosunda eksikti** → `aria-labelledby` boş kalıp **isimsiz landmark
+region** oluşuyordu (ekran okuyucu "region" der, hangi tablo olduğunu söylemez).
+Artık `Tablo` kendi id'sini `useId()` ile üretiyor → kayma yapısal olarak imkânsız.
+5 çağrıdaki elle id'ler silindi (dışarıdan referans olmadığı doğrulandı).
+
+### Responsive: tazelik şeridi mobilde taşıyordu
+
+Dün eklenen tazelik şeridinin hiç breakpoint kuralı yoktu. 7 kaynak `white-space: nowrap`
+ile tek satırda **~1314 px** sürüyordu → 360-768 px arası TÜM mobil genişliklerde sayfaya
+yatay kaydırma biniyordu. `overflow-x: auto` yanına "taşmasın" yorumu yazılmıştı — **auto
+taşmayı önlemez**, taşınca kaydırma çubuğu ekler. Kaldırıldı; 520px altında 2 sütun ızgara.
+
+Ek kapatılan açıklar: `.rampa-gosterge` (flex-wrap yoktu), `.sifre-deger` (uzun şifre
+karttan taşıyordu → `overflow-wrap: anywhere`).
+
+**AÇIK KALAN (bilinçli):** `.cikis-btn` dokunmatikte 32px (WCAG 44px önerisi altında).
+44px'e çıkarmak `--kenar-yuk: 58px`'i aşar ve bu değer 860px altında **sticky `th` offset'i**
+olarak kullanılıyor (stil.css:764) → tablo başlıkları şeridin arkasına kayar. İkisi
+birlikte güncellenmeli, ayrı iş.
+
+## Türkiye il haritası (Harita.tsx)
+
+**NEDEN IZGARA, GERÇEK SINIR DEĞİL:** il sınırı GeoJSON'u 1-3 MB; Leaflet + tile sunucusu
+internet bağımlılığı getirir ve panelin "kendi kendine yeten" ilkesini bozar. 81 il coğrafi
+konumuna YAKLAŞIK bir 18×9 ızgaraya yerleştirildi. Maliyet: **+4 KB** (Leaflet ~150 KB olurdu).
+
+Doğrulananlar:
+- 81 il tam, plaka/ad tekil, ızgara çakışması yok (betikle denetlendi)
+- İl adları EPDK verisiyle **81/81 birebir** eşleşiyor → hiçbir il haritada kaybolmuyor
+- ⚠️ `bolgesel` sorgusu `WHERE bizim>0` yüzünden yalnız **61 il** döndürüyor; harita için
+  TÜM illeri veren ayrı `haritaIl` alanı eklendi (20 il nötr görünür — "0 bayi" ile
+  "az bayi" aynı renge boyanmaz)
+- Hücre metni kontrastı **her iki tema için ayrı ölçüldü**: ramp yönü ters olduğu için
+  (koyu temada k1 en açık, açık temada k1 en koyu) tek sabit atama bir temada 1.29:1
+  veriyordu. `--harita-ink` değişkeniyle temaya göre çevrildi, 10 kombinasyon da AA (≥4.5).
+- Klavye erişimi: her il `tabIndex=0` + `aria-label`, hover bilgisi `aria-live="polite"`
+
+⚠️ **TypeScript tuzağı:** plaka kodlarını `[09, 'AYDIN', ...]` diye yazmak **sekizlik
+literal** hatası verir (TS1121). Öneki sıfır kullanılmaz; gösterimde `padStart(2,'0')`.

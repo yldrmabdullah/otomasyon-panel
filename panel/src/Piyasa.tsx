@@ -5,6 +5,7 @@ import { KolonSecici, useKolonlar, type KolonTanim } from './KolonSecici.js';
 import { Tablo, type TabloKolon } from './Tablo.js';
 import { Sekmeler } from './Sekme.js';
 import { CubukYatay, IsiIzgara } from './Grafik.js';
+import { Harita } from './Harita.js';
 import { Bos, ModulBar, TazelikSerit, trTarih, useVeri } from './ortak.js';
 import type { Tazelik } from './tipler.js';
 
@@ -42,6 +43,8 @@ interface PiyasaVeri {
   uretim: string; ozet: Ozet;
   dagiticiBayiDagilim: DagiticiBayi[]; ilDagilim: IlDagilim[]; transferler: Transfer[];
   sozlesmeBitecek: SozlesmeBitecek[]; bolgesel: BolgeselSatir[]; beyazAlan: BeyazAlan[];
+  /** Harita: TÜM 81 il (bolgesel yalnız bizim bayimiz olanları verir). */
+  haritaIl?: { il: string; toplam: string; bizim: string }[];
   kaybedilen: Kaybedilen[];
   /** Eski sürüm API'den gelmeyebilir → opsiyonel. */
   tazelik?: Tazelik[];
@@ -400,6 +403,21 @@ export function Piyasa() {
                       limit={12}
                     />
 
+                    {/* Coğrafi bakış — "hangi bölgede bayimiz var" sorusunun
+                        doğrudan cevabı. Izgara tabanlı, dış bağımlılık yok. */}
+                    {(veri.haritaIl ?? veri.bolgesel).length > 0 && (
+                      <Harita
+                        veri={(veri.haritaIl ?? veri.bolgesel).map((b) => ({
+                          il: b.il,
+                          bizim: Number(b.bizim),
+                          toplam: Number(b.toplam),
+                        }))}
+                        olcu="bizim"
+                        baslik="Bayi Dağılımı — Harita"
+                        altBaslik="Plaka kodu + bayi sayımız · bir il üzerine gelin"
+                      />
+                    )}
+
                     {veri.bolgesel.length > 0 && (
                       <IsiIzgara
                         veri={veri.bolgesel}
@@ -441,7 +459,6 @@ export function Piyasa() {
                     {veri.kaybedilen.length > 0 && (
                       <Tablo
                         anahtar="kaybedilen"
-                        basId="kayip-baslik"
                         baslik="Kaybedilen Bayiler"
                         kolonlar={KAYIP_KOLONLARI}
                         satirlar={veri.kaybedilen}
@@ -483,7 +500,6 @@ export function Piyasa() {
                         </div>
                       }
                       anahtar="sozlesme"
-                      basId="soz-baslik"
                       baslik="Sözleşmesi Bitecek Bayiler (6 ay)"
                       kolonlar={SOZLESME_KOLONLARI}
                       /* TAM liste verilir — arama/sıralama tümünde çalışsın, dilimleme
@@ -535,7 +551,6 @@ export function Piyasa() {
                   ) : (
                     <Tablo
                       anahtar="transferler"
-                      basId="tr-baslik"
                       baslik="Bayi Transferleri"
                       kolonlar={TRANSFER_KOLONLARI}
                       satirlar={veri.transferler}

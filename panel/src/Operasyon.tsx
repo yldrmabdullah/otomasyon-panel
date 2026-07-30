@@ -158,9 +158,9 @@ export function Operasyon() {
       // aslında eşik ayarı sorunu olabilir. Ayrım yapılmazsa ekip boşa saha gezer.
       hucre: (k) =>
         k.yanip_sonme ? (
-          <span className="etiket uyari">Eşik ayarı</span>
+          <span className="rozet uyari">Eşik ayarı</span>
         ) : (
-          <span className="etiket krit">Gerçek arıza</span>
+          <span className="rozet krit">Gerçek arıza</span>
         ),
       sirala: (k) => (k.yanip_sonme ? 1 : 0),
       ara: (k) => (k.yanip_sonme ? 'eşik ayarı yanıp sönme' : 'gerçek arıza'),

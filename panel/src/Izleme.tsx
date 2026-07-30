@@ -435,7 +435,6 @@ export function Izleme() {
         <section>
           <Tablo
             anahtar="istasyonlar"
-            basId="ist-baslik"
             baslik="İstasyonlar"
             kolonlar={IST_KOLONLARI}
             satirlar={filtreliIstasyonlar}

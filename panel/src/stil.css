@@ -209,6 +209,9 @@ h1[tabindex='-1']:focus { outline: none; }
   font-size: var(--t-xl); font-weight: 700; letter-spacing: 0.04em; color: var(--metin);
   background: var(--panel); border: 1px dashed var(--cizgi-2); border-radius: var(--r-sm);
   padding: var(--s-2) var(--s-4); user-select: all;
+  /* Üretilen şifre uzunsa 360px'de karttan taşıyordu — kırılma noktası yok
+     (letter-spacing'li tek kelime). `anywhere` taşmayı keser, seçilebilirlik korunur. */
+  overflow-wrap: anywhere; max-width: 100%;
 }
 .sifre-not { font-size: var(--t-sm); color: var(--soluk); flex: 1 1 100%; }
 
@@ -672,7 +675,7 @@ td.yok { color: var(--soluk-2); font-style: italic; }
 :root[data-theme='light'] .isi-hucre.r4, :root[data-theme='light'] .isi-hucre.r5 { color: #fff; }
 
 /* Rampa göstergesi — koyunun ne demek olduğu yazılı olmalı */
-.rampa-gosterge { display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-3); font-size: var(--t-xs); }
+.rampa-gosterge { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-3); font-size: var(--t-xs); }
 .rampa-serit { display: flex; flex: 1; max-width: 180px; height: 8px; border-radius: 2px; overflow: hidden; }
 .rampa-serit span { flex: 1; }
 .rampa-serit .r0 { background: var(--r0); } .rampa-serit .r1 { background: var(--r1); }
@@ -865,7 +868,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   gap: 6px 18px;
   margin: 0;
   padding: 8px 12px;
-  border: 1px solid var(--kenar);
+  border: 1px solid var(--cizgi);
   border-radius: 8px;
   background: var(--panel-2);
   /* ⚠️ Burada `overflow-x: auto` VARDI ve yorumu "dar ekranda taşmasın" diyordu —
@@ -902,4 +905,90 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 
 .tazelik-oge.bayat dt::before {
   content: '▲ ';
+}
+
+/* ── Türkiye il haritası ─────────────────────────────────────────────────────
+   Izgara tabanlı (gerçek sınır değil) — bkz Harita.tsx başındaki gerekçe.
+   Sıralı ramp: --r0..--r5, her iki tema için ayrı doğrulanmış steplerdir.
+   Değer YOKSA nötr kalır: "0 bayi" ile "az bayi" aynı renge boyanmaz. */
+.harita-blok {
+  background: var(--panel); border: 1px solid var(--cizgi); border-radius: var(--r);
+  padding: var(--s-5); margin-bottom: var(--s-5); box-shadow: var(--golge);
+}
+.harita-ust { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; margin-bottom: var(--s-4); }
+.harita-ust h3 { margin: 0; font-size: var(--t-lg); font-weight: 650; }
+.harita-alt { margin: 3px 0 0; color: var(--soluk-2); font-size: var(--t-sm); }
+
+.harita-olcek { display: flex; align-items: center; gap: 4px; }
+.harita-olcek-ad { color: var(--soluk-2); font-size: 11px; }
+.harita-kutu { width: 15px; height: 11px; border-radius: 2px; display: inline-block; }
+.harita-kutu.k1 { background: var(--r5); } .harita-kutu.k2 { background: var(--r4); }
+.harita-kutu.k3 { background: var(--r3); } .harita-kutu.k4 { background: var(--r2); }
+.harita-kutu.k5 { background: var(--r0); }
+
+/* Dar ekranda harita küçülür ama okunur kalır → yatay kaydırma yerine ölçekleme */
+.harita-sar { width: 100%; overflow-x: auto; }
+.harita-svg { width: 100%; height: auto; min-width: 520px; display: block; }
+
+.harita-il rect {
+  fill: var(--panel-3); stroke: var(--cizgi); stroke-width: 1;
+  transition: fill .12s, stroke .12s;
+}
+.harita-il.k1 rect { fill: var(--r5); } .harita-il.k2 rect { fill: var(--r4); }
+.harita-il.k3 rect { fill: var(--r3); } .harita-il.k4 rect { fill: var(--r2); }
+.harita-il.k5 rect { fill: var(--r0); }
+.harita-il { cursor: default; }
+.harita-il:hover rect, .harita-il.sec rect { stroke: var(--metin); stroke-width: 2; }
+.harita-il:focus { outline: none; }
+.harita-il:focus-visible rect { stroke: var(--accent); stroke-width: 2.5; }
+
+.harita-plaka {
+  text-anchor: middle; font-size: 13px; font-weight: 600;
+  fill: var(--metin-2); pointer-events: none; font-variant-numeric: tabular-nums;
+}
+/* Dolu hücrede metin rengi — HER TEMA İÇİN AYRI, çünkü ramp yönü ters:
+   koyu temada k1 en AÇIK (#ffaab0) → koyu metin; açık temada k1 en KOYU (#661016)
+   → beyaz metin. Tek sabit atama bir temada kesin kalır (ölçüldü: 1.29:1).
+   Aşağıdaki her eşleşme WCAG AA (>=4.5) doğrulandı 2026-07-30.
+   Kademe değişkeni --harita-ink ile tek yerden verilir. */
+.harita-il.k1 { --harita-ink: #16202e; }  /* koyu tema: 9.08 */
+.harita-il.k2 { --harita-ink: #16202e; }  /* 6.84 */
+.harita-il.k3 { --harita-ink: #16202e; }  /* 4.96 */
+.harita-il.k4 { --harita-ink: #ffffff; }  /* 5.00 */
+.harita-il.k5 { --harita-ink: #ffffff; }  /* 8.35 */
+.harita-il .harita-plaka, .harita-il .harita-sayi { fill: var(--harita-ink, var(--metin-2)); }
+.harita-sayi {
+  text-anchor: middle; font-size: 12px; font-weight: 700;
+  pointer-events: none; font-variant-numeric: tabular-nums;
+}
+
+.harita-bilgi {
+  margin: var(--s-3) 0 0; padding: 8px 12px; min-height: 38px;
+  background: var(--panel-2); border: 1px solid var(--cizgi); border-radius: 8px;
+  font-size: var(--t-sm); line-height: 1.4;
+}
+
+/* Açık temada ramp YÖNÜ TERS (k1 en koyu) → metin renkleri de ters çevrilir.
+   Ölçüm: k1 beyaz 12.72 · k2 8.92 · k3 6.11 · k4 5.06 · k5 koyu 7.89 (hepsi AA).
+   İki seçici birlikte: sistem tercihi + kullanıcının tema düğmesi. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) .harita-il.k1,
+  :root:not([data-theme='dark']) .harita-il.k2,
+  :root:not([data-theme='dark']) .harita-il.k3,
+  :root:not([data-theme='dark']) .harita-il.k4 { --harita-ink: #ffffff; }
+  :root:not([data-theme='dark']) .harita-il.k5 { --harita-ink: #16202e; }
+}
+:root[data-theme='light'] .harita-il.k1,
+:root[data-theme='light'] .harita-il.k2,
+:root[data-theme='light'] .harita-il.k3,
+:root[data-theme='light'] .harita-il.k4 { --harita-ink: #ffffff; }
+:root[data-theme='light'] .harita-il.k5 { --harita-ink: #16202e; }
+
+/* Harita mobilde: min-width 520px korunur (altında plaka okunmaz) → yatay kaydırma
+   BİLİNÇLİ, .harita-sar içinde kalır, sayfa gövdesi kaymaz. */
+@media (max-width: 520px) {
+  .harita-blok { padding: var(--s-4); }
+  .harita-ust { gap: var(--s-2); }
+  .harita-olcek { order: 2; }
+  .harita-bilgi { font-size: var(--t-xs); }
 }

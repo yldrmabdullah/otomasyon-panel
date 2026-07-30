@@ -263,7 +263,6 @@ export function Kullanicilar({ benKim }: { benKim: string }) {
 
       <Tablo
         anahtar="kullanicilar"
-        basId="kul-baslik"
         baslik="Kullanıcılar"
         kolonlar={KOLONLAR}
         satirlar={liste ?? []}

@@ -50,8 +50,6 @@ interface TabloProps<T> {
   ilkGosterim?: number;
   /** "Daha fazla" her tıkta kaç satır eklesin (varsayılan ilkGosterim). */
   adim?: number;
-  /** Başlıkta gösterilecek sayaç için erişilebilir isim bağlantısı. */
-  basId?: string;
   /** Başlığın sağına ek kontrol (segment filtre vb.). */
   ustSag?: ReactNode;
   baslik: ReactNode;
@@ -71,7 +69,6 @@ export function Tablo<T>({
   kaydirmaEsigi = 25,
   ilkGosterim,
   adim,
-  basId,
   ustSag,
   baslik,
   aciklama,
@@ -86,6 +83,12 @@ export function Tablo<T>({
   // anahtarsız tablo aynı localStorage kaydını paylaşır ve kolon seçimleri
   // birbirine sızardı (seçici gizli olduğu için kullanıcı düzeltemez).
   const gecici = useId();
+  /** Başlık ↔ kaydırma bölgesi bağlantısı. Eskiden `basId` prop'uydu ve çağrı
+   *  tarafında verilmesi UNUTULABİLİYORDU: Operasyon'un 5 tablosunda eksikti →
+   *  `aria-labelledby` boş kalıp ISIMSIZ landmark region oluşuyordu (ekran okuyucu
+   *  "region" der, hangi tablo olduğunu söylemez). Artık bileşen kendi üretiyor →
+   *  kayma yapısal olarak imkânsız. */
+  const basId = useId();
   const kol = useKolonlar(anahtar ?? gecici, kolonlar);
 
   const gorunur = useMemo(

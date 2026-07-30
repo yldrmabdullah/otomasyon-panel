@@ -55,7 +55,7 @@ export async function tazelikVerisi(p: Pool) {
 
 /** Piyasa modülünün tüm verisi. */
 export async function piyasaVerisi(p: Pool) {
-  const [dagiticiBayi, ilDagilim, sonTransfer, ozet, sozlesme, bolgesel, beyazAlan, kaybedilen] =
+  const [dagiticiBayi, ilDagilim, sonTransfer, ozet, sozlesme, bolgesel, haritaIl, beyazAlan, kaybedilen] =
     await Promise.all([
       p.query(`SELECT dagitim_sirketi,count(*) FILTER (WHERE lisans_durumu='ONAYLANDI') n
                FROM bayiler_epdk WHERE dagitim_sirketi IS NOT NULL
@@ -93,6 +93,15 @@ export async function piyasaVerisi(p: Pool) {
          FROM il_toplam WHERE bizim>0 ORDER BY bizim DESC`,
         [BIZ],
       ),
+      // HARİTA: TÜM iller — `bolgesel` yalnız bizim bayimizin olduğu illeri
+      // döndürüyor (WHERE bizim>0, 61 il). Harita 81 ilin hepsini çizmeli;
+      // bayimiz olmayan il NÖTR görünür ("0 bayi" ile "az bayi" ayrı şeyler).
+      p.query(
+        `SELECT il, count(*) toplam, count(*) FILTER (WHERE dagitim_sirketi=$1) bizim
+         FROM bayiler_epdk WHERE lisans_durumu='ONAYLANDI' AND il IS NOT NULL
+         GROUP BY il ORDER BY il`,
+        [BIZ],
+      ),
       // Beyaz alan: Parkoil'in HİÇ bayisi olmayan ama piyasanın yoğun olduğu iller
       p.query(
         `WITH il_toplam AS (
@@ -124,6 +133,7 @@ export async function piyasaVerisi(p: Pool) {
     transferler: sonTransfer.rows,
     sozlesmeBitecek: sozlesme.rows,
     bolgesel: bolgesel.rows,
+    haritaIl: haritaIl.rows,
     beyazAlan: beyazAlan.rows,
     kaybedilen: kaybedilen.rows,
   };
