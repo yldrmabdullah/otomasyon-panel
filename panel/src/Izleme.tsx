@@ -442,6 +442,11 @@ export function Izleme() {
             satirSinif={(i) => (alarmliKodlar.has(i.istasyon_kod) ? 'satir-alarmli' : undefined)}
             aramaEtiket="İstasyon, şehir, bölge veya not ara"
             bosMesaj="Eşleşen istasyon yok."
+            // 269 satır tek seferde basılıyordu — diğer tablolarla hizalandı.
+            // Arama/sıralama TAM liste üzerinde çalışır, dilimleme sonra yapılır
+            // (Tablo.tsx), yani "kayıt yok" derken kayıt gizli kalmaz.
+            kaydirmaEsigi={20}
+            ilkGosterim={50}
           />
         </section>
       )}

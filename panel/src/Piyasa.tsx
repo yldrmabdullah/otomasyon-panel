@@ -7,6 +7,7 @@ import { Sekmeler } from './Sekme.js';
 import { CubukYatay, IsiIzgara } from './Grafik.js';
 import { Harita } from './Harita.js';
 import { Bos, ModulBar, TazelikSerit, trTarih, useVeri } from './ortak.js';
+import { csvIndir } from './disaAktar.js';
 import type { Tazelik } from './tipler.js';
 
 // Bayi tablosu kolonları — varsayılan görünür + seçilebilir gizli.
@@ -165,6 +166,68 @@ export function Piyasa() {
       .catch(() => {});
     return () => ac.abort();
   }, []);
+
+  // CSV: bu tablo SUNUCU tarafli sayfalamali (client'ta yalnız 50 satır var).
+  // Ortak Tablo'nun butonu burada kullanılamaz — yarım dosya inerdi.
+  // Bu yüzden aktif filtreyle TÜM eşleşen satırlar sunucudan sayfa sayfa çekilir.
+  const [aktarPmi, setAktarPmi] = useState(false);
+  // 30.308 satır ~70 sn sürüyor (200'lük sayfalar). Sessiz bekleme kullanıcıyı
+  // "takıldı mı?" diye düşündürüyordu → çekilen satır sayısı butonda gösterilir.
+  const [aktarIlerleme, setAktarIlerleme] = useState(0);
+
+  async function bayiCsvAktar() {
+    setAktarPmi(true);
+    try {
+      const BOYUT = 200; // core/panelSorgu.ts'te üst sınır
+      const tumu: Bayi[] = [];
+      setAktarIlerleme(0);
+      for (let sy = 1; ; sy++) {
+        const p = new URLSearchParams({
+          sirala: sorgu.sirala,
+          artan: sorgu.artan ? '1' : '0',
+          sayfa: String(sy),
+          boyut: String(BOYUT),
+        });
+        if (q.trim()) p.set('q', q.trim());
+        if (sorgu.il) p.set('il', sorgu.il);
+        if (sorgu.dagitici) p.set('dagitici', sorgu.dagitici);
+        if (sorgu.durum) p.set('durum', sorgu.durum);
+        if (sorgu.sadeceBiz) p.set('sadeceBiz', '1');
+        const r = await fetch(`/api/bayiler?${p}`);
+        if (!r.ok) throw new Error(`Sunucu ${r.status}`);
+        const d = await r.json();
+        tumu.push(...(d.satirlar ?? []));
+        setAktarIlerleme(tumu.length);
+        // Son sayfa: dönen satır sayısı boyuttan az ya da toplam aşıldı
+        if ((d.satirlar?.length ?? 0) < BOYUT || tumu.length >= (d.toplam ?? 0)) break;
+        if (sy > 200) break; // güvenlik: 40.000 satır tavanı
+      }
+      const gorunurKolon = BAYI_KOLONLARI.filter((k) => kol.gorunurMu(k.id));
+      const basliklar = gorunurKolon.map((k) => k.ad);
+      const satirlar = tumu.map((b) =>
+        gorunurKolon.map((k) => {
+          switch (k.id) {
+            case 'bayi': return b.lisans_sahibi ?? '';
+            case 'dagitici': return b.dagitim_sirketi ?? '';
+            case 'il': return b.il ?? '';
+            case 'ilce': return b.ilce ?? '';
+            case 'durum': return b.lisans_durumu ?? '';
+            case 'kategori': return b.kategori ?? '';
+            case 'epdk': return b.bayi_lisans_no;
+            case 'sozlesmeBas': return b.sozlesme_baslangic ? trTarih(b.sozlesme_baslangic) : '';
+            case 'sozlesme': return b.sozlesme_bitis ? trTarih(b.sozlesme_bitis) : '';
+            default: return '';
+          }
+        }),
+      );
+      csvIndir(sorgu.sadeceBiz ? 'parkoil-bayileri' : 'tum-bayiler', basliklar, satirlar);
+    } catch (e) {
+      setBayiHata(`CSV aktarılamadı: ${e instanceof Error ? e.message : e}`);
+    } finally {
+      setAktarPmi(false);
+      setAktarIlerleme(0);
+    }
+  }
 
   const toplamSayfa = Math.max(1, Math.ceil(toplamEslesen / SAYFA_BOYUT));
   const sayfa = Math.min(sorgu.sayfa, toplamSayfa);
@@ -409,7 +472,7 @@ export function Piyasa() {
                     />
 
                     {/* Coğrafi bakış — "hangi bölgede bayimiz var" sorusunun
-                        doğrudan cevabı. Izgara tabanlı, dış bağımlılık yok. */}
+                        doğrudan cevabı. Gerçek il sınırları (haritaYollari.ts), dış bağımlılık yok. */}
                     {(veri.haritaIl ?? veri.bolgesel).length > 0 && (
                       <Harita
                         veri={(veri.haritaIl ?? veri.bolgesel).map((b) => ({
@@ -419,7 +482,7 @@ export function Piyasa() {
                         }))}
                         olcu="bizim"
                         baslik="Bayi Dağılımı — Harita"
-                        altBaslik="Plaka kodu + bayi sayımız · bir il üzerine gelin"
+                        altBaslik="Koyu renk = çok bayimiz · bir il üzerine gelin ya da Tab ile gezin"
                       />
                     )}
 
@@ -582,6 +645,9 @@ export function Piyasa() {
                     toplamSayfa={toplamSayfa}
                     kol={kol}
                     SiraBas={SiraBas}
+                    csvAktar={bayiCsvAktar}
+                    aktarPmi={aktarPmi}
+                    aktarIlerleme={aktarIlerleme}
                   />
                 ),
               },
@@ -601,9 +667,12 @@ function TumBayiler(p: {
   sorgu: Sorgu; dispatch: (e: Eylem) => void; sayfa: number; toplamSayfa: number;
   kol: { gorunurMu: (id: string) => boolean; degistir: (id: string) => void; gorunurSayi: number };
   SiraBas: (o: { alan: SiralamaAlan; ad: string; sag?: boolean }) => ReactElement;
+  /** CSV aktarımı Piyasa'da tanımlı (sunucudan sayfa sayfa çeker) → prop olarak gelir. */
+  csvAktar: () => void; aktarPmi: boolean; aktarIlerleme: number;
 }) {
   const { sayfaliBayiler, toplamEslesen, bayiHata, bayiYukleniyor, secenekler,
-          sorgu, dispatch, sayfa, toplamSayfa, kol, SiraBas } = p;
+          sorgu, dispatch, sayfa, toplamSayfa, kol, SiraBas, csvAktar, aktarPmi,
+          aktarIlerleme } = p;
   // Dinamik tablo: arama + çoklu filtre + sıralama + sunucu taraflı sayfalama
   return (
     <section>
@@ -669,6 +738,30 @@ function TumBayiler(p: {
                 />
                 Sadece Parkoil
               </label>
+              <button
+                type="button"
+                className="aktar-btn"
+                onClick={csvAktar}
+                disabled={aktarPmi || toplamEslesen === 0}
+                title={
+                  toplamEslesen === 0
+                    ? 'Aktarılacak satır yok'
+                    : `${toplamEslesen.toLocaleString('tr')} satır sunucudan çekilip CSV inecek`
+                }
+              >
+                {aktarPmi ? (
+                  <span aria-live="polite">
+                    {aktarIlerleme > 0
+                      ? `${aktarIlerleme.toLocaleString('tr')} / ${toplamEslesen.toLocaleString('tr')}…`
+                      : 'Hazırlanıyor…'}
+                  </span>
+                ) : (
+                  <>
+                    <span aria-hidden="true">⭳ </span>CSV
+                    <span className="sr-only"> olarak indir, {toplamEslesen} satır</span>
+                  </>
+                )}
+              </button>
               <KolonSecici tanimlar={BAYI_KOLONLARI} gorunurMu={kol.gorunurMu} degistir={kol.degistir} />
             </div>
 

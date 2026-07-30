@@ -748,9 +748,12 @@ td.yok { color: var(--soluk-2); font-style: italic; }
        İÇERİĞİ kadar genişliyordu — 430px viewport'ta .kenar 770px oluyor ve TÜM
        sayfayı yatay kaydırmaya sokuyordu (kartlar/tazelik şeridi kesik görünüyor,
        sebep içerik değil MENÜ). Flex öğesinin varsayılanı min-width:auto, yani
-       içeriğinden küçülmez; nav 533px + dip 93px yan yana sığmayınca şerit büyür. */
-       `overflow-x: clip` kullanılır, `hidden` DEĞİL: hidden bir kaydırma bağlamı
-       kurar ve `position: sticky`'yi bozabilir; clip sadece kırpar. */
+       içeriğinden küçülmez; nav 533px + dip 93px yan yana sığmayınca şerit büyür.
+
+       overflow-x: clip kullanilir, hidden DEGIL: hidden bir kaydirma baglami
+       kurar ve position: sticky'yi bozabilir; clip sadece kirpar.
+       Not: CSS yorumu icinde yorum-kapatma dizisi YAZILMAZ — blogu erken kapatir
+       ve kalan metin CSS govdesine dusup build warning uretir. 2026-07-30 dersi. */
     min-width: 0; max-width: 100%; overflow-x: clip;
   }
   .marka { padding: 0 10px 0 0; flex-direction: row; align-items: center; }
@@ -925,7 +928,7 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 }
 
 /* ── Türkiye il haritası ─────────────────────────────────────────────────────
-   Izgara tabanlı (gerçek sınır değil) — bkz Harita.tsx başındaki gerekçe.
+   Gerçek il sınırları (haritaYollari.ts) — bkz Harita.tsx başındaki gerekçe.
    Sıralı ramp: --r0..--r5, her iki tema için ayrı doğrulanmış steplerdir.
    Değer YOKSA nötr kalır: "0 bayi" ile "az bayi" aynı renge boyanmaz. */
 .harita-blok {
@@ -957,6 +960,9 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   transition: fill .12s, stroke .12s;
   cursor: default; outline: none;
 }
+/* Bayisi olmayan il — kademe() 'yok' dondurur. Taban .harita-il fill'i zaten notr
+   ama sinif CSS'te KARSILIKSIZ kalmasin: `.etiket` tuzagi (2026-07-30) tam boyleydi. */
+.harita-il.yok { fill: var(--panel-3); }
 .harita-il.k1 { fill: var(--r5); } .harita-il.k2 { fill: var(--r4); }
 .harita-il.k3 { fill: var(--r3); } .harita-il.k4 { fill: var(--r2); }
 .harita-il.k5 { fill: var(--r0); }

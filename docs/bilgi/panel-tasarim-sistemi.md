@@ -429,3 +429,51 @@ arama, tema seçici, sayfalama. Kaydırma alanları açılır (kesik tablo işe 
 `break-inside: avoid` ile satır/kart sayfa ortasından bölünmez.
 **Renk kâğıtta taşıyıcı olamaz** → `td.krit::after { content: ' (KRİTİK)' }` ile
 aciliyet metne dönüşür (siyah-beyaz çıktıda da okunur).
+
+## 2. tutarlılık denetimi — 6 bulgu, hepsi düzeltildi (2026-07-30)
+
+### ⛔ 1. GERÇEK CSS SYNTAX HATASI (kendi düzeltmemde ürettim)
+Sabah mobil menü düzeltmesini yaparken `Edit` ile ikinci bir yorum ekledim ama
+**önceki bloğun kapandığını hesaba katmadım** → satır 746-747 ham metin olarak CSS
+gövdesine düştü. `vite build` iki uyarı veriyordu ve çöp metin derlenmiş CSS'e
+sızıyordu. `min-width/max-width/overflow-x` tesadüfen hayatta kalmıştı.
+
+Düzeltirken **aynı hatayı tekrar yaptım**: yorumun İÇİNE yorum-kapatma dizisi
+yazdım, o da bloğu erken kapattı. İkinci turda temizlendi → **build uyarısı 0.**
+
+**Ders:** CSS yorumu içinde apostrof/ters tırnak/yorum-kapatma dizisi kullanmaktan
+kaçın; `vite build` çıktısındaki `[WARNING]` satırları GÖRMEZDEN GELİNMEZ.
+
+### ⛔ 2. Operasyon'da ÇİFT ▲ — kullanıcının gördüğü bozukluk
+`stil.css` zaten `td.krit::after { content: ' ▲▲' }` basıyor. Operasyon ayrıca JSX'te
+`▲` ekliyordu → hücre **`▲ 0,5▲▲`** görünüyordu. İzleme'nin deseni doğru: görünür
+işaret CSS'te, JSX yalnız `sr-only` metin ekler. Hizalandı.
+(Kart içindeki `▲` ayrı kalıyor — orada `::after` yok.)
+
+### ⛔ 3. `.harita-il.yok` CSS'te karşılıksızdı
+`kademe()` `'yok'` döndürüyor ama tanımlı tek `yok` seçicisi `td.yok` — `<path>`e
+asla eşleşmez. Zararsızdı (nötr fill tabandan geliyordu) ama **`.etiket` tuzağının
+aynısı**. Niyet açıkça yazıldı.
+
+### ⚠️ 4. Yüzde biçimi — TR yazımı `%` ÖNDE
+Operasyon 3 yerde `12%` yazıyordu, panelin geri kalanı `%12` (TR doğru). Aynı ekranda
+iki biçim görünüyordu. Hizalandı; kolon BAŞLIKLARI ("Eksik %") dokunulmadı — onlar doğru.
+
+### ⚠️ 5. Locale tekleştirildi
+Operasyon `'tr-TR'`, geri kalan `'tr'`. Çıktı aynı ama iki yazım vardı →
+`const TR = 'tr-TR'` sabiti.
+
+### ⚠️ 6. Bayat metin: "Plaka kodu" vaadi
+`Piyasa.tsx` harita alt başlığı "Plaka kodu + bayi sayımız" diyordu ama plaka
+kodları gerçek sınırlara geçişte kaldırılmıştı. Panel olmayan bir şey vaat ediyordu.
+Izgara dönemine ait bayat yorumlar da güncellendi.
+
+### Ek: İzleme 269 satırı tek seferde basıyordu
+`kaydirmaEsigi`/`ilkGosterim` verilmemişti (diğer tablolarda var). Hizalandı (20/50).
+
+### Ek: "Tüm Bayiler" CSV'si — sunucudan sayfa sayfa
+O tablo ham `<table>` (sunucu taraflı sayfalama) olduğu için ortak `Tablo`'nun
+butonu ona uygulanmıyordu; client'ta yalnız 50 satır olduğundan naif çözüm **yarım
+dosya** indirirdi. Aktif filtreyle TÜM eşleşen satırlar 200'lük sayfalarla çekilir.
+Ölçüm: **30.308 satır · 4,05 MB · 69,5 sn**. Sessiz bekleme "takıldı mı?" hissi
+verdiği için butonda ilerleme gösterilir ("5.600 / 30.308…").

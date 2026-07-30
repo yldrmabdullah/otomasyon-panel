@@ -58,8 +58,12 @@ const ALARM_AD: Record<string, string> = {
   tank_veri_yok: 'Tank verisi yok',
 };
 
+/** Panel genelinde TEK locale. Operasyon 'tr-TR', geri kalan 'tr' kullanıyordu;
+ *  çıktı aynı ama iki yazım vardı — tek sabit üzerinden hizalandı. */
+const TR = 'tr-TR';
+
 const sayi = (v: string | number | null | undefined): string =>
-  v === null || v === undefined || v === '' ? '—' : Number(v).toLocaleString('tr-TR');
+  v === null || v === undefined || v === '' ? '—' : Number(v).toLocaleString(TR);
 
 function operasyonDogrula(d: unknown): OperasyonVeri {
   const x = d as OperasyonVeri;
@@ -108,14 +112,17 @@ export function Operasyon() {
     },
     {
       id: 'kalan', ad: 'Kalan gün', varsayilan: true, sinif: 'sag',
-      // Renk tek taşıyıcı olmasın: acil satırlar ▲ ile de işaretli
+      // Renk tek taşıyıcı DEĞİL — ama görünür işareti CSS basıyor:
+      // `td.krit::after { content: ' ▲▲' }` / `td.uyari::after { ' ▲' }` (stil.css).
+      // ⚠️ Burada JSX'te ayrıca ▲ eklemek ÇİFT işaret üretiyordu: "▲ 0,5▲▲"
+      // (2026-07-30'da canlıda görüldü). İzleme.tsx'in deseni doğrudur: görünür
+      // işaret CSS'te, JSX yalnız ekran okuyucu metnini ekler.
       hucre: (s) => {
         const g = Number(s.kalan_gun);
         return (
           <strong>
-            {g < esik.acilGun && <span aria-hidden="true">▲ </span>}
-            {g.toLocaleString('tr-TR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-            {g < esik.acilGun && <span className="sr-only"> — acil</span>}
+            {g < esik.acilGun && <span className="sr-only">Acil: </span>}
+            {g.toLocaleString(TR, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
           </strong>
         );
       },
@@ -199,7 +206,7 @@ export function Operasyon() {
     },
     {
       id: 'yuzde', ad: 'Eksik %', varsayilan: true, sinif: 'sag',
-      hucre: (r) => <strong>{r.yuzde}%</strong>,
+      hucre: (r) => <strong>%{r.yuzde}</strong>,  // TR yazımı: % önde
       hucreSinif: (r) => (Number(r.yuzde) >= 100 ? 'krit' : Number(r.yuzde) >= 50 ? 'uyari' : ''),
       sirala: (r) => Number(r.yuzde),
     },
@@ -363,7 +370,7 @@ export function Operasyon() {
               aciklama={
                 <>
                   Son {esik.pencereGun} günde dolum kaydı var ama irsaliye numarası ASIS'e
-                  akmamış. Genel oran: <strong>{o.irsaliyesizYuzde}%</strong> ({sayi(o.irsaliyesiz)} /{' '}
+                  akmamış. Genel oran: <strong>%{o.irsaliyesizYuzde}</strong> ({sayi(o.irsaliyesiz)} /{' '}
                   {sayi(o.dolumToplam)} dolum). Otomasyon arızası göstergesi.
                 </>
               }
@@ -457,7 +464,7 @@ export function Operasyon() {
             />
             <Kart
               ad="İrsaliyesiz"
-              deger={`${veri.ozet.irsaliyesizYuzde}%`}
+              deger={`%${veri.ozet.irsaliyesizYuzde}`}
               alt={`${sayi(veri.ozet.irsaliyesiz)} dolum`}
             />
           </section>
