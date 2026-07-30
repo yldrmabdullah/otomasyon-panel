@@ -239,6 +239,187 @@ export async function bayiVerisi(p: Pool, s: BayiSorgu = {}) {
   };
 }
 
+/** Kalan-gün eşikleri. 1 gün altı = bugün sipariş girilmeli (acil). */
+const STOK_ACIL_GUN = 1;
+const STOK_UYARI_GUN = 2;
+/** Tüketim ortalaması bu kadar günlük dolumdan hesaplanır. */
+const TUKETIM_PENCERE_GUN = 30;
+/** Tankta bu litreden fazla su = kalite sorunu (ASIS SuSeviyeLT). */
+const SU_ESIK_LT = 50;
+/** Yanıp sönme (flapping) tanımı: ortalama bu süreden kısa açık kalan alarm...
+ *  Tank verisi 30 dk periyotlu olduğu için 45 dk altı "veri gecikmesi" demektir. */
+const FLAP_ORT_DK = 45;
+/** ...ve en az bu kadar tekrar. Tek seferlik kısa alarm yanıp sönme sayılmaz. */
+const FLAP_MIN_TEKRAR = 5;
+
+/**
+ * Operasyon modülü — otomasyon ekibinin ELLE takip ettiği 3 iş.
+ * Hepsi MEVCUT veriden hesaplanır, yeni ASIS çağrısı gerektirmez.
+ *
+ * 1) stok — yakıt kaç gün yeter (stok ÷ günlük tüketim)
+ * 2) alarmOzet + kronik — alarm geçmişi ve tekrar edenler
+ * 3) irsaliyesiz — irsaliye bilgisi ASIS'e akmayan dolumlar
+ *
+ * ⚠️ STOK HESABINDA İKİ TUZAK (2026-07-29'da ikisine de düşüldü, düzeltildi):
+ *
+ * a) **Gruplama:** tüketim istasyon+ürün bazında toplanır ama stok TANK bazında
+ *    tutulur. Tank başına karşılaştırmak, 4 tanklı bir istasyonun tüm tüketimini
+ *    tek tanka yükler → "304 tank 2 günden az" gibi imkânsız sonuç verir.
+ *    Doğrusu: İKİ TARAFI DA istasyon+ürün bazında topla (46'ya düştü).
+ *
+ * b) **Doluluk yüzdesi kritiklik ölçüsü DEĞİL:** dolum öncesi tank normalde boşalır.
+ *    "%15 altı" ile bakmak 342/673 tankı "kritik" gösteriyordu — normal işletme.
+ *    Anlamlı ölçü SATIŞ HIZINA göre kalan gün.
+ *
+ * Tüketim vekili olarak DOLUM kullanılır: pompa satışı (GetPumpSaleList) DB'ye
+ * çekilmiyor. Uzun vadede dolum ≈ satış (tank kapalı sistem), ama kısa vadede
+ * dalgalanır → bu yüzden 30 günlük ortalama alınır ve rakam "tahmin" olarak sunulur.
+ */
+export async function operasyonVerisi(p: Pool) {
+  const [stok, alarmOzet, kronik, irsaliyesiz, irsaliyeIstasyon, kalibrasyon, su] =
+    await Promise.all([
+      // 1) Kalan gün — İKİ TARAF da istasyon+ürün bazında toplanır (yukarıdaki tuzak a)
+      p.query(
+        `WITH tuketim AS (
+           SELECT istasyon_kod, urun, sum(dolum_miktari) / $1::numeric gunluk
+           FROM tank_dolum
+           WHERE dolum_baslama >= now() - ($1 || ' days')::interval
+           GROUP BY 1, 2
+           HAVING sum(dolum_miktari) > 0),
+         stok AS (
+           SELECT istasyon_kod, urun, sum(mevcut_lt) mevcut, count(*) tank,
+                  sum(kapasite_lt) kapasite, max(son_olcum_zamani) son_olcum
+           FROM tank_durum WHERE kapasite_lt > 0
+           GROUP BY 1, 2)
+         SELECT s.istasyon_kod, i.ad istasyon_ad, i.sehir, s.urun, s.tank,
+                round(s.mevcut) mevcut_lt, round(s.kapasite) kapasite_lt,
+                round(t.gunluk) gunluk_tuketim,
+                round((s.mevcut / t.gunluk)::numeric, 1) kalan_gun,
+                s.son_olcum
+         FROM stok s
+         JOIN tuketim t ON t.istasyon_kod = s.istasyon_kod AND t.urun = s.urun
+         LEFT JOIN istasyonlar i ON i.istasyon_kod = s.istasyon_kod
+         WHERE s.mevcut / t.gunluk < 7   -- 7 günden fazlası operasyonel ilgi dışı
+         ORDER BY s.mevcut / t.gunluk`,
+        [TUKETIM_PENCERE_GUN],
+      ),
+
+      // 2) Alarm özeti — tip bazında sayı + ortalama açık kalma süresi
+      p.query(`SELECT tip, count(*)::int toplam,
+                      count(*) FILTER (WHERE kapandi IS NULL)::int acik,
+                      round(avg(extract(epoch FROM (coalesce(kapandi, now()) - acildi)) / 3600)::numeric, 1) ort_saat,
+                      round(max(extract(epoch FROM (coalesce(kapandi, now()) - acildi)) / 3600)::numeric, 1) en_uzun_saat
+               FROM alarmlar GROUP BY 1 ORDER BY toplam DESC`),
+
+      // Kronik: aynı istasyon tekrar tekrar alarm alıyor.
+      //
+      // ⚠️ İKİ FARKLI DURUM, KARIŞTIRILMAMALI (2026-07-30 canlı bulgu):
+      //  • YANIP SÖNME (flapping): alarm açılıp ~30 dk içinde kapanıyor, sürekli tekrar.
+      //    Örnek: 210221'in 3 tankı da 22 kez, ortalama 28,4 dk. Gerçek arıza DEĞİL —
+      //    tank verisi 30 dk periyotlu, eşik 35 dk; veri birkaç dakika gecikince alarm
+      //    açılıp sonraki veriyle kapanıyor. Çözüm arıza gidermek değil, EŞİĞİ ayarlamak.
+      //  • GERÇEK ARIZA: alarm açılıp uzun süre açık kalıyor (saatler).
+      //
+      // Bu ayrım yapılmazsa "66 alarm" diye listenin başındaki istasyon ekibi boşa koşturur.
+      // `yanip_sonme` bayrağı UI'da ayrı etiketle gösterilir.
+      p.query(
+        `SELECT a.istasyon_kod, coalesce(i.ad, a.istasyon_ad) istasyon_ad, i.sehir,
+                count(*)::int alarm_sayisi,
+                count(*) FILTER (WHERE a.kapandi IS NULL)::int acik,
+                round(avg(extract(epoch FROM (coalesce(a.kapandi, now()) - a.acildi)) / 60)::numeric, 0) ort_dk,
+                round(max(extract(epoch FROM (coalesce(a.kapandi, now()) - a.acildi)) / 3600)::numeric, 1) en_uzun_saat,
+                -- kısa süreli + çok tekrar → eşik sorunu, arıza değil
+                (avg(extract(epoch FROM (coalesce(a.kapandi, now()) - a.acildi)) / 60) < $1
+                 AND count(*) >= $2) yanip_sonme,
+                max(a.acildi) son_alarm
+         FROM alarmlar a
+         LEFT JOIN istasyonlar i ON i.istasyon_kod = a.istasyon_kod
+         GROUP BY 1, 2, 3 HAVING count(*) > 1
+         ORDER BY alarm_sayisi DESC, son_alarm DESC LIMIT 50`,
+        [FLAP_ORT_DK, FLAP_MIN_TEKRAR],
+      ),
+
+      // 3) İrsaliyesiz dolum oranı (son 30 gün)
+      p.query(
+        `SELECT count(*) FILTER (WHERE irsaliye_no IS NULL OR irsaliye_no = '')::int irsaliyesiz,
+                count(*)::int toplam,
+                count(*) FILTER (WHERE irsaliye_litre = 0)::int litresiz
+         FROM tank_dolum WHERE dolum_baslama >= now() - ($1 || ' days')::interval`,
+        [TUKETIM_PENCERE_GUN],
+      ),
+
+      // İstasyon bazında en kötüler — bu somut, tartışmaya açık değil
+      p.query(
+        `SELECT d.istasyon_kod, coalesce(i.ad, d.istasyon_kod) istasyon_ad, i.sehir,
+                count(*)::int dolum,
+                count(*) FILTER (WHERE d.irsaliye_no IS NULL OR d.irsaliye_no = '')::int irsaliyesiz,
+                round(100.0 * count(*) FILTER (WHERE d.irsaliye_no IS NULL OR d.irsaliye_no = '') / count(*), 0) yuzde
+         FROM tank_dolum d
+         LEFT JOIN istasyonlar i ON i.istasyon_kod = d.istasyon_kod
+         WHERE d.dolum_baslama >= now() - ($1 || ' days')::interval
+         GROUP BY 1, 2, 3 HAVING count(*) FILTER (WHERE d.irsaliye_no IS NULL OR d.irsaliye_no = '') > 0
+         ORDER BY yuzde DESC, irsaliyesiz DESC LIMIT 50`,
+        [TUKETIM_PENCERE_GUN],
+      ),
+
+      // Kalibrasyon — 1240 sayılı Kurul Kararı: değişimde 24 saat içinde yedek zorunlu
+      p.query(
+        `SELECT d.istasyon_kod, coalesce(i.ad, d.istasyon_kod) istasyon_ad, i.sehir,
+                d.tank_no, d.urun, d.kalibrasyon_yuzdesi, d.dolum_baslama
+         FROM tank_dolum d
+         LEFT JOIN istasyonlar i ON i.istasyon_kod = d.istasyon_kod
+         WHERE d.kalibrasyon_yuzdesi > 0
+           AND d.dolum_baslama >= now() - ($1 || ' days')::interval
+         ORDER BY d.dolum_baslama DESC LIMIT 100`,
+        [TUKETIM_PENCERE_GUN],
+      ),
+
+      // Tankta su — yakıt kalitesi
+      p.query(
+        `SELECT t.istasyon_kod, coalesce(i.ad, t.istasyon_kod) istasyon_ad, i.sehir,
+                t.tank_no, t.urun, round(t.su_lt) su_lt, round(t.mevcut_lt) mevcut_lt,
+                t.son_olcum_zamani
+         FROM tank_durum t
+         LEFT JOIN istasyonlar i ON i.istasyon_kod = t.istasyon_kod
+         WHERE t.su_lt > $1 ORDER BY t.su_lt DESC LIMIT 100`,
+        [SU_ESIK_LT],
+      ),
+    ]);
+
+  const s = stok.rows;
+  const ir = irsaliyesiz.rows[0] ?? { irsaliyesiz: 0, toplam: 0, litresiz: 0 };
+
+  return {
+    uretim: new Date().toISOString(),
+    tazelik: await tazelikVerisi(p),
+    esik: { acilGun: STOK_ACIL_GUN, uyariGun: STOK_UYARI_GUN, pencereGun: TUKETIM_PENCERE_GUN, suLt: SU_ESIK_LT },
+    ozet: {
+      stokAcil: s.filter((x) => Number(x.kalan_gun) < STOK_ACIL_GUN).length,
+      stokUyari: s.filter((x) => {
+        const g = Number(x.kalan_gun);
+        return g >= STOK_ACIL_GUN && g < STOK_UYARI_GUN;
+      }).length,
+      alarmAcik: alarmOzet.rows.reduce((a, x) => a + Number(x.acik), 0),
+      alarmToplam: alarmOzet.rows.reduce((a, x) => a + Number(x.toplam), 0),
+      kronikIstasyon: kronik.rows.length,
+      // Yanıp sönen istasyon = eşik ayarı işi; gerçek kronik = saha işi. Ayrı sayılır.
+      yanipSonen: kronik.rows.filter((x) => x.yanip_sonme).length,
+      gercekKronik: kronik.rows.filter((x) => !x.yanip_sonme).length,
+      irsaliyesiz: Number(ir.irsaliyesiz),
+      irsaliyesizYuzde: Number(ir.toplam) > 0 ? Math.round((1000 * Number(ir.irsaliyesiz)) / Number(ir.toplam)) / 10 : 0,
+      dolumToplam: Number(ir.toplam),
+      kalibrasyon: kalibrasyon.rows.length,
+      suluTank: su.rows.length,
+    },
+    stok: s,
+    alarmOzet: alarmOzet.rows,
+    kronik: kronik.rows,
+    irsaliyeIstasyon: irsaliyeIstasyon.rows,
+    kalibrasyon: kalibrasyon.rows,
+    su: su.rows,
+  };
+}
+
 /** Filtre açılırlarını besleyen ayrık değerler (il + dağıtıcı listesi).
  *  Ayrı endpoint: tüm bayiyi indirmeden dropdown doldurulabilsin. */
 export async function bayiSecenekleri(p: Pool) {

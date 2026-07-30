@@ -179,3 +179,46 @@ Elle test: `gh workflow run otomasyon-job.yml -f dry_run=1` → gerçek veri, s�
 - Bakım/planlı kesinti penceresi (o sırada alarm atma).
 - Bayi bazlı özel eşik (bazı istasyonlar doğası gereği aralıklı).
 - Tekrarlayan kopukluk trendi (sık kopan istasyon raporu).
+
+## Operasyon modülü + YANIP SÖNME (flapping) bulgusu (2026-07-30)
+
+Panele "Operasyon" modülü eklendi: otomasyon ekibinin elle takip ettiği 3 iş, mevcut
+veriden hesaplanır (yeni ASIS çağrısı yok). Uç: `/api/operasyon`, ~760 ms.
+
+### ⚠️ EN ÖNEMLİ BULGU: alarm sayısı tek başına yanıltıcı — flapping var
+
+Kronik alarm listesinde başı çeken istasyon **210221: 66 alarm**. Ama kırılıma bakınca:
+3 tankı da **22 kez** alarm açmış ve **ortalama 28,4 dakika** sonra kapanmış (7 gün boyunca).
+
+**Bu gerçek arıza DEĞİL.** Tank verisi 30 dk periyotlu, alarm eşiği 35 dk → veri birkaç
+dakika gecikince alarm açılıyor, sonraki veri gelince kapanıyor. Sonsuz döngü.
+
+Ayrım yapılmazsa ekip 66 alarmı arıza sanıp sahaya gider. Bu yüzden `operasyonVerisi`
+her kronik istasyonu iki sınıfa ayırıyor:
+- **Eşik ayarı (flapping):** ort. süre < 45 dk **ve** ≥ 5 tekrar → eşik/periyot işi
+- **Gerçek arıza:** alarm saatlerce açık kalıyor → saha müdahalesi
+
+Canlı sonuç: 49 kronik istasyonun **12'si eşik ayarı**, **37'si gerçek arıza**.
+Örnek karşılaştırma: GÜVENOĞULLARI 66 alarm/28 dk (eşik) · AKBAŞLAR 26 alarm/233 dk (arıza).
+
+→ **Aksiyon önerisi:** `TANK_VERI_ESIK_DK` şu an 35; veri periyodu 30 dk olduğu için
+45-50'ye çıkarmak bu 12 istasyonun gürültüsünü kesebilir. Karar kullanıcıya ait.
+
+### Stok tahmini — iki hesap tuzağı (ikisine de düşüldü)
+
+`kalan gün = mevcut stok ÷ günlük tüketim`. Tüketim = son 30 günün dolum ortalaması
+(pompa satışı DB'de yok → dolum vekil; uzun vadede tank kapalı sistem olduğu için ≈ satış).
+
+1. **Gruplama:** tüketim istasyon+ürün bazında toplanır ama stok TANK bazında tutulur.
+   Tank başına karşılaştırmak 4 tanklı istasyonun tüm tüketimini tek tanka yükler →
+   "304 tank 2 günden az" (imkânsız). Doğrusu: iki tarafı da istasyon+ürün bazında topla.
+2. **Doluluk yüzdesi kritiklik ölçüsü DEĞİL:** dolum öncesi tank normalde boşalır.
+   "%15 altı" ile bakmak 342/673 tankı "kritik" gösteriyordu. Anlamlı ölçü kalan GÜN.
+
+Canlı sonuç: **19 istasyon-ürün 1 günden az**, 27'si 1-2 gün, 127'si 7 günden az.
+Rakam panelde açıkça "tahmin" olarak sunulur.
+
+### Veri kalitesi
+- İrsaliyesiz dolum: son 30 günde **%9,5** (280/2949). Bazı istasyonlarda %100.
+- Tankta su > 50 lt: **76 tank**.
+- Kalibrasyon değişimi: 100 kayıt (1240 sayılı karar: 24 saat içinde yedek zorunlu).

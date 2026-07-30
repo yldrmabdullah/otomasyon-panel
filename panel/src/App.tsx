@@ -2,12 +2,13 @@ import { useCallback, useEffect, useRef, useState, type ReactElement } from 'rea
 import { Izleme } from './Izleme.js';
 import { Mevzuat } from './Mevzuat.js';
 import { Piyasa } from './Piyasa.js';
+import { Operasyon } from './Operasyon.js';
 import { Giris } from './Giris.js';
 import { SifreDegistir } from './SifreDegistir.js';
 import { Kullanicilar } from './Kullanicilar.js';
-import { IkonIzleme, IkonMevzuat, IkonPiyasa, IkonKullanici } from './ikon.js';
+import { IkonIzleme, IkonMevzuat, IkonPiyasa, IkonOperasyon, IkonKullanici } from './ikon.js';
 
-type Modul = 'izleme' | 'mevzuat' | 'piyasa' | 'kullanicilar';
+type Modul = 'izleme' | 'operasyon' | 'mevzuat' | 'piyasa' | 'kullanicilar';
 type Tema = 'sistem' | 'light' | 'dark';
 
 interface Oturum {
@@ -19,6 +20,7 @@ interface Oturum {
 
 const MODULLER: { id: Modul; ad: string; Ikon: () => ReactElement; alt: string; adminMi?: boolean }[] = [
   { id: 'izleme', ad: 'İzleme', Ikon: IkonIzleme, alt: 'Bağlantı & tank' },
+  { id: 'operasyon', ad: 'Operasyon', Ikon: IkonOperasyon, alt: 'Stok & alarm & kalite' },
   { id: 'mevzuat', ad: 'Mevzuat', Ikon: IkonMevzuat, alt: 'EPDK & mutabakat' },
   { id: 'piyasa', ad: 'Piyasa', Ikon: IkonPiyasa, alt: 'Dağıtıcı & bayi' },
   { id: 'kullanicilar', ad: 'Kullanıcılar', Ikon: IkonKullanici, alt: 'Yetki yönetimi', adminMi: true },
@@ -150,6 +152,7 @@ export function App() {
             <h1 ref={basRef} tabIndex={-1}>{aktif.ad}</h1>
           </div>
           {aktif.id === 'izleme' ? <Izleme />
+            : aktif.id === 'operasyon' ? <Operasyon />
             : aktif.id === 'mevzuat' ? <Mevzuat />
             : aktif.id === 'piyasa' ? <Piyasa />
             : <Kullanicilar benKim={oturum.kullanici} />}

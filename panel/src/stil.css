@@ -319,6 +319,9 @@ button.kart:active { transform: translateY(0); }
 button.kart.sec { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--golge); }
 .kart-deger { font-size: var(--t-2xl); font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 .kart-baslik { color: var(--soluk); font-size: var(--t-sm); margin-top: var(--s-2); font-weight: 500; }
+/* Kartın altındaki ek açıklama (Operasyon: "1 günden az kalan", "+12 eşik ayarı").
+   --soluk-2 dört zeminde de AA geçiyor; .kart zemini var(--panel). */
+.kart-alt-not { color: var(--soluk-2); font-size: 11.5px; margin-top: 3px; line-height: 1.35; }
 
 /* ── Filtre çubuğu (ortak) ── */
 .filtre-cubugu { display: flex; gap: 10px; margin-bottom: var(--s-4); flex-wrap: wrap; align-items: center; }

@@ -63,3 +63,13 @@ export function IkonPiyasa() {
     </svg>
   );
 }
+
+/** Operasyon — yakıt seviyesi/damla (stok takibinin ana işi). */
+export function IkonOperasyon() {
+  return (
+    <svg {...ORTAK}>
+      <path d="M12 3.5c3.2 3.6 5.2 6.3 5.2 8.9A5.2 5.2 0 0 1 12 17.6a5.2 5.2 0 0 1-5.2-5.2c0-2.6 2-5.3 5.2-8.9Z" />
+      <path d="M8.4 20.5h7.2" />
+    </svg>
+  );
+}
