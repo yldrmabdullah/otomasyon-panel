@@ -175,6 +175,40 @@ export async function dolumlariKaydet(dolumlar: AsisDolum[]): Promise<void> {
   }
 }
 
+/** Pompa satışı ÖZET upsert (toplu).
+ *
+ *  ⚠️ Ham satış DEĞİL özet yazılır — günde 20.325 ham kayıt, gün+istasyon+tank
+ *  kırılımında 21 kat sıkışıyor (~947 satır/gün). Bkz. araclar/satisCek.ts.
+ *
+ *  Aynı gün tekrar çekilirse ÜZERİNE yazar (DO UPDATE) — yarım çekim sonrası
+ *  tekrar çalıştırmak güvenli. */
+export async function satisOzetKaydet(
+  liste: { gun: string; istasyonKod: string; tankNo: string; urunId: string;
+           cariTip: string; litre: number; tutar: number; fisSayisi: number }[],
+): Promise<void> {
+  if (liste.length === 0) return;
+  const p = pool();
+  const KOLON = 8;
+  const PARCA = 800; // 800×8 = 6400 parametre (limit ~65535)
+  for (let i = 0; i < liste.length; i += PARCA) {
+    const grup = liste.slice(i, i + PARCA);
+    const deger: unknown[] = [];
+    const satir = grup.map((x, j) => {
+      const b = j * KOLON;
+      deger.push(x.gun, x.istasyonKod, x.tankNo, x.urunId, x.cariTip, x.litre, x.tutar, x.fisSayisi);
+      return `(${Array.from({ length: KOLON }, (_, k) => `$${b + k + 1}`).join(',')})`;
+    });
+    await p.query(
+      `INSERT INTO satis_ozet (gun, istasyon_kod, tank_no, urun_id, cari_tip, litre, tutar, fis_sayisi)
+       VALUES ${satir.join(',')}
+       ON CONFLICT (gun, istasyon_kod, tank_no, urun_id, cari_tip) DO UPDATE SET
+         litre = EXCLUDED.litre, tutar = EXCLUDED.tutar,
+         fis_sayisi = EXCLUDED.fis_sayisi, guncelleme = now()`,
+      deger,
+    );
+  }
+}
+
 // --- Sistem ayar (cursor) oku/yaz ---
 export async function ayarOku(anahtar: string): Promise<string | null> {
   const r = await pool().query<{ deger: string }>('SELECT deger FROM sistem_ayar WHERE anahtar=$1', [anahtar]);

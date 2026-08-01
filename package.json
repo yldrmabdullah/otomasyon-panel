@@ -16,7 +16,8 @@
     "lint": "eslint . --ext .ts,.tsx",
     "panel:api": "tsx araclar/panelSunucu.ts",
     "kullanici": "tsx araclar/kullaniciHash.ts",
-    "mobil": "tsx araclar/mobilTest.ts"
+    "mobil": "tsx araclar/mobilTest.ts",
+    "satis": "tsx araclar/satisCek.ts"
   },
   "dependencies": {
     "fast-xml-parser": "^4.5.0",

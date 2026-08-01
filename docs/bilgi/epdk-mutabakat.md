@@ -506,3 +506,60 @@ Her yıl yeniden değerlemeyle artar (Resmi Gazete tebliği). **2026: %25,49 art
 
 > **Parkoil için en kritik doğrulanmış gerçekler:** 1240 zorunluluğu · anlık/günlük bildirim ·
 > zd.kamusm zaman damgası · 288 L/gün + %3 belirsizlik · aylık %3 mutabakat · BAY/939 lisans · 2026 ceza yürürlüğü.
+
+---
+
+## ⭐ SATIŞ VERİSİ ÇEKİLİYOR — mutabakatın "C" kalemi (2026-08-01)
+
+Mutabakat formülünün eksik parçasıydı. `araclar/satisCek.ts` ile çözüldü.
+
+### Hacim ölçümü (gerçek, cursor farkından)
+
+| | Ham | Özet |
+|---|---|---|
+| Günlük | **20.325** satış | ~525 satır |
+| Aylık | 610.000 | ~16.000 |
+| Yıllık | **7,4 milyon** | **~190.000** |
+
+**39 kat sıkışma.** Kullanıcı kararı: **yalnız özet saklanır.**
+
+### Neden özet yeterli
+Mutabakat, A1a kriterleri (288 lt / %3) ve sızıntı tespiti **gün + istasyon + tank**
+kırılımında çalışır. Ham fiş detayına gerek yok.
+
+**Kaybedilen:** plaka, pompacı, saat, vardiya, fiş bazında detay. *"Şu plaka şu saatte
+aldı"* sorusu bu tablodan yanıtlanmaz — gerekirse ASIS'ten o gün için tekrar çekilir.
+
+**Korunan:** `cari_tip` kırılımı — dış satış / filo / kart ayrımı buradan çıkacak.
+Canlı dağılım (31 Tem): tip 1 → 536.259 lt · tip 3 → 189.828 lt · tip 2 → 20.316 lt ·
+tip 7 → 449 lt.
+
+### ⚠️ İKİ TUZAK (ikisi de kodda çözülü)
+
+**1. Cursor zaman filtresi DEĞİL.** `TPompaSatisID` merkeze VARIŞ sırasına göre
+artıyor, `Tarih` gerçek satış anı. Bir sayfada tarih 11 saate kadar geriye sıçrıyor.
+→ Gruplama `Tarih` alanına göre yapılır, cursor'a güvenilmez.
+
+**2. Saat bazında "geri pay" İMKÂNSIZ.** İlk sürümde 24 saat pay koydum → ilk 2 sayfa
+(20.000 kayıt) boşa gitti. Sebep: `bitis` güne yuvarlandığı için "12 saat geri" bile
+**bir TAM gün geri** demek (ölçüm: 29 Tem cursor'u 30 Tem'inkinden 20.589 kayıt geride).
+→ Pay 0; hedef günün KENDİ cursor'u kullanılır. Gecikmeli satışlar ID'ce sonra geldiği
+için ileri sayfalarda zaten yakalanıyor.
+
+Sonuç: **5 sayfa → 3 sayfa** (%40 az trafik). Doğrulama: 30 Tem eski ayarla 21.170 fiş,
+yeni ayarla 21.169 — tek fiş fark (gün sınırı), veri kaybı yok.
+
+### Kullanım
+```bash
+npm run satis                      # dün
+npm run satis -- 2026-07-25        # belirli gün
+npm run satis -- 2026-07-01 2026-07-31   # aralık
+```
+
+`satis_ozet` PK: (gun, istasyon_kod, tank_no, urun_id, cari_tip) → aynı gün tekrar
+çekmek güvenli, üzerine yazar.
+
+### Sıradaki: tank seviye geçmişi
+`tank_seviye_gun` tablosu hazır (şemada), `GetTankLevelList` ile doldurulacak.
+Bu gelince mutabakatın A/D kalemi (dönem başı/sonu stok) tamamlanır ve
+**A1a kriterleri hesaplanabilir hale gelir.**

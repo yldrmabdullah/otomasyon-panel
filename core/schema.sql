@@ -189,3 +189,53 @@ ALTER TABLE tank_dolum ADD COLUMN IF NOT EXISTS seviye_bitis_lt NUMERIC;
 ALTER TABLE tank_dolum ADD COLUMN IF NOT EXISTS kalibrasyon_yuzdesi NUMERIC;
 ALTER TABLE tank_dolum ADD COLUMN IF NOT EXISTS dolum_tipi TEXT;
 ALTER TABLE tank_dolum ADD COLUMN IF NOT EXISTS tanker_sicakligi NUMERIC;
+
+-- ── Pompa satışı ÖZET (mutabakatın "C" kalemi) ──────────────────────────────
+--
+-- ⚠️ NEDEN HAM DEĞİL ÖZET: ASIS günde 20.325 satış kaydı veriyor (yılda 7,4 milyon).
+-- Ölçüldü (2026-08-01): gün+istasyon+tank kırılımında **21 kat** sıkışıyor →
+-- günde ~947 satır, yılda ~346 bin. Mutabakat, A1a kriterleri (288 lt / %3) ve
+-- sızıntı tespiti için bu kırılım YETERLİ; ham satışa gerek yok.
+--
+-- KAYBEDİLEN: plaka, pompacı, saat, vardiya, fiş bazında detay. "Şu plaka şu saatte
+-- aldı" sorusu bu tablodan YANITLANMAZ — gerekirse ASIS'ten o gün için tekrar çekilir.
+--
+-- CariTip kırılımı KORUNUR: dış satış / filo / kart ayrımı buradan çıkacak
+-- (hangi kodun ne olduğu henüz netleşmedi — bkz. epdk-modulu-a-tablolari.md açık soru 1).
+CREATE TABLE IF NOT EXISTS satis_ozet (
+  gun            DATE NOT NULL,
+  istasyon_kod   TEXT NOT NULL,          -- TIstasyonID → istasyonlar.t_istasyon_id
+  tank_no        TEXT NOT NULL,
+  urun_id        TEXT NOT NULL,          -- TUrunID
+  cari_tip       TEXT NOT NULL,          -- 1/2/3/7 — dış satış ayrımı için
+  litre          NUMERIC(14,2) NOT NULL DEFAULT 0,
+  tutar          NUMERIC(16,2) NOT NULL DEFAULT 0,
+  fis_sayisi     INT NOT NULL DEFAULT 0, -- kaç ham satış birleşti
+  guncelleme     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (gun, istasyon_kod, tank_no, urun_id, cari_tip)
+);
+CREATE INDEX IF NOT EXISTS ix_satis_gun ON satis_ozet (gun);
+CREATE INDEX IF NOT EXISTS ix_satis_ist ON satis_ozet (istasyon_kod, gun);
+
+-- ── Tank seviye ÖZET (mutabakatın "A/D" kalemi: dönem başı/sonu stok) ────────
+--
+-- GetTankLevelList 30 dakikalık grid veriyor (günde 49 damga × 662 tank ≈ 32 bin
+-- kayıt/gün). Mutabakat için gereken yalnız GÜN BAŞI ve GÜN SONU seviyesi →
+-- günde ~662 satır, yılda ~242 bin.
+--
+-- ⚠️ YakitSeviyeLTNet kullanılır (sıcaklık düzeltilmiş NET litre), brüt değil —
+-- EPDK hacim mantığı net üzerinden (bkz. asis-pol-notlar.md).
+CREATE TABLE IF NOT EXISTS tank_seviye_gun (
+  gun            DATE NOT NULL,
+  istasyon_kod   TEXT NOT NULL,
+  tank_no        TEXT NOT NULL,
+  urun           TEXT,
+  acilis_lt      NUMERIC(14,2),          -- günün İLK ölçümü
+  kapanis_lt     NUMERIC(14,2),          -- günün SON ölçümü
+  acilis_zaman   TIMESTAMPTZ,
+  kapanis_zaman  TIMESTAMPTZ,
+  olcum_sayisi   INT NOT NULL DEFAULT 0, -- o gün kaç damga geldi (48 beklenir)
+  guncelleme     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (gun, istasyon_kod, tank_no)
+);
+CREATE INDEX IF NOT EXISTS ix_seviye_gun ON tank_seviye_gun (gun);
