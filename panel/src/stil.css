@@ -1127,7 +1127,10 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
    Çözüm: modül ADI gizlenir, İKON kalır (5 × ~52px = 260px → şeride sığar).
    Aktif modülün adı GÖRÜNÜR kalır → kullanıcı nerede olduğunu bilir.
    Ad kaybı erişilebilirlik sorunu DEĞİL: aria-label ile korunuyor (App.tsx). */
-@media (max-width: 640px) {
+/* ⚠️ EŞİK 640 → 900: modül sayısı 5'ten 6'ya çıkınca (Sorun Tespiti eklendi)
+   768px tablette de sığmaz oldu — ölçüm: nav 531px, içerik 712px.
+   İkon-öncelikli menü artık tablette de devrede. */
+@media (max-width: 900px) {
   .kenar-oge { padding: 9px 10px; gap: 0; }
   /* Aktif olmayan modüllerde yalnız ikon */
   .kenar-oge:not(.akt) .kenar-metin { display: none; }
@@ -1158,5 +1161,12 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
    sayfanın kendi <h1> başlığıyla belli. aria-current + aria-label duruyor. */
 @media (max-width: 400px) {
   .kenar-oge.akt .kenar-metin { display: none; }
-  .kenar-oge { padding: 9px 8px; min-width: 44px; justify-content: center; }
+  /* ⚠️ 6 modül × 44px = 264px ama nav 187px (320px ekranda).
+     Dokunmatik hedef 44px KORUNUR (WCAG 2.5.5) — yatay padding kısılır ve
+     nav kendi içinde kaydırılabilir kalır (scroll-snap zaten var).
+     Alternatif "ikonu küçültmek" olurdu ama o erişilebilirliği bozar. */
+  .kenar-oge { padding: 9px 4px; min-width: 40px; min-height: 44px; justify-content: center; }
+  .kenar-ikon svg { width: 18px; height: 18px; }
+  .marka-logo-img { width: 36px; }
+  .kenar { gap: 2px; padding: 8px 6px; }
 }

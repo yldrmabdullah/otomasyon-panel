@@ -296,3 +296,43 @@ Yukarıdaki dördü + aşağıdakiler tek ekranda toplanabilir:
 | **Test/muayene satışı** | ❌ CariTip eşlemesi netleşmeli |
 
 **Son üçü `GetPumpSaleList` + `GetTankLevelList` çekilince açılır.**
+
+---
+
+## ✅ PANELE EKLENDİ: "Sorun Tespiti" modülü (2026-08-01)
+
+Yukarıdaki kontroller artık panelde canlı çalışıyor. Uç: `/api/sorun` (~760 ms).
+Kaynak: **kendi DB'miz** (`tank_dolum`) — ASIS'ten günlük çekilen ham veri.
+Excel'den DEĞİL; POL'e bağımlılık yok, sapmayı POL'den ÖNCE gösterir.
+
+### 3 sekme
+
+| Sekme | İçerik | Canlı sayı (180 gün) |
+|---|---|---|
+| **İrsaliye anomalileri** | Kural dışı numara + çoklu istasyon | 8 + 33 |
+| **Dolum anomalileri** | Mükerrer dolum + seviye artmamış | 18 + 4 |
+| **Kalibrasyon** | 1240 sayılı karar takibi | 100 |
+
+### Tasarım kararları
+
+**1. Dil: "şüpheli", "suçlu" değil.** Ekranın en üstünde kalıcı not var: *"hiçbiri tek
+başına kaçak/suç kanıtı değildir; çoğunun masum açıklaması olabilir"*. Bir tanker iki
+bayiye boşaltabilir, veri gecikebilir, sistem çift kayıt atabilir.
+
+**2. Kapsam AÇIKÇA yazılıyor.** "Seviye anomalisi: 4" rakamı tek başına yanıltıcı —
+bu kontrol yalnız **%4** kayıtta yapılabiliyor (597/14.534), çünkü `seviye_*` alanları
+29.07.2026'da eklendi ve ASIS geriye dönük vermiyor. Kart altında ve tablo açıklamasında
+"kapsam %4" yazıyor.
+
+**3. Mükerrer dolumda "0 dk" ayrı işaretli.** Aynı saniyede iki kayıt = sistem çift kaydı
+olasılığı yüksek; uzun aralıklı olanlar gerçek iki dolum olabilir. İkisi aynı listede ama
+farklı renkte.
+
+**4. Çoklu istasyon "kritik" değil, "uyarı".** 2 istasyon normal olabilir; 3+ olanlar
+kırmızı.
+
+### Yan etki: mobil menü eşiği değişti
+Modül sayısı 5→6 olunca menü 768px tablette de sığmaz oldu (ölçüm: nav 531px, içerik
+712px). İkon-öncelikli menü eşiği **640px → 900px**. 400px altında ikon padding'i
+kısıldı ama **dokunmatik hedef 44px korundu** (WCAG 2.5.5) — ikonu küçültmek
+erişilebilirliği bozardı. Doğrulama: `npm run mobil` 24/24 temiz.

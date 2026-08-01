@@ -10,7 +10,7 @@
 import { createServer } from 'node:http';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { pool, kapat } from '../core/db.js';
-import { piyasaVerisi, durumVerisi, operasyonVerisi, bayiVerisi, bayiSecenekleri } from '../core/panelSorgu.js';
+import { piyasaVerisi, durumVerisi, operasyonVerisi, sorunTespiti, bayiVerisi, bayiSecenekleri } from '../core/panelSorgu.js';
 import {
   girisDogrula, kullaniciBul, kullaniciListesi, kullaniciEkle, kullaniciSil,
   rolDegistir, sifreDegistir, sifreUret, adNormal,
@@ -153,6 +153,7 @@ const sunucu = createServer(async (istek, yanit) => {
     if (url.pathname === '/api/durum') return json(200, await durumVerisi(p));
     if (url.pathname === '/api/piyasa') return json(200, await piyasaVerisi(p));
     if (url.pathname === '/api/operasyon') return json(200, await operasyonVerisi(p));
+    if (url.pathname === '/api/sorun') return json(200, await sorunTespiti(p));
     if (url.pathname === '/api/bayiler') {
       if (q.get('secenekler')) return json(200, await bayiSecenekleri(p));
       return json(200, await bayiVerisi(p, {
@@ -179,7 +180,7 @@ sunucu.listen(PORT, () => {
   console.log(`✔ Panel API → http://localhost:${PORT}`);
   console.log('  Giriş GEREKLİ (prod ile aynı). Kullanıcı yok ise:');
   console.log('    npm run kullanici -- ekle ahmet --admin');
-  console.log('  Uçlar: /api/giris  /api/kullanicilar  /api/durum  /api/piyasa  /api/operasyon  /api/bayiler');
+  console.log('  Uçlar: /api/giris /api/kullanicilar /api/durum /api/piyasa /api/operasyon /api/sorun /api/bayiler');
 });
 
 for (const s of ['SIGINT', 'SIGTERM'] as const) {

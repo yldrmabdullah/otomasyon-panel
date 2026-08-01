@@ -289,6 +289,153 @@ const FLAP_MIN_TEKRAR = 5;
  * çekilmiyor. Uzun vadede dolum ≈ satış (tank kapalı sistem), ama kısa vadede
  * dalgalanır → bu yüzden 30 günlük ortalama alınır ve rakam "tahmin" olarak sunulur.
  */
+/** Sorun tespiti penceresi (gün). Dolum verisi 2,5 yıllık ama eski kayıtlarda
+ *  bazı alanlar boş; 180 gün hem anlamlı hem hızlı. */
+const SORUN_PENCERE_GUN = 180;
+/** Mükerrer tank dolumu: aynı tanka bu süre içinde ~aynı miktar iki kez. */
+const MUKERRER_SAAT = 2;
+/** İki dolumun "aynı miktar" sayılması için azami fark (lt). */
+const MUKERRER_TOLERANS_LT = 1;
+
+/**
+ * SORUN TESPİTİ — POL/EPDK modülünün yakaladığı anomalileri kendi verimizden bulur.
+ *
+ * NEDEN: POL "EPDK 2020" modülü A1a kriterleriyle sapma yakalıyor ama bunu ancak
+ * EPDK'ya gönderdikten SONRA görüyoruz. Aşağıdaki kontroller aynı anomalileri
+ * ASIS'ten çektiğimiz ham dolum verisinden, POL'den ÖNCE çıkarır.
+ * (bkz. docs/bilgi/epdk-modulu-a-tablolari.md)
+ *
+ * ⚠️ Buradaki hiçbir bulgu "kaçak" DEĞİLDİR — incelenmesi gereken ANOMALİdir.
+ * Çoğunun masum açıklaması olabilir (bir tanker iki bayiye boşaltmış, veri
+ * gecikmesi vb.). Panel bunu "şüpheli" diye sunar, "suçlu" diye değil.
+ */
+export async function sorunTespiti(p: Pool) {
+  const [uydurma, mukerrerTesis, mukerrerTank, hayali, kalibrasyon, ozetR] = await Promise.all([
+    // 1) UYDURMA İRSALİYE NO — gerçek format: 2-4 harf öneki + 10+ hane (PIR2026000008671).
+    //    Ölçüm (180 gün): 13.767 normal kayda karşı 8 tekil "çok kısa" numara
+    //    (1111, 1234, 1235, 222, 333…). Bu bir biçim hatası değil, elle uydurma.
+    p.query(
+      `SELECT d.irsaliye_no, count(DISTINCT d.istasyon_kod)::int istasyon,
+              count(*)::int satir, round(sum(d.dolum_miktari))::int litre,
+              max(d.dolum_baslama) son,
+              string_agg(DISTINCT coalesce(i.ad, d.istasyon_kod), ', ') istasyonlar
+       FROM tank_dolum d LEFT JOIN istasyonlar i ON i.istasyon_kod = d.istasyon_kod
+       WHERE d.irsaliye_no ~ '^[0-9]{1,6}$'
+         AND d.dolum_baslama >= now() - ($1 || ' days')::interval
+       GROUP BY 1 ORDER BY litre DESC LIMIT 50`,
+      [SORUN_PENCERE_GUN],
+    ),
+
+    // 2) MÜKERRER TESİS DOLUM — aynı irsaliye birden fazla İSTASYONA.
+    //    ⚠️ Tek başına suç değil: bir tanker iki bayiye boşaltabilir. Ama 3+ istasyon
+    //    ya da uydurma numarayla birleşince incelenmeli.
+    p.query(
+      `SELECT d.irsaliye_no, count(DISTINCT d.istasyon_kod)::int istasyon,
+              count(*)::int satir, round(sum(d.dolum_miktari))::int litre,
+              max(d.dolum_baslama) son,
+              string_agg(DISTINCT coalesce(i.ad, d.istasyon_kod), ', ') istasyonlar
+       FROM tank_dolum d LEFT JOIN istasyonlar i ON i.istasyon_kod = d.istasyon_kod
+       WHERE d.irsaliye_no IS NOT NULL AND d.irsaliye_no <> ''
+         AND d.dolum_baslama >= now() - ($1 || ' days')::interval
+       GROUP BY 1 HAVING count(DISTINCT d.istasyon_kod) > 1
+       ORDER BY istasyon DESC, litre DESC LIMIT 50`,
+      [SORUN_PENCERE_GUN],
+    ),
+
+    // 3) MÜKERRER TANK DOLUM — aynı tanka kısa sürede ~aynı miktar iki kez.
+    //    Çift kayıt (sistem tekrarı) ya da gerçekten iki dolum olabilir.
+    p.query(
+      `WITH c AS (
+         SELECT d.istasyon_kod, d.tank_no, d.urun, d.dolum_baslama, d.dolum_miktari,
+                d.irsaliye_no,
+                lag(d.dolum_baslama) OVER w onceki_zaman,
+                lag(d.dolum_miktari)  OVER w onceki_miktar,
+                lag(d.irsaliye_no)    OVER w onceki_irsaliye
+         FROM tank_dolum d
+         WHERE d.dolum_baslama >= now() - ($1 || ' days')::interval
+         WINDOW w AS (PARTITION BY d.istasyon_kod, d.tank_no ORDER BY d.dolum_baslama))
+       SELECT c.istasyon_kod, coalesce(i.ad, c.istasyon_kod) istasyon_ad, i.sehir,
+              c.tank_no, c.urun, round(c.dolum_miktari)::int litre,
+              c.dolum_baslama, c.onceki_zaman,
+              round(extract(epoch FROM (c.dolum_baslama - c.onceki_zaman)) / 60)::int dakika_ara,
+              c.irsaliye_no, c.onceki_irsaliye
+       FROM c LEFT JOIN istasyonlar i ON i.istasyon_kod = c.istasyon_kod
+       WHERE c.onceki_zaman IS NOT NULL
+         AND c.dolum_baslama - c.onceki_zaman < ($2 || ' hours')::interval
+         AND abs(c.dolum_miktari - c.onceki_miktar) < $3
+       ORDER BY c.dolum_baslama DESC LIMIT 50`,
+      [SORUN_PENCERE_GUN, MUKERRER_SAAT, MUKERRER_TOLERANS_LT],
+    ),
+
+    // 4) HAYALİ DOLUM — dolum kaydı var ama tank seviyesi ARTMAMIŞ.
+    //    ⚠️ KAPSAM SINIRLI: seviye_* alanları 2026-07-29'da eklendi, ASIS geriye
+    //    dönük vermiyor. Kapsam her gün artıyor; oran bu yüzden ayrıca raporlanır.
+    p.query(
+      `SELECT d.istasyon_kod, coalesce(i.ad, d.istasyon_kod) istasyon_ad, i.sehir,
+              d.tank_no, d.urun, round(d.dolum_miktari)::int litre,
+              round(d.seviye_baslangic_lt)::int seviye_bas,
+              round(d.seviye_bitis_lt)::int seviye_bit,
+              d.irsaliye_no, d.dolum_baslama
+       FROM tank_dolum d LEFT JOIN istasyonlar i ON i.istasyon_kod = d.istasyon_kod
+       WHERE d.seviye_baslangic_lt > 0
+         AND d.seviye_bitis_lt <= d.seviye_baslangic_lt
+         AND d.dolum_baslama >= now() - ($1 || ' days')::interval
+       ORDER BY d.dolum_baslama DESC LIMIT 50`,
+      [SORUN_PENCERE_GUN],
+    ),
+
+    // 5) KALİBRASYON DEĞİŞİMİ — 1240 sayılı karar: 24 saat içinde yedek zorunlu.
+    p.query(
+      `SELECT d.istasyon_kod, coalesce(i.ad, d.istasyon_kod) istasyon_ad, i.sehir,
+              d.tank_no, d.urun, d.kalibrasyon_yuzdesi, d.dolum_baslama
+       FROM tank_dolum d LEFT JOIN istasyonlar i ON i.istasyon_kod = d.istasyon_kod
+       WHERE d.kalibrasyon_yuzdesi > 0
+         AND d.dolum_baslama >= now() - ($1 || ' days')::interval
+       ORDER BY d.dolum_baslama DESC LIMIT 100`,
+      [SORUN_PENCERE_GUN],
+    ),
+
+    // Kapsam: hayali dolum kontrolü kaç kayıtta YAPILABİLİYOR (dürüst oran için)
+    p.query(
+      `SELECT count(*)::int toplam,
+              count(*) FILTER (WHERE seviye_baslangic_lt > 0)::int seviye_var
+       FROM tank_dolum WHERE dolum_baslama >= now() - ($1 || ' days')::interval`,
+      [SORUN_PENCERE_GUN],
+    ),
+  ]);
+
+  const kapsam = ozetR.rows[0] ?? { toplam: 0, seviye_var: 0 };
+  return {
+    uretim: new Date().toISOString(),
+    tazelik: await tazelikVerisi(p),
+    esik: {
+      pencereGun: SORUN_PENCERE_GUN,
+      mukerrerSaat: MUKERRER_SAAT,
+      toleransLt: MUKERRER_TOLERANS_LT,
+      // Hayali dolum kontrolünün kapsamı — panelde AÇIKÇA yazılır, yoksa
+      // "4 hayali dolum" rakamı tüm veriyi kapsıyormuş gibi okunur.
+      seviyeKapsamYuzde:
+        Number(kapsam.toplam) > 0
+          ? Math.round((100 * Number(kapsam.seviye_var)) / Number(kapsam.toplam))
+          : 0,
+      seviyeVar: Number(kapsam.seviye_var),
+      dolumToplam: Number(kapsam.toplam),
+    },
+    ozet: {
+      uydurma: uydurma.rows.length,
+      mukerrerTesis: mukerrerTesis.rows.length,
+      mukerrerTank: mukerrerTank.rows.length,
+      hayali: hayali.rows.length,
+      kalibrasyon: kalibrasyon.rows.length,
+    },
+    uydurma: uydurma.rows,
+    mukerrerTesis: mukerrerTesis.rows,
+    mukerrerTank: mukerrerTank.rows,
+    hayali: hayali.rows,
+    kalibrasyon: kalibrasyon.rows,
+  };
+}
+
 export async function operasyonVerisi(p: Pool) {
   const [stok, alarmOzet, kronik, irsaliyesiz, irsaliyeIstasyon, kalibrasyon, su] =
     await Promise.all([

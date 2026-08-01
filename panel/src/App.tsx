@@ -3,12 +3,13 @@ import { Izleme } from './Izleme.js';
 import { Mevzuat } from './Mevzuat.js';
 import { Piyasa } from './Piyasa.js';
 import { Operasyon } from './Operasyon.js';
+import { Sorun } from './Sorun.js';
 import { Giris } from './Giris.js';
 import { SifreDegistir } from './SifreDegistir.js';
 import { Kullanicilar } from './Kullanicilar.js';
-import { IkonIzleme, IkonMevzuat, IkonPiyasa, IkonOperasyon, IkonKullanici } from './ikon.js';
+import { IkonIzleme, IkonMevzuat, IkonPiyasa, IkonOperasyon, IkonSorun, IkonKullanici } from './ikon.js';
 
-type Modul = 'izleme' | 'operasyon' | 'mevzuat' | 'piyasa' | 'kullanicilar';
+type Modul = 'izleme' | 'operasyon' | 'sorun' | 'mevzuat' | 'piyasa' | 'kullanicilar';
 type Tema = 'sistem' | 'light' | 'dark';
 
 interface Oturum {
@@ -21,6 +22,7 @@ interface Oturum {
 const MODULLER: { id: Modul; ad: string; Ikon: () => ReactElement; alt: string; adminMi?: boolean }[] = [
   { id: 'izleme', ad: 'İzleme', Ikon: IkonIzleme, alt: 'Bağlantı & tank' },
   { id: 'operasyon', ad: 'Operasyon', Ikon: IkonOperasyon, alt: 'Stok & alarm & kalite' },
+  { id: 'sorun', ad: 'Sorun Tespiti', Ikon: IkonSorun, alt: 'İrsaliye & dolum anomalisi' },
   { id: 'mevzuat', ad: 'Mevzuat', Ikon: IkonMevzuat, alt: 'EPDK & mutabakat' },
   { id: 'piyasa', ad: 'Piyasa', Ikon: IkonPiyasa, alt: 'Dağıtıcı & bayi' },
   { id: 'kullanicilar', ad: 'Kullanıcılar', Ikon: IkonKullanici, alt: 'Yetki yönetimi', adminMi: true },
@@ -162,6 +164,7 @@ export function App() {
           </div>
           {aktif.id === 'izleme' ? <Izleme />
             : aktif.id === 'operasyon' ? <Operasyon />
+            : aktif.id === 'sorun' ? <Sorun />
             : aktif.id === 'mevzuat' ? <Mevzuat />
             : aktif.id === 'piyasa' ? <Piyasa />
             : <Kullanicilar benKim={oturum.kullanici} />}

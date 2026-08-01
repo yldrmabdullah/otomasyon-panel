@@ -73,3 +73,15 @@ export function IkonOperasyon() {
     </svg>
   );
 }
+
+/** Sorun Tespiti — büyüteç (anomali arama). */
+export function IkonSorun() {
+  return (
+    <svg {...ORTAK}>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="M15.5 15.5 21 21" />
+      <path d="M10.5 7.5v3.5" />
+      <circle cx="10.5" cy="13.6" r=".6" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
