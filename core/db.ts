@@ -209,6 +209,55 @@ export async function satisOzetKaydet(
   }
 }
 
+/** Tank seviye GÜN ÖZETİ upsert (mutabakatın A/D kalemi).
+ *
+ *  ⚠️ 30 dk grid = günde 31.559 ham ölçüm; yalnız gün açılış/kapanışı saklanır
+ *  (~669 satır/gün, 47 kat sıkışma). Bkz. araclar/seviyeCek.ts.
+ *
+ *  `olcum_sayisi` bilerek saklanıyor: 48 beklenir, az olması o tankın gün boyu
+ *  veri göndermediğini gösterir → mutabakatta "eksik veri" ile "gerçek sapma"
+ *  ayrımı bu alandan yapılır. */
+export async function seviyeGunKaydet(
+  liste: { gun: string; istasyonKod: string; tankNo: string; urun: string;
+           acilisLt: number | null; kapanisLt: number | null;
+           acilisZaman: string | null; kapanisZaman: string | null; olcumSayisi: number }[],
+): Promise<void> {
+  if (liste.length === 0) return;
+  const p = pool();
+  const KOLON = 9;
+  const PARCA = 700; // 700×9 = 6300 parametre
+  for (let i = 0; i < liste.length; i += PARCA) {
+    const grup = liste.slice(i, i + PARCA);
+    const deger: unknown[] = [];
+    const satir = grup.map((x, j) => {
+      const b = j * KOLON;
+      deger.push(x.gun, x.istasyonKod, x.tankNo, x.urun, x.acilisLt, x.kapanisLt,
+                 x.acilisZaman, x.kapanisZaman, x.olcumSayisi);
+      return `(${Array.from({ length: KOLON }, (_, k) => `$${b + k + 1}`).join(',')})`;
+    });
+    await p.query(
+      `INSERT INTO tank_seviye_gun (gun, istasyon_kod, tank_no, urun, acilis_lt, kapanis_lt,
+         acilis_zaman, kapanis_zaman, olcum_sayisi)
+       VALUES ${satir.join(',')}
+       ON CONFLICT (gun, istasyon_kod, tank_no) DO UPDATE SET
+         urun = EXCLUDED.urun, acilis_lt = EXCLUDED.acilis_lt, kapanis_lt = EXCLUDED.kapanis_lt,
+         acilis_zaman = EXCLUDED.acilis_zaman, kapanis_zaman = EXCLUDED.kapanis_zaman,
+         olcum_sayisi = EXCLUDED.olcum_sayisi, guncelleme = now()`,
+      deger,
+    );
+  }
+}
+
+/** Bir günün kapanış seviyeleri → ertesi günün açılışı olarak kullanılır.
+ *  Döner: "istasyonKod|tankNo" → kapanis_lt */
+export async function oncekiGunKapanis(gun: string): Promise<Map<string, number>> {
+  const r = await pool().query<{ istasyon_kod: string; tank_no: string; kapanis_lt: string }>(
+    'SELECT istasyon_kod, tank_no, kapanis_lt FROM tank_seviye_gun WHERE gun = $1 AND kapanis_lt IS NOT NULL',
+    [gun],
+  );
+  return new Map(r.rows.map((x) => [`${x.istasyon_kod}|${x.tank_no}`, Number(x.kapanis_lt)]));
+}
+
 // --- Sistem ayar (cursor) oku/yaz ---
 export async function ayarOku(anahtar: string): Promise<string | null> {
   const r = await pool().query<{ deger: string }>('SELECT deger FROM sistem_ayar WHERE anahtar=$1', [anahtar]);
