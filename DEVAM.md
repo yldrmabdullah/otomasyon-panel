@@ -1,4 +1,4 @@
-# DEVAM — kaldığın yer (son güncelleme: 2026-07-30 akşam)
+# DEVAM — kaldığın yer (son güncelleme: 2026-08-01 akşam)
 
 > Bu dosya **oturumlar arası devir teslim** içindir. Yeni bir oturuma başlarken
 > önce bunu oku, sonra `CLAUDE.md` ve ilgili `docs/bilgi/*.md`.
@@ -36,25 +36,65 @@ PANEL_SIFRE=<sifre> npm run mobil              # 24/24 temiz olmalı
 
 ---
 
-## ⚠️ YARIN İLK BAKILACAK: piyasa cron'u
+## ✅ ÇÖZÜLDÜ: piyasa cron'u çalışıyor
 
-Bugün **ilk gerçek koşusu `cancelled` oldu** — 30/32 dağıtıcıda 120 dk limitine dayandı.
-Kök neden ölçüldü: çekim **~123 dk** sürüyor, limitim 120 dk'ydı (%3 eksik).
+3 gün üst üste başarılı: 31 Tem (130 dk) · 1 Ağu (135 dk). Limiti 240'a çıkarmak
+doğru karardı — 120'de kalsaydı ikisi de kesilecekti.
+Transfer tespiti de sonuç üretiyor: 31 Tem 21 hareket, 1 Ağu 12 hareket.
 
-Düzeltmeler yapıldı ama **başarılı bir koşu HENÜZ GÖRÜLMEDİ**:
-- `timeout-minutes: 120 → 240`
-- SIGTERM handler + başlangıç temizliği (iki katmanlı, yarım snapshot bırakmaz)
-- `transferleriTespitEt`'e dağıtıcı kümesi kontrolü (satır oranı %90,7 ile eşiği kıl payı
-  geçiyordu → 2.823 hayalet "ayrildi" kaydı üretebilirdi)
+---
 
-```bash
-gh run list --workflow=piyasa-cek.yml --limit 3
-```
-Sabah 06:00'da koşacak. **Yine kesilirse** çekimi parçalara bölmek gerekir
-(ör. 16+16 dağıtıcı iki ayrı job).
+## ⭐ 1 AĞUSTOS'TA YAPILANLAR (mutabakat altyapısı)
 
-**DB şu an:** 28 Temmuz 30.303 · 29 Temmuz 30.307 (ikisi de 32 dağıtıcı, sağlam).
-Transfer kaydı 15 (hepsi 28 Temmuz, Parkoil'e ait 0).
+### Satış verisi çekiliyor — `npm run satis`
+- Hacim ölçüldü: günde **20.325** ham satış, yılda 7,4 milyon
+- **39 kat sıkışma** → `satis_ozet` tablosu, günde ~525 satır, yılda ~190 bin
+- Kırılım: gün + istasyon + tank + ürün + **cari_tip** (dış satış ayrımı için)
+- DB'de 3 gün var (29-31 Tem). 31 Tem: 151 istasyon, 746.852 lt, 52,4M TL
+
+### Tank seviyesi çekiliyor — `npm run seviye`
+- ⚠️ **`GetTankLevelList` KULLANILAMADI**: 269 istasyondan yalnız 16-19'una
+  ulaşıyor (ölçüldü). Bir gün için 669 tank beklenirken 83 geliyordu.
+  30 Temmuz'da "çalışıyor" diye kaydetmiştim — tek sayfaya bakmış, kapsamı
+  test etmemiştim. **ASIS'e sorulacak: yetki mi, parametre mi?**
+- Çözüm: `GetTankLastLevel` **670 tankın tamamını** veriyor (537 ms) ama anlık.
+  Her gece çekilip biriktirilir → `kapanis_lt` bu gece, `acilis_lt` dünkü kapanış.
+- ⚠️ **Geçmiş için veri YOK** — seri 1 Ağustos'tan itibaren başlıyor.
+- İlk koşu yapıldı: 669 tank, 2 tankın ölçümü bayat.
+
+### Sorun Tespiti modülü panelde
+Menüde yeni sekme. Kaynak: kendi DB'miz, POL'e bağımlı değil.
+- Kural dışı irsaliye **8** (ör. `1234` → 4 istasyona 51.681 lt — uydurma görünüyor)
+- Çoklu istasyon 33 · Mükerrer dolum 18 · Seviye anomalisi 4 · Kalibrasyon 100
+- Kapsam dürüstlüğü: seviye kontrolü yalnız **%4** kayıtta yapılabiliyor, ekranda yazılı
+
+### POL "EPDK 2020" modülü çözümlendi
+`docs/bilgi/epdk-modulu-a-tablolari.md` — A1a kriter formülü **288 lt / %3**
+canlı 667 satır taranarak ölçüldü. 27 "Sağlanmadı" kaydının **14'ü gerçek sapma
+değil** (ertesi gün açılış = 0, yani tank verisi gelmemiş).
+
+---
+
+## ⚠️ SIRADAKİ: MUTABAKAT HESABI (artık yapılabilir)
+
+Formülün 4 girdisinden **3'ü hazır**:
+
+| Kalem | Kaynak | Durum |
+|---|---|---|
+| A — dönem başı stok | `tank_seviye_gun.acilis_lt` | ⏳ yarından itibaren |
+| B — dolum | `tank_dolum` | ✅ 36.465 kayıt |
+| C — satış | `satis_ozet` | ✅ 3 gün |
+| D — dönem sonu stok | `tank_seviye_gun.kapanis_lt` | ✅ 669 tank |
+
+`Fark = (A + B − C) − D` · EPDK limiti **288 lt / %3**
+
+**Yapılacak:**
+1. `seviyeCek` + `satisCek`'i günlük cron'a bağla (izleme job'una eklenebilir)
+2. Birkaç gün veri biriksin (A kalemi için en az 2 gün gerekiyor)
+3. Mutabakat modülü: istasyon × gün/ay, sapma listesi, 288 lt / %3 uyarısı
+
+⚠️ **Aylık mutabakat için 1 ay veri gerekiyor** — Ağustos sonunda ilk tam ay çıkar.
+Günlük kontrol ise 2 günde başlayabilir.
 
 ---
 
