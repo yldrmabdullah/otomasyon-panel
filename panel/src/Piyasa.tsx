@@ -1,7 +1,7 @@
 // Piyasa İstihbarat modülü — EPDK resmi verisiyle tüm Türkiye akaryakıt piyasası.
 // Dağıtıcılar, bayi dağılımı, il dağılımı, bayi transferleri. Kaynak: /api/piyasa.
-import { useEffect, useMemo, useReducer, useState, type ReactElement } from 'react';
-import { KolonSecici, useKolonlar, type KolonTanim } from './KolonSecici.js';
+import { useEffect, useMemo, useReducer, useState } from 'react';
+import { useKolonlar } from './KolonSecici.js';
 import { Tablo, type TabloKolon } from './Tablo.js';
 import { Sekmeler } from './Sekme.js';
 import { CubukYatay, IsiIzgara } from './Grafik.js';
@@ -10,22 +10,105 @@ import { Bos, ModulBar, TazelikSerit, trTarih, useVeri } from './ortak.js';
 import { csvIndir } from './disaAktar.js';
 import type { Tazelik } from './tipler.js';
 
-// Bayi tablosu kolonları — varsayılan görünür + seçilebilir gizli.
-const BAYI_KOLONLARI: KolonTanim[] = [
-  { id: 'bayi', ad: 'Bayi', varsayilan: true, sabit: true },
-  { id: 'dagitici', ad: 'Dağıtıcı', varsayilan: true },
-  { id: 'il', ad: 'İl', varsayilan: true },
-  { id: 'ilce', ad: 'İlçe', varsayilan: false },
-  { id: 'durum', ad: 'Durum', varsayilan: true },
-  { id: 'kategori', ad: 'Kategori', varsayilan: false },
-  { id: 'epdk', ad: 'EPDK No', varsayilan: false },
-  // "Bize geliş" = bayinin bizimle sözleşme imzaladığı gün (EPDK
-  // dagiticiIleYapilanSozlesmeBaslangicTarihi). 167 aktif bayimizde %100 dolu.
-  // ⚠️ RAKİP bayilerde bu tarih RAKİPLE yapılan sözleşmedir — kolon adı bu yüzden
-  // "Sözleşme Başl." (nötr); "Bize geliş" yalnız kendi bayilerimiz için doğru olur.
-  { id: 'sozlesmeBas', ad: 'Sözleşme Başl.', varsayilan: false },
-  { id: 'sozlesme', ad: 'Sözleşme Bitiş', varsayilan: false },
-];
+/** Bayi tablosu kolon id'si → sunucunun beklediği sıralama alanı.
+ *
+ *  ⚠️ İKİSİ AYNI DEĞİL: kolon id'leri kısa ve localStorage'da kayıtlı ('bayi'),
+ *  sunucu ise DB kolon adını bekliyor ('lisans_sahibi'). Kolon id'lerini sunucu
+ *  adlarına çevirmek localStorage'daki mevcut kolon seçimlerini geçersiz kılardı
+ *  (kullanıcı gizlediği kolonların geri geldiğini görürdü) → eşleme tabloyla ayrı. */
+const BAYI_SIRA_ALANI: Record<string, SiralamaAlan> = {
+  bayi: 'lisans_sahibi',
+  dagitici: 'dagitim_sirketi',
+  il: 'il',
+  ilce: 'ilce',
+  durum: 'lisans_durumu',
+  kategori: 'kategori',
+  epdk: 'bayi_lisans_no',
+  sozlesmeBas: 'sozlesme_baslangic',
+  sozlesme: 'sozlesme_bitis',
+};
+/** Ters yön — sunucudaki aktif sıralama alanını kolon id'sine çevirir (▲▼ göstergesi). */
+const BAYI_SIRA_KOLONU: Record<string, string> = Object.fromEntries(
+  Object.entries(BAYI_SIRA_ALANI).map(([id, alan]) => [alan, id]),
+);
+
+/** Bayi tablosu kolonları — TEK KAYNAK: hem ekran tablosu hem CSV aktarımı bunu
+ *  kullanır. Ayrı listeler tutulursa CSV'ye yeni kolon eklemek unutulur ve dosya
+ *  ekranda görünenden eksik iner (sessiz veri kaybı).
+ *
+ *  `sirala: () => 0` — sıralama SUNUCUDA yapılıyor; bu alan yalnız başlığın
+ *  tıklanabilir olmasını sağlar. Tablo `sunucu` modunda dönen değeri kullanmaz. */
+function bayiKolonlari(sadeceBiz: boolean): TabloKolon<Bayi>[] {
+  return [
+    {
+      id: 'bayi', ad: 'Bayi', varsayilan: true, sabit: true,
+      sinif: 'ad-hucre', sirala: () => 0,
+      hucre: (b) => (
+        <>
+          {b.dagitim_sirketi === BIZ && <span className="sr-only">Parkoil bayisi: </span>}
+          {b.lisans_sahibi ?? b.bayi_lisans_no}
+        </>
+      ),
+      metin: (b) => b.lisans_sahibi ?? '',
+    },
+    {
+      id: 'dagitici', ad: 'Dağıtıcı', varsayilan: true, sinif: 'soluk', sirala: () => 0,
+      hucre: (b) => (b.dagitim_sirketi === BIZ ? 'Parkoil (Turgut)' : b.dagitim_sirketi ?? <Bos />),
+      metin: (b) => b.dagitim_sirketi ?? '',
+    },
+    {
+      id: 'il', ad: 'İl', varsayilan: true, sirala: () => 0,
+      hucre: (b) => b.il ?? <Bos />, metin: (b) => b.il ?? '',
+    },
+    {
+      id: 'ilce', ad: 'İlçe', varsayilan: false, sinif: 'soluk', sirala: () => 0,
+      hucre: (b) => b.ilce ?? <Bos />, metin: (b) => b.ilce ?? '',
+    },
+    {
+      id: 'durum', ad: 'Durum', varsayilan: true, sirala: () => 0,
+      hucre: (b) => (
+        <span className={`durum-etiket ${b.lisans_durumu === 'ONAYLANDI' ? 'iyi-r' : 'krit'}`}>
+          {b.lisans_durumu === 'ONAYLANDI' ? 'Onaylı' : (b.lisans_durumu ?? '—')}
+        </span>
+      ),
+      metin: (b) => b.lisans_durumu ?? '',
+    },
+    {
+      id: 'kategori', ad: 'Kategori', varsayilan: false, sinif: 'soluk', sirala: () => 0,
+      hucre: (b) => b.kategori ?? <Bos />, metin: (b) => b.kategori ?? '',
+    },
+    {
+      id: 'epdk', ad: 'EPDK No', varsayilan: false, sinif: 'mono soluk', sirala: () => 0,
+      hucre: (b) => b.bayi_lisans_no, metin: (b) => b.bayi_lisans_no,
+    },
+    {
+      // "Bize geliş" = bayinin bizimle sözleşme imzaladığı gün (EPDK
+      // dagiticiIleYapilanSozlesmeBaslangicTarihi). 167 aktif bayimizde %100 dolu.
+      // ⚠️ RAKİP bayilerde bu tarih RAKİPLE yapılan sözleşmedir → "sadece Parkoil"
+      // filtresi açıkken başlık netleşir, tüm piyasa görünümünde nötr kalır.
+      id: 'sozlesmeBas', ad: sadeceBiz ? 'Bize Geliş' : 'Sözleşme Başl.',
+      varsayilan: false, sinif: 'sag mono soluk', sirala: () => 0,
+      hucre: (b) =>
+        b.sozlesme_baslangic ? (
+          <time dateTime={b.sozlesme_baslangic.slice(0, 10)}>{trTarih(b.sozlesme_baslangic)}</time>
+        ) : (
+          <Bos />
+        ),
+      metin: (b) => (b.sozlesme_baslangic ? trTarih(b.sozlesme_baslangic) : ''),
+    },
+    {
+      id: 'sozlesme', ad: 'Sözleşme Bitiş', varsayilan: false, sinif: 'sag mono soluk',
+      sirala: () => 0,
+      hucre: (b) =>
+        b.sozlesme_bitis ? (
+          <time dateTime={b.sozlesme_bitis.slice(0, 10)}>{trTarih(b.sozlesme_bitis)}</time>
+        ) : (
+          <Bos />
+        ),
+      metin: (b) => (b.sozlesme_bitis ? trTarih(b.sozlesme_bitis) : ''),
+    },
+  ];
+}
 
 interface Ozet {
   dagitici_sayisi: number; toplam_bayi: number; aktif_bayi: number;
@@ -148,7 +231,9 @@ export function Piyasa() {
   const [bayiYukleniyor, setBayiYukleniyor] = useState(true);
   const [sorgu, dispatch] = useReducer(sorguReducer, SORGU_BAS);
   const q = useGecikmeli(sorgu.q, 300);
-  const kol = useKolonlar('bayiler', BAYI_KOLONLARI);
+  // CSV aktarımı görünür kolonları bilmek zorunda (Tablo kendi içinde de aynı
+  // anahtarla okuyor — localStorage tek kaynak, iki taraf aynı seçimi görür).
+  const kol = useKolonlar('bayiler', bayiKolonlari(sorgu.sadeceBiz));
 
   // Filtre açılırları — tüm bayiyi indirmeden, ayrı hafif çağrı.
   const [secenekler, setSecenekler] = useState<{ iller: string[]; dagiticilar: string[]; toplamBayi: number }>(
@@ -202,24 +287,12 @@ export function Piyasa() {
         if ((d.satirlar?.length ?? 0) < BOYUT || tumu.length >= (d.toplam ?? 0)) break;
         if (sy > 200) break; // güvenlik: 40.000 satır tavanı
       }
-      const gorunurKolon = BAYI_KOLONLARI.filter((k) => kol.gorunurMu(k.id));
+      // Kolon metinleri tablo tanımından gelir (tek kaynak) — burada ayrı bir
+      // switch tutulursa yeni kolon eklendiğinde CSV'ye yansıması unutulur.
+      const tumKolon = bayiKolonlari(sorgu.sadeceBiz);
+      const gorunurKolon = tumKolon.filter((k) => k.sabit || kol.gorunurMu(k.id));
       const basliklar = gorunurKolon.map((k) => k.ad);
-      const satirlar = tumu.map((b) =>
-        gorunurKolon.map((k) => {
-          switch (k.id) {
-            case 'bayi': return b.lisans_sahibi ?? '';
-            case 'dagitici': return b.dagitim_sirketi ?? '';
-            case 'il': return b.il ?? '';
-            case 'ilce': return b.ilce ?? '';
-            case 'durum': return b.lisans_durumu ?? '';
-            case 'kategori': return b.kategori ?? '';
-            case 'epdk': return b.bayi_lisans_no;
-            case 'sozlesmeBas': return b.sozlesme_baslangic ? trTarih(b.sozlesme_baslangic) : '';
-            case 'sozlesme': return b.sozlesme_bitis ? trTarih(b.sozlesme_bitis) : '';
-            default: return '';
-          }
-        }),
-      );
+      const satirlar = tumu.map((b) => gorunurKolon.map((k) => k.metin?.(b) ?? ''));
       csvIndir(sorgu.sadeceBiz ? 'parkoil-bayileri' : 'tum-bayiler', basliklar, satirlar);
     } catch (e) {
       setBayiHata(`CSV aktarılamadı: ${e instanceof Error ? e.message : e}`);
@@ -273,28 +346,9 @@ export function Piyasa() {
     return () => ac.abort();
   }, [q, sorgu.il, sorgu.dagitici, sorgu.durum, sorgu.sadeceBiz, sorgu.sirala, sorgu.artan, sorgu.sayfa]);
 
-  const siraYon = (alan: SiralamaAlan): 'ascending' | 'descending' | 'none' =>
-    sorgu.sirala === alan ? (sorgu.artan ? 'ascending' : 'descending') : 'none';
-  const siraOk = (alan: SiralamaAlan) => (sorgu.sirala === alan ? (sorgu.artan ? '▲' : '▼') : '');
-
-  /** Sıralanabilir başlık — gerçek buton, klavyeyle erişilebilir, aria-sort'lu.
-   *  Önceden tıklanabilir <th> vardı: 30 bin satırlık tablo klavyeyle
-   *  sıralanamıyordu ve yön yalnız ▲/▼ karakteriyle (görsel) belirtiliyordu. */
-  /* ⚠️ JSX ELEMENTİ OLARAK DEĞİL, FONKSİYON ÇAĞRISI olarak kullanılır:
-     `{SiraBas({...})}` — `<SiraBas .../>` DEĞİL.
-     Sebebi: bileşen Piyasa gövdesinde tanımlı olduğu için her render'da yeni
-     fonksiyon referansı oluyor; JSX elementi olarak kullanılınca React bunu
-     YENİ BİR TİP sayıp 8 <th>'yi unmount/mount ediyor ve sıralama başlığına
-     odaklanmış klavye kullanıcısı odağını kaybediyordu. Çağrı olarak
-     kullanıldığında yeni tip oluşmaz, DOM korunur. */
-  const SiraBas = ({ alan, ad, sag }: { alan: SiralamaAlan; ad: string; sag?: boolean }) => (
-    <th key={alan} scope="col" className={`sirali ${sag ? 'sag' : ''}`} aria-sort={siraYon(alan)}>
-      <button type="button" className="th-btn" onClick={() => dispatch({ tip: 'sirala', alan })}>
-        {ad}
-        <span aria-hidden="true">{siraOk(alan)}</span>
-      </button>
-    </th>
-  );
+  // NOT: Buradaki `SiraBas`/`siraYon`/`siraOk` yardımcıları 2026-08-03'te KALDIRILDI.
+  // Bayi tablosu ortak `Tablo`'ya (sunucu modu) geçince sıralanabilir başlık,
+  // aria-sort ve ▲▼ göstergesi bileşenin kendi işi oldu; buradaki kopya ölü kaldı.
 
   // Sözleşme bitecekler: kapsama göre süz (bizim / rakip / tümü).
   // Kademeli gösterim ve arama Tablo bileşeninin içinde.
@@ -643,8 +697,6 @@ export function Piyasa() {
                     dispatch={dispatch}
                     sayfa={sayfa}
                     toplamSayfa={toplamSayfa}
-                    kol={kol}
-                    SiraBas={SiraBas}
                     csvAktar={bayiCsvAktar}
                     aktarPmi={aktarPmi}
                     aktarIlerleme={aktarIlerleme}
@@ -659,39 +711,39 @@ export function Piyasa() {
   );
 }
 
-/* Tüm Bayiler bölümü — kendi sayfalama + çoklu dropdown filtresi olduğu için
-   ortak Tablo bileşenine geçmedi (30 bin satır, sunucu taraflı sayfalama). */
+/* Tüm Bayiler bölümü — ortak `Tablo` bileşeni, SUNUCU TARAFLI modda.
+ *
+ * 2026-08-03: Eskiden burada elle yazılmış <table> vardı (30 bin satır client'a
+ * inemediği için sunucu sayfalama şart). Ortak Tablo'ya `sunucu` prop grubu
+ * eklendi → kolon/hücre eşlemesi tek listeden türüyor, CSV/kolon seçici/sticky
+ * başlık davranışı panelin diğer 14 tablosuyla aynı.
+ *
+ * ⚠️ Tablo `sunucu` modunda client-side sıralama/filtreleme YAPMAZ — yaparsa
+ * 50 satırlık sayfa kendi içinde sıralanıp sunucu sırasını bozardı. */
 function TumBayiler(p: {
   sayfaliBayiler: Bayi[] | null; toplamEslesen: number; bayiHata: string | null;
   bayiYukleniyor: boolean; secenekler: { iller: string[]; dagiticilar: string[]; toplamBayi: number };
   sorgu: Sorgu; dispatch: (e: Eylem) => void; sayfa: number; toplamSayfa: number;
-  kol: { gorunurMu: (id: string) => boolean; degistir: (id: string) => void; gorunurSayi: number };
-  SiraBas: (o: { alan: SiralamaAlan; ad: string; sag?: boolean }) => ReactElement;
   /** CSV aktarımı Piyasa'da tanımlı (sunucudan sayfa sayfa çeker) → prop olarak gelir. */
   csvAktar: () => void; aktarPmi: boolean; aktarIlerleme: number;
 }) {
   const { sayfaliBayiler, toplamEslesen, bayiHata, bayiYukleniyor, secenekler,
-          sorgu, dispatch, sayfa, toplamSayfa, kol, SiraBas, csvAktar, aktarPmi,
+          sorgu, dispatch, sayfa, toplamSayfa, csvAktar, aktarPmi,
           aktarIlerleme } = p;
-  // Dinamik tablo: arama + çoklu filtre + sıralama + sunucu taraflı sayfalama
+
+  const kolonlar = useMemo(() => bayiKolonlari(sorgu.sadeceBiz), [sorgu.sadeceBiz]);
+
   return (
     <section>
-            <div className="bolum-baslik">
-              <h2 id="bayi-baslik">
-                Tüm Bayiler{' '}
-                <span className="sayi" role="status" aria-live="polite">
-                  {sayfaliBayiler === null
-                    ? 'yükleniyor…'
-                    : `${toplamEslesen.toLocaleString('tr')} / ${secenekler.toplamBayi.toLocaleString('tr')} bayi`}
-                </span>
-              </h2>
-            </div>
             {bayiHata && (
               <div className="hata" role="alert">
                 <span aria-hidden="true">⚠ </span>
                 {bayiHata}
               </div>
             )}
+            {/* Arama + dropdown filtreleri: sunucuya gidiyor, bu yüzden Tablo'nun
+                kendi arama kutusu (`aramaEtiket`) KULLANILMAZ — o client-side
+                filtreler ve elimizdeki 50 satırı süzerdi. */}
             <div className="filtre-cubugu">
               <input
                 className="arama"
@@ -738,135 +790,38 @@ function TumBayiler(p: {
                 />
                 Sadece Parkoil
               </label>
-              <button
-                type="button"
-                className="aktar-btn"
-                onClick={csvAktar}
-                disabled={aktarPmi || toplamEslesen === 0}
-                title={
-                  toplamEslesen === 0
-                    ? 'Aktarılacak satır yok'
-                    : `${toplamEslesen.toLocaleString('tr')} satır sunucudan çekilip CSV inecek`
-                }
-              >
-                {aktarPmi ? (
-                  <span aria-live="polite">
-                    {aktarIlerleme > 0
-                      ? `${aktarIlerleme.toLocaleString('tr')} / ${toplamEslesen.toLocaleString('tr')}…`
-                      : 'Hazırlanıyor…'}
-                  </span>
-                ) : (
-                  <>
-                    <span aria-hidden="true">⭳ </span>CSV
-                    <span className="sr-only"> olarak indir, {toplamEslesen} satır</span>
-                  </>
-                )}
-              </button>
-              <KolonSecici tanimlar={BAYI_KOLONLARI} gorunurMu={kol.gorunurMu} degistir={kol.degistir} />
             </div>
 
-            {/* 50 satır sayfa boyutu ekranı taşırıyor → dikey kaydırma + sabit başlık */}
-            <div className="tablo-sar kaydirmali" tabIndex={0} role="region" aria-labelledby="bayi-baslik">
-              <table>
-                <caption className="sr-only">
-                  Tüm bayiler — {toplamEslesen} sonuç, sayfa {sayfa} / {toplamSayfa}.
-                  Dikey ve yatay kaydırılabilir.
-                </caption>
-                <thead>
-                  <tr>
-                    {SiraBas({ alan: 'lisans_sahibi', ad: 'Bayi' })}
-                    {kol.gorunurMu('dagitici') && SiraBas({ alan: 'dagitim_sirketi', ad: 'Dağıtıcı' })}
-                    {kol.gorunurMu('il') && SiraBas({ alan: 'il', ad: 'İl' })}
-                    {kol.gorunurMu('ilce') && SiraBas({ alan: 'ilce', ad: 'İlçe' })}
-                    {kol.gorunurMu('durum') && SiraBas({ alan: 'lisans_durumu', ad: 'Durum' })}
-                    {kol.gorunurMu('kategori') && SiraBas({ alan: 'kategori', ad: 'Kategori' })}
-                    {kol.gorunurMu('epdk') && SiraBas({ alan: 'bayi_lisans_no', ad: 'EPDK No' })}
-                    {/* "Sadece bizim" filtresi açıkken bu tarih kesin olarak BİZE geliş
-                        tarihidir → başlık netleşir. Tüm piyasa görünümünde rakiple
-                        yapılan sözleşmeyi de kapsadığı için nötr kalır. */}
-                    {kol.gorunurMu('sozlesmeBas') &&
-                      SiraBas({
-                        alan: 'sozlesme_baslangic',
-                        ad: sorgu.sadeceBiz ? 'Bize Geliş' : 'Sözleşme Başl.',
-                        sag: true,
-                      })}
-                    {kol.gorunurMu('sozlesme') && SiraBas({ alan: 'sozlesme_bitis', ad: 'Sözleşme Bitiş', sag: true })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(sayfaliBayiler ?? []).map((b) => {
-                    const biz = b.dagitim_sirketi === BIZ;
-                    return (
-                      <tr key={b.bayi_lisans_no} className={biz ? 'satir-biz' : ''}>
-                        <td className="ad-hucre">
-                          {biz && <span className="sr-only">Parkoil bayisi: </span>}
-                          {b.lisans_sahibi ?? b.bayi_lisans_no}
-                        </td>
-                        {kol.gorunurMu('dagitici') && <td className="soluk">{biz ? 'Parkoil (Turgut)' : b.dagitim_sirketi ?? <Bos />}</td>}
-                        {kol.gorunurMu('il') && <td>{b.il ?? <Bos />}</td>}
-                        {kol.gorunurMu('ilce') && <td className="soluk">{b.ilce ?? <Bos />}</td>}
-                        {kol.gorunurMu('durum') && (
-                          <td>
-                            <span className={`durum-etiket ${b.lisans_durumu === 'ONAYLANDI' ? 'iyi-r' : 'krit'}`}>
-                              {b.lisans_durumu === 'ONAYLANDI' ? 'Onaylı' : (b.lisans_durumu ?? '—')}
-                            </span>
-                          </td>
-                        )}
-                        {kol.gorunurMu('kategori') && <td className="soluk">{b.kategori ?? <Bos />}</td>}
-                        {kol.gorunurMu('epdk') && <td className="mono soluk">{b.bayi_lisans_no}</td>}
-                        {kol.gorunurMu('sozlesmeBas') && (
-                          <td className="sag mono soluk">
-                            {b.sozlesme_baslangic ? (
-                              <time dateTime={b.sozlesme_baslangic.slice(0, 10)}>
-                                {trTarih(b.sozlesme_baslangic)}
-                              </time>
-                            ) : (
-                              <Bos />
-                            )}
-                          </td>
-                        )}
-                        {kol.gorunurMu('sozlesme') && (
-                          <td className="sag mono soluk">
-                            {b.sozlesme_bitis ? (
-                              <time dateTime={b.sozlesme_bitis.slice(0, 10)}>{trTarih(b.sozlesme_bitis)}</time>
-                            ) : (
-                              <Bos />
-                            )}
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })}
-                  {sayfaliBayiler !== null && sayfaliBayiler.length === 0 && (
-                    <tr>
-                      <td colSpan={kol.gorunurSayi} className="bos">
-                        {bayiYukleniyor ? 'Yükleniyor…' : 'Eşleşen bayi yok.'}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {toplamSayfa > 1 && (
-              <div className="sayfalama">
-                <button
-                  type="button"
-                  onClick={() => dispatch({ tip: 'sayfa', deger: Math.max(1, sayfa - 1) })}
-                  disabled={sayfa === 1}
-                >
-                  <span aria-hidden="true">‹ </span>Önceki
-                </button>
-                <span className="sayfa-bilgi">Sayfa {sayfa} / {toplamSayfa}</span>
-                <button
-                  type="button"
-                  onClick={() => dispatch({ tip: 'sayfa', deger: Math.min(toplamSayfa, sayfa + 1) })}
-                  disabled={sayfa === toplamSayfa}
-                >
-                  Sonraki<span aria-hidden="true"> ›</span>
-                </button>
-              </div>
-            )}
+            <Tablo<Bayi>
+              anahtar="bayiler"
+              baslik="Tüm Bayiler"
+              kolonlar={kolonlar}
+              satirlar={sayfaliBayiler ?? []}
+              satirAnahtar={(b) => b.bayi_lisans_no}
+              satirSinif={(b) => (b.dagitim_sirketi === BIZ ? 'satir-biz' : undefined)}
+              bosMesaj="Eşleşen bayi yok."
+              // 50 satır sayfa boyutu ekranı taşırıyor → dikey kaydırma + sabit başlık.
+              // Eşik 0: sayfa hep dolu geldiği için tablo her zaman kaydırmalı olsun.
+              kaydirmaEsigi={0}
+              sunucu={{
+                toplam: toplamEslesen,
+                tumToplam: secenekler.toplamBayi,
+                sayfa,
+                toplamSayfa,
+                sayfaDegis: (s) => dispatch({ tip: 'sayfa', deger: s }),
+                sirala: BAYI_SIRA_KOLONU[sorgu.sirala] ?? null,
+                artan: sorgu.artan,
+                siralaDegis: (kolonId) => {
+                  const alan = BAYI_SIRA_ALANI[kolonId];
+                  if (alan) dispatch({ tip: 'sirala', alan });
+                },
+                yukleniyor: bayiYukleniyor,
+                ilkYukleme: sayfaliBayiler === null,
+                csvAktar,
+                csvPmi: aktarPmi,
+                csvIlerleme: aktarIlerleme,
+              }}
+            />
     </section>
   );
 }

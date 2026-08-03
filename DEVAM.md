@@ -146,29 +146,31 @@ gh secret set NETGSM_USERCODE  # ve NETGSM_PASSWORD, NETGSM_HEADER, EKIP_TELEFON
 
 ## SIRADAKİ İŞLER (öncelik sırası)
 
-### 1. Harita klavye erişimi — ÜRÜN KARARI GEREKİYOR
-81 il `tabIndex={0}` + `role="button"` taşıyor → klavye kullanıcısı tabloya ulaşmak için
-**81 durak** geçiyor. Üstelik `role="button"` yanıltıcı: `onClick`/`onKeyDown` YOK,
-yani Enter'a tepki vermeyen bir "buton" (ekran okuyucu "düğme" der, basılır, hiçbir şey olmaz).
+### 1. ✅ Harita klavye erişimi — YAPILDI (2026-08-03)
+Kullanıcı kararı: **(a) harita salt görsel.** 81 ilden `tabIndex={0}` + `role="button"` +
+il bazlı `aria-label` kaldırıldı, `aria-hidden="true"` eklendi. Artık klavye kullanıcısı
+tabloya ulaşmak için 81 durak geçmiyor ve "basılınca hiçbir şey olmayan düğme" yanıltması
+kalktı. Bilgi kaybı yok: `svg` `role="img"` + özet `aria-label` taşıyor, tüm sayılar
+alttaki tabloda. Hover (`onMouseEnter/Leave`) korundu; ölü kalan `onFocus/onBlur` silindi.
 
-Seçenekler:
-- **(a)** `tabIndex`/`role` kaldır → harita salt görsel. Veri kaybı yok: `svg` zaten
-  `role="img"` + özet `aria-label` taşıyor, tüm sayılar alttaki tabloda.
-- **(b)** `.atla` skip-link deseniyle "Haritayı atla" bağlantısı + gerçek `onKeyDown` ekle.
+> Tıklanabilir yapılacaksa: gerçek `onClick`+`onKeyDown` VE "haritayı atla" skip-link'i
+> (`.atla`, `stil.css:131`) BİRLİKTE eklenmeli — biri olmadan diğeri yarım çözüm.
 
-Panelde `.atla` sınıfı ve kullanımı zaten var (`stil.css:131`, `App.tsx:102`).
-**Kullanıcıya sorulmadan yapılmamalı.**
+### 2. ✅ Piyasa ham tablosu ortak `Tablo`'ya birleştirildi (2026-08-03)
+`Tablo`'ya opsiyonel `sunucu?: {...}` prop grubu eklendi; verilmezse davranış **bit-for-bit
+korunuyor** (13 kontrollü render testiyle doğrulandı, client modu dahil).
 
-### 2. Piyasa ham tablosunun ortak `Tablo`'ya birleştirilmesi
-`Piyasa.tsx`'te sunucu-taraflı sayfalamalı ham `<table>` var (30.308 satır client'a
-inemiyor). Ortak `Tablo` client-side sıralıyor. Kullanıcının gördüğü fark: Temizle
-butonu, 3-tık sıralama iptali, sayaç dili, kolon seçici konumu.
+⚠️ **`sunucu` modunda client-side sıralama VE filtreleme ATLANIYOR** — atlanmasaydı 50
+satırlık sayfa kendi içinde yeniden sıralanır, kullanıcı tüm tablonun sıralı olduğunu
+sanardı (sessiz veri yanlışlığı; hata vermez, yalnız yanlış gösterir).
 
-Somut plan: `Tablo`'ya opsiyonel `sunucu?: {toplam, sayfa, sayfaDegis, sirala,
-siralaDegis, yukleniyor}` prop grubu. Verilmezse mevcut davranış bit-for-bit korunur.
-⚠️ **`sunucu` modunda client-side sıralama ATLANMALI** — atlanmazsa 50 satırlık sayfa
-kendi içinde yeniden sıralanır ve sunucu sırası bozulur (**sessiz veri yanlışlığı**).
-Kazanç ~60 satır siler.
+Kazanç: **Piyasa.tsx 950 → 771 satır (−179)**. Ayrıca CSV aktarımındaki kolon `switch`'i
+silindi — kolon metinleri artık `bayiKolonlari()` tek kaynağından geliyor (önceden ekran
+ve CSV ayrı listelerdi → yeni kolonun CSV'ye eklenmesi unutulabilirdi).
+
+Dikkat: kolon id'leri (`bayi`) ile sunucu sıralama alanları (`lisans_sahibi`) FARKLI —
+`BAYI_SIRA_ALANI` / `BAYI_SIRA_KOLONU` ile eşleniyor. Kolon id'lerini sunucu adlarına
+çevirmek localStorage'daki mevcut kolon seçimlerini geçersiz kılardı.
 
 ### 3. `.cikis-btn` dokunmatik hedefi
 Şu an 32px, WCAG 2.5.5 önerisi 44px. Düzeltmek `--kenar-yuk`'u etkiler (sticky `th`

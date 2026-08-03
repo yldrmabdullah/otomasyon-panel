@@ -60,6 +60,47 @@ interface TabloProps<T> {
   /** Başlığın ALTINA açıklama şeridi. Tablo'nun dışına konursa başlığın ÜSTÜNDE
    *  kalıp önceki bölüme aitmiş gibi görünüyor (canlıda görüldü). */
   aciklama?: ReactNode;
+  /** SUNUCU TARAFLI mod — verilmezse tablo tamamen client-side çalışır (varsayılan,
+   *  davranış bit-for-bit korunur).
+   *
+   *  Verilirse `satirlar` yalnızca GEÇERLİ SAYFAYI içerir; filtreleme, sıralama ve
+   *  sayfalama sunucuda yapılır. Tablo bu modda:
+   *   - client-side arama/sıralamayı ATLAR (aşağıdaki uyarıya bakın),
+   *   - sayaçta `toplam`'ı kullanır (elindeki 50 satırı değil),
+   *   - başlık tıklamasını `siralaDegis`'e iletir,
+   *   - altta Önceki/Sonraki sayfalama çubuğu gösterir.
+   *
+   *  ⚠️ CLIENT-SIDE SIRALAMA NEDEN ATLANMALI: atlanmazsa sunucudan sıralı gelen
+   *  50 satırlık sayfa KENDİ İÇİNDE yeniden sıralanır. Kullanıcı "A→Z" der, 1.
+   *  sayfada A-C arası satırları kendi içinde doğru sıralı görür ve tablonun
+   *  tamamının sıralı olduğunu sanır — oysa sunucu sırası bozulmuştur. Sessiz veri
+   *  yanlışlığı; hata vermez, yalnız yanlış gösterir. */
+  sunucu?: {
+    /** Filtreyle eşleşen TOPLAM satır sayısı (yalnız bu sayfadaki değil). */
+    toplam: number;
+    /** Tüm veri kümesinin boyutu — sayaçta "eşleşen / tümü" göstermek için.
+     *  Verilmezse yalnız eşleşen sayısı yazılır. */
+    tumToplam?: number;
+    sayfa: number;
+    toplamSayfa: number;
+    sayfaDegis: (sayfa: number) => void;
+    /** Şu an sıralı kolonun id'si (TabloKolon.id ile aynı olmalı). */
+    sirala: string | null;
+    artan: boolean;
+    /** Başlığa tıklandı — yön/alan kararını çağıran taraf verir (sunucuya gider). */
+    siralaDegis: (kolonId: string) => void;
+    /** Sayfa yükleniyor — boş gövdede "Yükleniyor…" gösterilir. */
+    yukleniyor?: boolean;
+    /** İlk yükleme henüz bitmedi (satırlar null) — sayaç "yükleniyor…" der. */
+    ilkYukleme?: boolean;
+    /** CSV'yi çağıran taraf üretir (tüm sayfaları sunucudan çeker).
+     *  Verilmezse Tablo'nun kendi CSV'si ELİNDEKİ SAYFAYI indirir — sunucu modunda
+     *  bu yarım dosya demektir, o yüzden bu alan doldurulmalı. */
+    csvAktar?: () => void;
+    /** CSV hazırlanıyor — butonu kilitler, ilerleme gösterir. */
+    csvPmi?: boolean;
+    csvIlerleme?: number;
+  };
 }
 
 export function Tablo<T>({
@@ -76,6 +117,7 @@ export function Tablo<T>({
   ustSag,
   baslik,
   aciklama,
+  sunucu,
 }: TabloProps<T>) {
   const [arama, setArama] = useState('');
   // Yazarken bloklamayı önle: input anlık, filtre bir tık geride.
@@ -101,6 +143,8 @@ export function Tablo<T>({
   );
 
   const filtreli = useMemo(() => {
+    // Sunucu modunda filtreleme sunucuda yapıldı — elimizdeki sayfa zaten sonuç.
+    if (sunucu) return satirlar;
     const q = aramaGecikmeli.trim().toLocaleLowerCase('tr');
     if (!q) return satirlar;
     const aranabilir = kolonlar.filter((k) => k.ara);
@@ -108,9 +152,13 @@ export function Tablo<T>({
     return satirlar.filter((s) =>
       aranabilir.some((k) => k.ara!(s).toLocaleLowerCase('tr').includes(q)),
     );
-  }, [satirlar, aramaGecikmeli, kolonlar]);
+  }, [satirlar, aramaGecikmeli, kolonlar, sunucu]);
 
   const sirali = useMemo(() => {
+    // ⚠️ Sunucu modunda ASLA yeniden sıralama — sunucudan gelen sayfa sırası
+    // korunmalı. Aksi halde 50 satırlık sayfa kendi içinde sıralanır ve kullanıcı
+    // tüm tablonun sıralı olduğunu sanar (sessiz veri yanlışlığı).
+    if (sunucu) return filtreli;
     if (!sirala) return filtreli;
     const k = kolonlar.find((x) => x.id === sirala);
     if (!k?.sirala) return filtreli;
@@ -127,7 +175,7 @@ export function Tablo<T>({
           : COLLATOR.compare(String(av), String(bv));
       return artan ? c : -c;
     });
-  }, [filtreli, sirala, artan, kolonlar]);
+  }, [filtreli, sirala, artan, kolonlar, sunucu]);
 
   /** CSV indir — KULLANICININ GÖRDÜĞÜ hali aktarılır:
    *  arama filtresi + sıralama (`sirali`) + kolon seçimi (`gorunur`) uygulanmış.
@@ -142,6 +190,11 @@ export function Tablo<T>({
   }
 
   function basTikla(id: string) {
+    // Sunucu modunda yön/alan kararı çağıran tarafta (sorgu reducer'ında) verilir.
+    if (sunucu) {
+      sunucu.siralaDegis(id);
+      return;
+    }
     if (sirala === id) {
       // 3. tıklama sıralamayı KALDIRIR (orijinal sıraya dön) — kullanıcı
       // "sıralamayı iptal et" yapamadığında sıkışmış hissediyor.
@@ -155,9 +208,12 @@ export function Tablo<T>({
     }
   }
 
+  // Sıralama göstergesi: sunucu modunda durum dışarıdan gelir.
+  const aktifSirala = sunucu ? sunucu.sirala : sirala;
+  const aktifArtan = sunucu ? sunucu.artan : artan;
   const yon = (id: string): 'ascending' | 'descending' | 'none' =>
-    sirala === id ? (artan ? 'ascending' : 'descending') : 'none';
-  const ok = (id: string) => (sirala === id ? (artan ? '▲' : '▼') : '');
+    aktifSirala === id ? (aktifArtan ? 'ascending' : 'descending') : 'none';
+  const ok = (id: string) => (aktifSirala === id ? (aktifArtan ? '▲' : '▼') : '');
 
   // Kademeli gösterim — dilimleme arama+sıralama SONRASI yapılır.
   const [limit, setLimit] = useState(ilkGosterim ?? Infinity);
@@ -168,11 +224,13 @@ export function Tablo<T>({
     setOncekiAnahtar(suAnkiAnahtar);
     setLimit(ilkGosterim);
   }
+  // Sunucu modunda dilimleme YOK: sayfayı sunucu belirledi, "daha fazla" yerine
+  // sayfalama çubuğu kullanılır.
   const gosterilen = useMemo(
-    () => (limit === Infinity ? sirali : sirali.slice(0, limit)),
-    [sirali, limit],
+    () => (sunucu || limit === Infinity ? sirali : sirali.slice(0, limit)),
+    [sirali, limit, sunucu],
   );
-  const kalan = sirali.length - gosterilen.length;
+  const kalan = sunucu ? 0 : sirali.length - gosterilen.length;
 
   const kaydirmali = gosterilen.length > kaydirmaEsigi;
 
@@ -184,9 +242,16 @@ export function Tablo<T>({
           {/* Sayaç DÜRÜST olmalı: arama süzdüyse "eşleşen / toplam",
               kademeli gösterim varsa "gösterilen / eşleşen" de görünür. */}
           <span className="sayi" role="status" aria-live="polite">
-            {filtreli.length === satirlar.length
-              ? `${satirlar.length.toLocaleString('tr')} kayıt`
-              : `${filtreli.length.toLocaleString('tr')} / ${satirlar.length.toLocaleString('tr')} kayıt`}
+            {sunucu
+              ? // Sunucu modu: elimizdeki sayfa değil, eşleşen TOPLAM yazılır.
+                sunucu.ilkYukleme
+                ? 'yükleniyor…'
+                : sunucu.tumToplam !== undefined && sunucu.tumToplam !== sunucu.toplam
+                  ? `${sunucu.toplam.toLocaleString('tr')} / ${sunucu.tumToplam.toLocaleString('tr')} kayıt`
+                  : `${sunucu.toplam.toLocaleString('tr')} kayıt`
+              : filtreli.length === satirlar.length
+                ? `${satirlar.length.toLocaleString('tr')} kayıt`
+                : `${filtreli.length.toLocaleString('tr')} / ${satirlar.length.toLocaleString('tr')} kayıt`}
             {kalan > 0 && ` · ${gosterilen.length.toLocaleString('tr')} gösteriliyor`}
           </span>
         </h2>
@@ -195,20 +260,39 @@ export function Tablo<T>({
           {/* CSV: Excel doğrudan açıyor. Yazdırma/PDF için tarayıcının kendi
               diyaloğu kullanılır (Ctrl+P → "PDF olarak kaydet") — @media print
               stili sayfayı buna hazırlıyor. */}
-          <button
-            type="button"
-            className="aktar-btn"
-            onClick={csvAktar}
-            disabled={sirali.length === 0}
-            title={
-              sirali.length === 0
-                ? 'Aktarılacak satır yok'
-                : `${sirali.length} satır CSV olarak inecek (Excel açar)`
-            }
-          >
-            <span aria-hidden="true">⭳ </span>CSV
-            <span className="sr-only"> olarak indir, {sirali.length} satır</span>
-          </button>
+          {(() => {
+            // Sunucu modunda CSV'yi çağıran taraf üretir (tüm sayfaları çeker);
+            // Tablo'nun kendi aktarımı yalnız eldeki sayfayı indirirdi = yarım dosya.
+            const sunucuCsv = sunucu?.csvAktar;
+            const adet = sunucu ? sunucu.toplam : sirali.length;
+            const pmi = sunucu?.csvPmi ?? false;
+            return (
+              <button
+                type="button"
+                className="aktar-btn"
+                onClick={sunucuCsv ?? csvAktar}
+                disabled={adet === 0 || pmi}
+                title={
+                  adet === 0
+                    ? 'Aktarılacak satır yok'
+                    : `${adet.toLocaleString('tr')} satır CSV olarak inecek (Excel açar)`
+                }
+              >
+                {pmi ? (
+                  <span aria-live="polite">
+                    {sunucu?.csvIlerleme
+                      ? `${sunucu.csvIlerleme.toLocaleString('tr')} / ${adet.toLocaleString('tr')}…`
+                      : 'Hazırlanıyor…'}
+                  </span>
+                ) : (
+                  <>
+                    <span aria-hidden="true">⭳ </span>CSV
+                    <span className="sr-only"> olarak indir, {adet} satır</span>
+                  </>
+                )}
+              </button>
+            );
+          })()}
           {anahtar && (
             <KolonSecici tanimlar={kolonlar} gorunurMu={kol.gorunurMu} degistir={kol.degistir} />
           )}
@@ -242,7 +326,10 @@ export function Tablo<T>({
       >
         <table>
           <caption className="sr-only">
-            {typeof baslik === 'string' ? baslik : 'Tablo'} — {gosterilen.length} / {sirali.length} kayıt.
+            {typeof baslik === 'string' ? baslik : 'Tablo'} —{' '}
+            {sunucu
+              ? `${sunucu.toplam} sonuç, sayfa ${sunucu.sayfa} / ${sunucu.toplamSayfa}.`
+              : `${gosterilen.length} / ${sirali.length} kayıt.`}
             {kaydirmali ? ' Dikey ve yatay kaydırılabilir.' : ' Yatay kaydırılabilir.'}
           </caption>
           <thead>
@@ -281,13 +368,42 @@ export function Tablo<T>({
             {gosterilen.length === 0 && (
               <tr>
                 <td colSpan={gorunur.length} className="bos">
-                  {aramaGecikmeli ? `"${aramaGecikmeli}" ile eşleşen kayıt yok.` : bosMesaj}
+                  {sunucu
+                    ? sunucu.yukleniyor || sunucu.ilkYukleme
+                      ? 'Yükleniyor…'
+                      : bosMesaj
+                    : aramaGecikmeli
+                      ? `"${aramaGecikmeli}" ile eşleşen kayıt yok.`
+                      : bosMesaj}
                 </td>
               </tr>
             )}
           </tbody>
         </table>
       </div>
+
+      {/* Sunucu modu: sayfalama çubuğu (client modunda "daha fazla" butonu) */}
+      {sunucu && sunucu.toplamSayfa > 1 && (
+        <div className="sayfalama">
+          <button
+            type="button"
+            onClick={() => sunucu.sayfaDegis(Math.max(1, sunucu.sayfa - 1))}
+            disabled={sunucu.sayfa === 1}
+          >
+            <span aria-hidden="true">‹ </span>Önceki
+          </button>
+          <span className="sayfa-bilgi">
+            Sayfa {sunucu.sayfa} / {sunucu.toplamSayfa}
+          </span>
+          <button
+            type="button"
+            onClick={() => sunucu.sayfaDegis(Math.min(sunucu.toplamSayfa, sunucu.sayfa + 1))}
+            disabled={sunucu.sayfa === sunucu.toplamSayfa}
+          >
+            Sonraki<span aria-hidden="true"> ›</span>
+          </button>
+        </div>
+      )}
 
       {/* Kalan kayıtlar SESSİZCE atılmaz — açık kontrolle erişilebilir */}
       {kalan > 0 && (

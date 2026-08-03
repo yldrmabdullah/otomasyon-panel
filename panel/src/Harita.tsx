@@ -104,24 +104,24 @@ export function Harita({
           aria-label={`Türkiye il haritası. ${bizimIl} ilde bayimiz var. Ayrıntılı sayılar altta ve tabloda.`}
         >
           {IL_YOLLARI.map(([il, d]) => {
-            const v = harita.get(il);
             const k = kademe(deger(il));
             return (
+              // ⚠️ İL YOLLARI KLAVYE ODAĞI ALMAZ (2026-08-03, kullanıcı kararı).
+              // Önceden her il `tabIndex={0}` + `role="button"` taşıyordu. İki sorun:
+              //   1) Klavye kullanıcısı tabloya ulaşmak için 81 durak geçiyordu.
+              //   2) `role="button"` YANILTICI: onClick/onKeyDown yoktu → ekran
+              //      okuyucu "düğme" diyor, Enter'a basılıyor, hiçbir şey olmuyor.
+              // Harita salt görsel: svg `role="img"` + özet aria-label taşıyor ve
+              // TÜM sayılar alttaki tabloda var → bilgi kaybı yok.
+              // Tıklanabilir yapılacaksa gerçek onClick+onKeyDown ve "haritayı atla"
+              // skip-link'i (`.atla`, stil.css) birlikte eklenmeli.
               <path
                 key={il}
                 d={d}
                 className={`harita-il ${k} ${secili === il ? 'sec' : ''}`}
-                tabIndex={0}
-                role="button"
-                aria-label={
-                  v && v.bizim > 0
-                    ? `${il}: ${v.bizim} bayimiz, ilde toplam ${v.toplam}`
-                    : `${il}: bayimiz yok`
-                }
+                aria-hidden="true"
                 onMouseEnter={() => setSecili(il)}
                 onMouseLeave={() => setSecili(null)}
-                onFocus={() => setSecili(il)}
-                onBlur={() => setSecili(null)}
               />
             );
           })}
