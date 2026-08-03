@@ -1,4 +1,4 @@
-# DEVAM — kaldığın yer (son güncelleme: 2026-08-01 akşam)
+# DEVAM — kaldığın yer (son güncelleme: 2026-08-03)
 
 > Bu dosya **oturumlar arası devir teslim** içindir. Yeni bir oturuma başlarken
 > önce bunu oku, sonra `CLAUDE.md` ve ilgili `docs/bilgi/*.md`.
@@ -89,12 +89,26 @@ Formülün 4 girdisinden **3'ü hazır**:
 `Fark = (A + B − C) − D` · EPDK limiti **288 lt / %3**
 
 **Yapılacak:**
-1. `seviyeCek` + `satisCek`'i günlük cron'a bağla (izleme job'una eklenebilir)
+1. ✅ **YAPILDI (2026-08-03)** — `.github/workflows/mutabakat-cek.yml`: `seviyeCek` +
+   `satisCek` günlük 21:00 UTC (00:00 TR) cron'a bağlandı. İzleme job'una EKLENMEDİ
+   (o 15 dk'da bir koşuyor; aynı iş günde ~96 kez tekrarlanırdı).
 2. Birkaç gün veri biriksin (A kalemi için en az 2 gün gerekiyor)
 3. Mutabakat modülü: istasyon × gün/ay, sapma listesi, 288 lt / %3 uyarısı
 
-⚠️ **Aylık mutabakat için 1 ay veri gerekiyor** — Ağustos sonunda ilk tam ay çıkar.
-Günlük kontrol ise 2 günde başlayabilir.
+### ⚠️ 1-2 AĞUSTOS SEVİYE VERİSİ KALICI OLARAK KAYIP
+
+Cron 1 Ağustos'ta bağlanacaktı, 3 Ağustos'ta bağlandı → **2 gün seviye çekilmedi.**
+`GetTankLastLevel` ANLIK ölçüm verir, tarih parametresi yok → o günler **telafi
+edilemez**. `seviyeCek.ts 2026-08-01` çalıştırmak o günü değil, çalıştırıldığı anın
+ölçümünü eski güne yazar → **sessiz veri yanlışlığı, YAPILMAMALI.**
+
+Sonuç: `Fark = (A+B−C)−D` kesintisiz gün çifti ister (bir günün kapanışı ertesinin
+açılışı). 1-2 Ağustos boşluğu zinciri kırıyor → **Ağustos tam ay olarak çıkmayacak**,
+seri fiilen 3 Ağustos'tan başlıyor. İlk tam ay = **Eylül**.
+
+Satış farklı: ASIS'te geçmiş duruyor, geriye dönük çekilebilir →
+`npm run satis -- 2026-08-01 2026-08-02` (elle, `DATABASE_URL` gerekir) veya
+workflow'u `satis_bas`/`satis_bit` girdileriyle elle tetikle.
 
 ---
 

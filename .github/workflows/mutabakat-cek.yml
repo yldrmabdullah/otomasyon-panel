@@ -1,0 +1,83 @@
+name: Mutabakat Çekim (seviye + satış)
+
+# Mutabakat formülünün A/C/D kalemlerini günlük biriktirir:
+#   Fark = (A + B − C) − D
+#     A = tank_seviye_gun.acilis_lt   ← seviyeCek (dünkü kapanış)
+#     B = tank_dolum                  ← izleme job'u zaten çekiyor (artımlı)
+#     C = satis_ozet                  ← satisCek
+#     D = tank_seviye_gun.kapanis_lt  ← seviyeCek (bu geceki ölçüm)
+#
+# ⚠️ NEDEN AYRI WORKFLOW (izleme job'una eklenmedi):
+# İzleme job'u 15 dakikada bir koşuyor ve ~2-3 dk sürüyor. Bu çekim günde 1 kez
+# yeterli; izlemeye eklenirse aynı iş günde ~96 kez tekrarlanır (ASIS'e gereksiz
+# yük, satış çekimi sayfa sayfa dönüyor) ve alarm turunu yavaşlatır.
+#
+# ⚠️⚠️ SEVİYE GEÇMİŞE DÖNÜK ALINAMAZ (2026-08-01 ölçümü, seviyeCek.ts başlığı):
+# `GetTankLastLevel` ANLIK ölçüm verir, tarih parametresi YOKTUR. Bu workflow bir
+# gün çalışmazsa o günün kapanış seviyesi KALICI OLARAK KAYBOLUR — sonradan
+# `seviyeCek.ts 2026-08-01` çalıştırmak o günü DEĞİL, çalıştırıldığı anın ölçümünü
+# eski güne yazar (sessiz veri yanlışlığı). Kaçan gün telafi EDİLMEZ, boş bırakılır.
+# (Satış farklı: ASIS'te geçmiş duruyor, tarih vererek geriye çekilebilir.)
+
+on:
+  # 21:00 UTC = 00:00 TR → günün kapanış seviyesi. Satış varsayılanı "dün" olduğu
+  # için bu saatte TR'de yeni gün başlamış olur ve tamamlanmış günü çeker.
+  #
+  # ⚠️ GH Actions ücretsiz planda schedule'ı kısıyor (izleme job'unda ölçüldü:
+  # */15 istenirken gerçek ~95 dk). Günlük işte birkaç saat kayması tolere edilir
+  # ama gün sınırını aşarsa snapshot yanlış güne yazılabilir → kaçarsa elle tetikle.
+  schedule:
+    - cron: '0 21 * * *'
+  workflow_dispatch:
+    inputs:
+      satis_bas:
+        description: 'Satış başlangıç (YYYY-AA-GG) — boşsa dün'
+        required: false
+      satis_bit:
+        description: 'Satış bitiş (YYYY-AA-GG) — boşsa başlangıçla aynı'
+        required: false
+
+concurrency:
+  group: mutabakat-cek
+  cancel-in-progress: false # yarıda kesmek eksik gün bırakır
+
+jobs:
+  cekim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60 # satış sayfa sayfa dönüyor; ölçülen ~1-2 dk/gün, geniş pay
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Bağımlılıklar
+        run: npm ci
+
+      - name: Şema (idempotent)
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # ÖNCE seviye: anlık ölçüm, gecikirse gün sınırını aşma riski var.
+      # Satış geçmişe dönük çekilebildiği için sonraya bırakılır.
+      - name: Tank seviye snapshot (A + D)
+        run: npm run seviye
+        env:
+          ASIS_GATEWAY: ${{ secrets.ASIS_GATEWAY }}
+          ASIS_GUID_KEY: ${{ secrets.ASIS_GUID_KEY }}
+          ASIS_DAGITICI_KOD: ${{ secrets.ASIS_DAGITICI_KOD }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # Seviye başarısız olsa bile satış çekilsin (bağımsız kalemler).
+      - name: Pompa satışı özet (C)
+        if: always()
+        run: npm run satis -- ${{ github.event.inputs.satis_bas }} ${{ github.event.inputs.satis_bit }}
+        env:
+          ASIS_GATEWAY: ${{ secrets.ASIS_GATEWAY }}
+          ASIS_GUID_KEY: ${{ secrets.ASIS_GUID_KEY }}
+          ASIS_DAGITICI_KOD: ${{ secrets.ASIS_DAGITICI_KOD }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
