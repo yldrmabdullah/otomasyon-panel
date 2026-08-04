@@ -18,7 +18,8 @@
     "kullanici": "tsx araclar/kullaniciHash.ts",
     "mobil": "tsx araclar/mobilTest.ts",
     "satis": "tsx araclar/satisCek.ts",
-    "seviye": "tsx araclar/seviyeCek.ts"
+    "seviye": "tsx araclar/seviyeCek.ts",
+    "piyasa:mail": "tsx araclar/piyasaMail.ts"
   },
   "dependencies": {
     "fast-xml-parser": "^4.5.0",

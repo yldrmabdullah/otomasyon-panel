@@ -798,6 +798,93 @@ export async function mutabakatVerisi(p: Pool, gun?: string) {
   };
 }
 
+/** Sözleşmesi bitmek üzere olan BİZİM bayiler (günlük mail).
+ *
+ *  ⚠️ PENCERE 30 GÜN, ÖLÇÜLEREK (2026-08-04): bugün 0, 5 günde 0, 30 günde 0,
+ *  90 günde 2 (BANBAN 32 gün, BAYSEY 37 gün). 5 günlük pencere hem sözleşme
+ *  yenilemek için çok geç hem de neredeyse hiç tetiklenmiyor. 30 gün aksiyon
+ *  alınabilir süre ve mail ancak gerçekten bir şey varken gidiyor.
+ *  `acil` bayrağı ≤7 gün kalanları işaretler (mailde ayrı vurgulanır). */
+export async function sozlesmeBitecekBizim(p: Pool, gun = 30) {
+  const r = await p.query(
+    `SELECT bayi_lisans_no, lisans_sahibi, il, ilce, sozlesme_bitis::text,
+            (sozlesme_bitis::date - current_date)::int kalan_gun,
+            (sozlesme_bitis::date - current_date) <= 7 acil
+     FROM bayiler_epdk
+     WHERE dagitim_sirketi = $1 AND lisans_durumu = 'ONAYLANDI'
+       AND sozlesme_bitis IS NOT NULL
+       AND sozlesme_bitis::date BETWEEN current_date AND current_date + $2::int
+     ORDER BY sozlesme_bitis, lisans_sahibi`,
+    [BIZ, gun],
+  );
+  return r.rows;
+}
+
+/** Sözleşmesi bitecek RAKİP bayiler (haftalık mail — fırsat listesi).
+ *
+ *  ⚠️ PENCERE 7 GÜN, HACİMDEN DOLAYI (ölçüm 2026-08-04): 7 gün → 45 bayi,
+ *  14 gün → 109, 30 gün → 301. 301 satır bir maile sığmaz ve okunmaz.
+ *  Haftalık koştuğu için 7 günlük pencere boşluk da bırakmıyor: her bayi
+ *  tam bir kez listelenir. */
+export async function sozlesmeBitecekRakip(p: Pool, gun = 7) {
+  const [satirlar, ozet] = await Promise.all([
+    p.query(
+      `SELECT bayi_lisans_no, lisans_sahibi, dagitim_sirketi, il, ilce,
+              sozlesme_bitis::text, (sozlesme_bitis::date - current_date)::int kalan_gun
+       FROM bayiler_epdk
+       WHERE dagitim_sirketi <> $1 AND lisans_durumu = 'ONAYLANDI'
+         AND sozlesme_bitis IS NOT NULL
+         AND sozlesme_bitis::date BETWEEN current_date AND current_date + $2::int
+       ORDER BY sozlesme_bitis, dagitim_sirketi, lisans_sahibi`,
+      [BIZ, gun],
+    ),
+    p.query(
+      `SELECT dagitim_sirketi, count(*)::int n
+       FROM bayiler_epdk
+       WHERE dagitim_sirketi <> $1 AND lisans_durumu = 'ONAYLANDI'
+         AND sozlesme_bitis IS NOT NULL
+         AND sozlesme_bitis::date BETWEEN current_date AND current_date + $2::int
+       GROUP BY 1 ORDER BY n DESC`,
+      [BIZ, gun],
+    ),
+  ]);
+  return { satirlar: satirlar.rows, dagiticiOzet: ozet.rows };
+}
+
+/** Bir GÜNÜN transferleri (günlük akşam maili).
+ *
+ *  ⚠️ YALNIZ O GÜN: kullanıcı isteği — eski transferler tekrar gelmesin.
+ *  `bizi_ilgilendiren` = biz taraflardan biriyiz (bize gelen / bizden giden).
+ *  Ölçüm (2026-08-04): günlük 5-19 kayıt, bunun ~1'i bizi ilgilendiriyor.
+ *  Bu yüzden mail ikiye ayrılır: bizimkiler üstte vurgulu, piyasa altta. */
+export async function gunlukTransferler(p: Pool, gun?: string) {
+  const g = gun ?? null;
+  const r = await p.query(
+    `SELECT id, bayi_lisans_no, lisans_sahibi, il, tip, eski_deger, yeni_deger,
+            tespit_gun::text,
+            (eski_deger = $1 OR yeni_deger = $1) bizi_ilgilendiren,
+            CASE WHEN yeni_deger = $1 THEN 'kazandik'
+                 WHEN eski_deger = $1 THEN 'kaybettik' END yon
+     FROM transferler
+     WHERE tespit_gun = coalesce($2::date, current_date)
+     ORDER BY (eski_deger = $1 OR yeni_deger = $1) DESC, tip, lisans_sahibi`,
+    [BIZ, g],
+  );
+  const bizim = r.rows.filter((x) => x.bizi_ilgilendiren);
+  return {
+    gun: r.rows[0]?.tespit_gun ?? g,
+    tumu: r.rows,
+    bizim,
+    piyasa: r.rows.filter((x) => !x.bizi_ilgilendiren),
+    ozet: {
+      toplam: r.rows.length,
+      bizim: bizim.length,
+      kazandik: bizim.filter((x) => x.yon === 'kazandik').length,
+      kaybettik: bizim.filter((x) => x.yon === 'kaybettik').length,
+    },
+  };
+}
+
 /** Filtre açılırlarını besleyen ayrık değerler (il + dağıtıcı listesi).
  *  Ayrı endpoint: tüm bayiyi indirmeden dropdown doldurulabilsin. */
 export async function bayiSecenekleri(p: Pool) {

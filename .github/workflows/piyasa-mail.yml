@@ -1,0 +1,92 @@
+name: Piyasa Bildirimleri (sözleşme + transfer)
+
+# Piyasa istihbaratı mailleri. Alarm job'undan (otomasyon-job.yml) AYRI:
+# o 15 dakikada bir koşan operasyonel alarm turu (bağlantı/tank kopukluğu).
+# Bunlar günlük/haftalık — aciliyeti ve ritmi farklı.
+#
+# ⚠️ BOŞSA MAİL GİTMEZ: bizim sözleşme penceresi çoğu gün boş (ölçüm 2026-08-04:
+# 30 günde 0 bayi). "Bugün bir şey yok" maili insanı maile bakmamaya alıştırır.
+#
+# ⚠️ VERİ TAZELİĞİ: bu workflow yalnız OKUR. Bayi/transfer verisini piyasa-cek.yml
+# günde bir kez EPDK'dan çeker. Sıralama önemli — piyasa çekimi bu maillerden
+# ÖNCE koşmalı, yoksa "bugünün transferleri" dünkü veriden hesaplanır.
+
+on:
+  schedule:
+    # ⚠️ SAATLER piyasa-cek.yml'e GÖRE SEÇİLDİ (2026-08-04, ölçüldü).
+    # Çekim cron'u '0 3 * * *' ama GH Actions geciktiriyor: gerçek koşular
+    # 05:35 / 05:44 / 06:00 UTC'de başlamış. Mail çekimden ÖNCE koşarsa
+    # "bugünün transferleri" dünkü veriden hesaplanır — sessiz yanlışlık.
+    # Bu yüzden sabah maili 08:00 UTC'ye alındı (en geç çekimden ~2 saat sonra).
+
+    # Sabah 11:00 TR (08:00 UTC) — bizim sözleşme bitecekler.
+    - cron: '0 8 * * *'
+    # Akşam 20:00 TR (17:00 UTC) — o günün transferleri.
+    - cron: '0 17 * * *'
+    # Pazartesi 11:30 TR (08:30 UTC) — rakip sözleşme bitişleri (haftalık fırsat).
+    - cron: '30 8 * * 1'
+  workflow_dispatch:
+    inputs:
+      mod:
+        description: 'Hangi mail? (bos = saate gore otomatik)'
+        required: false
+        type: choice
+        options: ['', 'sozlesme-bizim', 'sozlesme-rakip', 'transfer']
+      zorla:
+        description: 'Bos olsa da gonder (kanal testi)'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: piyasa-mail
+  cancel-in-progress: false
+
+jobs:
+  mail:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Bağımlılıklar
+        run: npm ci
+
+      # Hangi modun koşacağını cron saatinden türet. workflow_dispatch'te
+      # kullanıcı seçimi öncelikli; seçim boşsa saate göre karar verilir.
+      - name: Mod belirle
+        id: mod
+        run: |
+          SEC="${{ github.event.inputs.mod }}"
+          if [ -n "$SEC" ]; then
+            echo "bayrak=--$SEC" >> "$GITHUB_OUTPUT"
+          else
+            case "${{ github.event.schedule }}" in
+              "0 8 * * *")  echo "bayrak=--sozlesme-bizim" >> "$GITHUB_OUTPUT" ;;
+              "0 17 * * *") echo "bayrak=--transfer"       >> "$GITHUB_OUTPUT" ;;
+              "30 8 * * 1") echo "bayrak=--sozlesme-rakip" >> "$GITHUB_OUTPUT" ;;
+              # Elle tetiklendi ve seçim yok → günlük ikisini birden gönder.
+              *) echo "bayrak=--sozlesme-bizim --transfer" >> "$GITHUB_OUTPUT" ;;
+            esac
+          fi
+
+      - name: Piyasa maili
+        run: npm run piyasa:mail -- ${{ steps.mod.outputs.bayrak }} ${{ github.event.inputs.zorla == 'true' && '--zorla' || '' }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          EKIP_MAIL: ${{ secrets.EKIP_MAIL }}
+          # Piyasa maili bayiye ZATEN gitmez (hedef listesi boş verilir),
+          # ama yanlışlıkla açılmasın diye burada da açıkça kapalı.
+          BAYIYE_GONDER: '0'
+          DRY_RUN: '0'
