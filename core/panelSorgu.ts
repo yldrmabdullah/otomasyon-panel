@@ -55,7 +55,7 @@ export async function tazelikVerisi(p: Pool) {
 
 /** Piyasa modülünün tüm verisi. */
 export async function piyasaVerisi(p: Pool) {
-  const [dagiticiBayi, ilDagilim, sonTransfer, ozet, sozlesme, bolgesel, haritaIl, beyazAlan, kaybedilen] =
+  const [dagiticiBayi, ilDagilim, sonTransfer, ozet, sozlesme, lisansBitis, bolgesel, haritaIl, beyazAlan, kaybedilen] =
     await Promise.all([
       p.query(`SELECT dagitim_sirketi,count(*) FILTER (WHERE lisans_durumu='ONAYLANDI') n
                FROM bayiler_epdk WHERE dagitim_sirketi IS NOT NULL
@@ -73,15 +73,34 @@ export async function piyasaVerisi(p: Pool) {
                  (SELECT count(*) FROM bayiler_epdk) toplam_bayi,
                  (SELECT count(DISTINCT snapshot_gun) FROM bayi_snapshot) snapshot_gun_sayisi,
                  (SELECT count(*) FROM transferler WHERE tespit_gun > now()-interval '30 days') aylik_transfer`),
-      // ANALİZ 1: Sözleşmesi 6 ay içinde bitecek AKTİF bayiler
+      // ANALİZ 1: DAĞITICI SÖZLEŞMESİ 6 ay içinde bitecek AKTİF bayiler
       // (bizimkiler yenileme takibi, rakipler hedef liste)
+      //
+      // ⚠️ BU "BAYİLİK LİSANSI BİTİŞİ" DEĞİL (2026-08-04, kullanıcı ayırt etti).
+      // EPDK'da iki ayrı tarih çifti var ve karıştırılırsa yanlış iş yapılır:
+      //   lisans_bitis   = EPDK faaliyet izni. Ortalama 17,3 YIL. Bitince bayi
+      //                    faaliyeti DURUR — hukuki mesele.
+      //   sozlesme_bitis = dağıtıcıyla ticari sözleşme. Ortalama 4,4 yıl, 13 kat
+      //                    daha sık yenilenir — satış/yenileme meselesi.
+      // Ölçüm (180 gün): sözleşme 1.661 bayi · lisans 130 bayi. Ayrı tablolar.
       p.query(
-        `SELECT bayi_lisans_no,lisans_sahibi,dagitim_sirketi,il,sozlesme_bitis,
+        `SELECT bayi_lisans_no,lisans_sahibi,dagitim_sirketi,il,ilce,sozlesme_bitis,
                 (dagitim_sirketi=$1) bizim
          FROM bayiler_epdk
          WHERE lisans_durumu='ONAYLANDI' AND sozlesme_bitis IS NOT NULL
            AND sozlesme_bitis > now() AND sozlesme_bitis < now()+interval '180 days'
-         ORDER BY sozlesme_bitis ASC LIMIT 300`,
+         ORDER BY sozlesme_bitis ASC LIMIT 2000`,
+        [BIZ],
+      ),
+      // ANALİZ 1b: BAYİLİK LİSANSI 6 ay içinde bitecek AKTİF bayiler.
+      // Sözleşmeden AYRI tablo — bitmesi faaliyeti durdurur, aciliyeti farklı.
+      p.query(
+        `SELECT bayi_lisans_no,lisans_sahibi,dagitim_sirketi,il,ilce,lisans_bitis,
+                (dagitim_sirketi=$1) bizim
+         FROM bayiler_epdk
+         WHERE lisans_durumu='ONAYLANDI' AND lisans_bitis IS NOT NULL
+           AND lisans_bitis > now() AND lisans_bitis < now()+interval '180 days'
+         ORDER BY lisans_bitis ASC LIMIT 2000`,
         [BIZ],
       ),
       // ANALİZ 2: Parkoil'in il bazında konumu (bizim bayi / o ildeki toplam)
@@ -132,6 +151,7 @@ export async function piyasaVerisi(p: Pool) {
     ilDagilim: ilDagilim.rows,
     transferler: sonTransfer.rows,
     sozlesmeBitecek: sozlesme.rows,
+    lisansBitecek: lisansBitis.rows,
     bolgesel: bolgesel.rows,
     haritaIl: haritaIl.rows,
     beyazAlan: beyazAlan.rows,

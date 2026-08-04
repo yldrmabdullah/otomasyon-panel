@@ -1,6 +1,6 @@
 // Piyasa İstihbarat modülü — EPDK resmi verisiyle tüm Türkiye akaryakıt piyasası.
 // Dağıtıcılar, bayi dağılımı, il dağılımı, bayi transferleri. Kaynak: /api/piyasa.
-import { useEffect, useMemo, useReducer, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 import { useKolonlar } from './KolonSecici.js';
 import { Tablo, type TabloKolon } from './Tablo.js';
 import { Sekmeler } from './Sekme.js';
@@ -120,10 +120,15 @@ interface Transfer {
   bayi_lisans_no: string; lisans_sahibi: string | null; il: string | null;
   tip: string; eski_deger: string | null; yeni_deger: string | null; tespit_gun: string;
 }
-interface SozlesmeBitecek {
+/** Sözleşme ve lisans tablolarının ortak alanları (kolon şablonu bunu ister). */
+interface BitisSatiri {
   bayi_lisans_no: string; lisans_sahibi: string | null; dagitim_sirketi: string | null;
-  il: string | null; sozlesme_bitis: string; bizim: boolean;
+  il: string | null; ilce?: string | null; bizim: boolean;
 }
+/** DAĞITICI ile yapılan ticari sözleşme — ort. 4,4 yıl, sık yenilenir. */
+interface SozlesmeBitecek extends BitisSatiri { sozlesme_bitis: string }
+/** EPDK BAYİLİK LİSANSI — ort. 17,3 yıl. Bitince bayi faaliyeti durur. */
+interface LisansBitecek extends BitisSatiri { lisans_bitis: string }
 interface BolgeselSatir { il: string; toplam: string; bizim: string; pay: string }
 interface BeyazAlan { il: string; toplam: string }
 interface Kaybedilen { ad: string; epdk_kod: string; sehir: string | null; rakip: string; il: string | null }
@@ -132,6 +137,8 @@ interface PiyasaVeri {
   uretim: string; ozet: Ozet;
   dagiticiBayiDagilim: DagiticiBayi[]; ilDagilim: IlDagilim[]; transferler: Transfer[];
   sozlesmeBitecek: SozlesmeBitecek[]; bolgesel: BolgeselSatir[]; beyazAlan: BeyazAlan[];
+  /** Eski sürüm API'den gelmeyebilir → opsiyonel. */
+  lisansBitecek?: LisansBitecek[];
   /** Harita: TÜM 81 il (bolgesel yalnız bizim bayimiz olanları verir). */
   haritaIl?: { il: string; toplam: string; bizim: string }[];
   kaybedilen: Kaybedilen[];
@@ -242,6 +249,7 @@ export function Piyasa() {
 
   // Sözleşme bölümü: kapsam filtresi + kademeli gösterim (sessiz kesme YOK)
   const [sozlesmeKapsam, setSozlesmeKapsam] = useState<'hepsi' | 'bizim' | 'rakip'>('hepsi');
+  const [lisansKapsam, setLisansKapsam] = useState<'hepsi' | 'bizim' | 'rakip'>('hepsi');
 
   useEffect(() => {
     const ac = new AbortController();
@@ -359,6 +367,14 @@ export function Piyasa() {
     return liste;
   }, [veri, sozlesmeKapsam]);
 
+  // Lisans bitecekler — sözleşmeden AYRI liste, aynı süzme mantığı.
+  const lisansFiltreli = useMemo(() => {
+    const liste = veri?.lisansBitecek ?? [];
+    if (lisansKapsam === 'bizim') return liste.filter((s) => s.bizim);
+    if (lisansKapsam === 'rakip') return liste.filter((s) => !s.bizim);
+    return liste;
+  }, [veri, lisansKapsam]);
+
   // Ölçekleme ve dağıtıcı araması artık CubukYatay bileşeninin içinde
   // (enBuyukBayi / filtreliDagitici burada gereksizdi).
   const bizim = useMemo(() => {
@@ -374,10 +390,21 @@ export function Piyasa() {
   // koymak başlıkta "Tip", gövdede "Bayi" sabitleyip hizayı bozuyordu.
   const TRANSFER_KOLONLARI = useMemo<TabloKolon<Transfer>[]>(() => [
     {
+      // ⚠️ EPDK LİSANS NO ŞART (2026-08-04, kullanıcı yakaladı): bir tüzel kişinin
+      // BİRDEN ÇOK bayilik lisansı olabiliyor (ADEM ÖZDEMİR'de 4: farklı tesis,
+      // farklı dağıtıcı, farklı tarihler). Yalnız unvan gösterilince aynı gün
+      // iki lisansı durum değiştirdiğinde tabloda BİREBİR AYNI iki satır çıkıyor
+      // ve hangisi olduğu ayırt edilemiyor. Lisans no tekil anahtar.
       id: 'bayi', ad: 'Bayi', varsayilan: true, sabit: true, sinif: 'ad-hucre',
       sirala: (t) => t.lisans_sahibi ?? t.bayi_lisans_no,
       ara: (t) => `${t.lisans_sahibi ?? ''} ${t.bayi_lisans_no}`,
-      hucre: (t) => t.lisans_sahibi ?? t.bayi_lisans_no,
+      hucre: (t) => (
+        <>
+          {t.lisans_sahibi ?? t.bayi_lisans_no}
+          <div className="alt-satir mono">{t.bayi_lisans_no}</div>
+        </>
+      ),
+      metin: (t) => `${t.lisans_sahibi ?? ''} (${t.bayi_lisans_no})`,
     },
     {
       id: 'tip', ad: 'Tip', varsayilan: true,
@@ -433,37 +460,66 @@ export function Piyasa() {
     },
   ], []);
 
-  const SOZLESME_KOLONLARI = useMemo<TabloKolon<SozlesmeBitecek>[]>(() => [
-    {
-      id: 'bayi', ad: 'Bayi', varsayilan: true, sabit: true, sinif: 'ad-hucre',
-      sirala: (s) => s.lisans_sahibi ?? s.bayi_lisans_no,
-      ara: (s) => `${s.lisans_sahibi ?? ''} ${s.bayi_lisans_no}`,
-      hucre: (s) => (
-        <>
-          {s.bizim && <span className="sr-only">Parkoil bayisi: </span>}
-          {s.lisans_sahibi ?? s.bayi_lisans_no}
-        </>
-      ),
-    },
-    {
-      id: 'dagitici', ad: 'Dağıtıcı', varsayilan: true, sinif: 'soluk',
-      sirala: (s) => (s.bizim ? 'Parkoil' : s.dagitim_sirketi ?? ''),
-      ara: (s) => (s.bizim ? 'Parkoil Turgut' : s.dagitim_sirketi ?? ''),
-      hucre: (s) => (s.bizim ? 'Parkoil (Turgut)' : s.dagitim_sirketi ?? <Bos />),
-    },
-    {
-      id: 'il', ad: 'İl', varsayilan: true,
-      sirala: (s) => s.il ?? '', ara: (s) => s.il ?? '',
-      hucre: (s) => s.il ?? <Bos />,
-    },
-    {
-      id: 'bitis', ad: 'Sözleşme Bitiş', varsayilan: true, sinif: 'sag mono',
-      sirala: (s) => new Date(s.sozlesme_bitis).getTime(),
-      hucre: (s) => (
-        <time dateTime={s.sozlesme_bitis.slice(0, 10)}>{trTarih(s.sozlesme_bitis)}</time>
-      ),
-    },
-  ], []);
+  // Sözleşme ve lisans tabloları AYNI kolon şablonunu kullanır — yalnız tarih
+  // alanı ve başlığı değişir. Tek üretici fonksiyon: iki tablo asla ayrışmasın.
+  const bitisKolonlari = useCallback(
+    <T extends BitisSatiri>(bitis: (s: T) => string, baslik: string): TabloKolon<T>[] => [
+      {
+        // ⚠️ LİSANS NO GÖRÜNMELİ: bir tüzel kişinin birden çok lisansı olabiliyor
+        // (ADEM ÖZDEMİR'de 4 — farklı tesis/dağıtıcı/tarih). Unvan tek başına
+        // ayırt etmiyor; aynı isimli iki satır birebir aynı görünüyordu.
+        id: 'bayi', ad: 'Bayi', varsayilan: true, sabit: true, sinif: 'ad-hucre',
+        sirala: (s) => s.lisans_sahibi ?? s.bayi_lisans_no,
+        ara: (s) => `${s.lisans_sahibi ?? ''} ${s.bayi_lisans_no}`,
+        hucre: (s) => (
+          <>
+            {s.bizim && <span className="sr-only">Parkoil bayisi: </span>}
+            {s.lisans_sahibi ?? s.bayi_lisans_no}
+            <div className="alt-satir mono">
+              {s.bayi_lisans_no}
+              {s.ilce ? ` · ${s.ilce}` : ''}
+            </div>
+          </>
+        ),
+        metin: (s) => `${s.lisans_sahibi ?? ''} (${s.bayi_lisans_no})`,
+      },
+      {
+        id: 'dagitici', ad: 'Dağıtıcı', varsayilan: true, sinif: 'soluk',
+        sirala: (s) => (s.bizim ? 'Parkoil' : s.dagitim_sirketi ?? ''),
+        ara: (s) => (s.bizim ? 'Parkoil Turgut' : s.dagitim_sirketi ?? ''),
+        hucre: (s) => (s.bizim ? 'Parkoil (Turgut)' : s.dagitim_sirketi ?? <Bos />),
+      },
+      {
+        id: 'il', ad: 'İl', varsayilan: true,
+        sirala: (s) => s.il ?? '', ara: (s) => s.il ?? '',
+        hucre: (s) => s.il ?? <Bos />,
+      },
+      {
+        id: 'kalan', ad: 'Kalan', varsayilan: true, sinif: 'sag mono',
+        sirala: (s) => new Date(bitis(s)).getTime(),
+        hucre: (s) => {
+          const gun = Math.round((new Date(bitis(s)).getTime() - Date.now()) / 86_400_000);
+          return <span className={gun <= 30 ? 'rozet uyari' : undefined}>{gun} gün</span>;
+        },
+        metin: (s) => `${Math.round((new Date(bitis(s)).getTime() - Date.now()) / 86_400_000)} gün`,
+      },
+      {
+        id: 'bitis', ad: baslik, varsayilan: true, sinif: 'sag mono',
+        sirala: (s) => new Date(bitis(s)).getTime(),
+        hucre: (s) => <time dateTime={bitis(s).slice(0, 10)}>{trTarih(bitis(s))}</time>,
+      },
+    ],
+    [],
+  );
+
+  const SOZLESME_KOLONLARI = useMemo(
+    () => bitisKolonlari<SozlesmeBitecek>((s) => s.sozlesme_bitis, 'Sözleşme Bitiş'),
+    [bitisKolonlari],
+  );
+  const LISANS_KOLONLARI = useMemo(
+    () => bitisKolonlari<LisansBitecek>((s) => s.lisans_bitis, 'Lisans Bitiş'),
+    [bitisKolonlari],
+  );
 
   return (
     <>
@@ -658,6 +714,60 @@ export function Piyasa() {
                     <div className="takvim-bos">Önümüzdeki 6 ayda sözleşmesi bitecek bayi yok.</div>
                   )
                 ),
+              },
+              {
+                // ⚠️ SÖZLEŞMEDEN AYRI SEKME (2026-08-04, kullanıcı ayırt etti):
+                // EPDK'da iki farklı tarih çifti var ve karıştırılırsa yanlış iş
+                // yapılır. Lisans = faaliyet izni (ort. 17,3 yıl, bitince bayi
+                // DURUR — hukuki). Sözleşme = dağıtıcıyla ticari ilişki (ort. 4,4
+                // yıl, 13 kat sık yenilenir). Ölçüm: 180 günde lisans 130 · sözleşme 1.661.
+                id: 'lisans',
+                ad: 'Lisans Bitişi',
+                sayi: veri.lisansBitecek?.length ?? 0,
+                icerik: () =>
+                  (veri.lisansBitecek?.length ?? 0) > 0 ? (
+                    <Tablo
+                      aciklama={
+                        <div className="analiz-not">
+                          <b>Bayilik lisansı</b> EPDK'nın verdiği faaliyet iznidir — sözleşmeden
+                          ayrıdır. Bitince bayi <b>faaliyeti durur</b>; yenilenmesi bayinin
+                          sorumluluğunda ama takibi bizim işimize doğrudan etki eder.
+                        </div>
+                      }
+                      anahtar="lisansBitecek"
+                      baslik="Bayilik Lisansı Bitecekler (6 ay)"
+                      kolonlar={LISANS_KOLONLARI}
+                      satirlar={lisansFiltreli}
+                      ilkGosterim={50}
+                      adim={100}
+                      satirAnahtar={(s) => s.bayi_lisans_no}
+                      satirSinif={(s) => (s.bizim ? 'satir-biz' : undefined)}
+                      aramaEtiket="Bayi, lisans no, dağıtıcı veya il ara"
+                      ustSag={
+                        <div className="segment" role="group" aria-label="Lisans kapsamı">
+                          {([
+                            ['hepsi', 'Tümü'],
+                            ['bizim', 'Parkoil'],
+                            ['rakip', 'Rakip'],
+                          ] as const).map(([id, ad]) => (
+                            <button
+                              key={id}
+                              type="button"
+                              className={lisansKapsam === id ? 'akt' : ''}
+                              aria-pressed={lisansKapsam === id}
+                              onClick={() => setLisansKapsam(id)}
+                            >
+                              {ad}
+                            </button>
+                          ))}
+                        </div>
+                      }
+                    />
+                  ) : (
+                    <div className="takvim-bos">
+                      Önümüzdeki 6 ayda bayilik lisansı bitecek bayi yok.
+                    </div>
+                  ),
               },
               {
                 id: 'transfer',
