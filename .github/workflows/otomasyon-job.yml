@@ -21,9 +21,15 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'DRY_RUN (1 = bildirim atmadan test)'
+        # ⚠️ VARSAYILAN BOŞ OLMALI (2026-08-04, canlı testte yakalandı).
+        # Önce default '0' yazıyordu; elle tetiklemede girdi HER ZAMAN '0'
+        # geliyor, DRY_RUN ifadesindeki `||` zincirinde ilk değer kazanıyor ve
+        # BILDIRIM_KAPALI variable'ı HİÇ OKUNMUYORDU. Bildirimi kapattığım
+        # halde job canlı modda koştu (log: DRY_RUN: 0).
+        # Boş bırakılınca variable devreye girer; '1'/'0' yazılırsa o kazanır.
+        description: "DRY_RUN — boş: BILDIRIM_KAPALI'ya uy · 1: sustur · 0: zorla gönder"
         required: false
-        default: '0'
+        default: ''
 
 concurrency:
   group: otomasyon-job
