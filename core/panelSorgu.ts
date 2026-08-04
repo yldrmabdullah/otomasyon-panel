@@ -15,6 +15,16 @@ import type { Pool } from 'pg';
 /** Parkoil'in EPDK'daki tüzel kimliği (bkz docs/bilgi/piyasa-istihbarat.md). */
 export const BIZ = 'TURGUT DAĞITIM ENERJİ ANONİM ŞİRKETİ';
 
+/** "Yeni bayi" listeye girdiğinde sözleşmesi bu kadar günden yeniyse GERÇEK
+ *  yeni ticari ilişki; daha eskiyse yalnız lisans yenilemesi sayılır.
+ *
+ *  ⚠️ 30 GÜN, VERİDEN SEÇİLDİ (2026-08-04): 19 kaydın sözleşme yaşları
+ *  1,2,3,4,5,9,10,10,19,28,31,43,45,259 gün. 30'da net bir boşluk var —
+ *  altındakiler lisansla birlikte imzalanmış (birkaç gün fark), üstündekiler
+ *  aylar önce imzalanmış sözleşmeler. EPDK lisans işlemleri de birkaç hafta
+ *  sürebildiği için 30 gün tolerans makul. */
+export const YENI_SOZLESME_ESIK_GUN = 30;
+
 /**
  * Her veri kaynağının en son ne zaman güncellendiği (panelde "X önce güncellendi").
  *
@@ -65,8 +75,38 @@ export async function piyasaVerisi(p: Pool) {
       p.query(`SELECT il,count(*) n FROM bayiler_epdk
                WHERE il IS NOT NULL AND lisans_durumu='ONAYLANDI'
                GROUP BY il ORDER BY n DESC LIMIT 20`),
-      p.query(`SELECT bayi_lisans_no,lisans_sahibi,il,tip,eski_deger,yeni_deger,tespit_gun
-               FROM transferler ORDER BY tespit_gun DESC,id DESC LIMIT 100`),
+      // ⚠️ "yeni_bayi" TEK BAŞINA YANILTICI (2026-08-04, kullanıcı yakaladı).
+      //
+      // Kod yalnız şuna bakıyor: "dünkü snapshot'ta yoktu, bugün var". Lisans
+      // ya da sözleşme tarihine HİÇ bakmıyor. Bu iki ayrı olayı aynı etikete
+      // topluyordu:
+      //   COB 2      → lisans 1 günlük, sözleşme 10 günlük  = GERÇEKTEN yeni bayi
+      //   SDT GRUP   → lisans 1 günlük, sözleşme 259 GÜNLÜK = 8,5 aydır aynı
+      //                dağıtıcıyla çalışıyor, yalnız LİSANSI YENİLENMİŞ
+      // Ölçüm (19 kayıt): 19'unda lisans yeni, ama 5'inde sözleşme 30 günden eski.
+      // Ayırt edici olan SÖZLEŞME yaşı — yeni ticari ilişki mi, yoksa yalnız
+      // evrak yenilemesi mi.
+      //
+      // `alt_tip` bu ayrımı taşır; ham `tip` bozulmadan kalır (geçmiş kayıtlar
+      // ve mevcut tüketiciler etkilenmesin).
+      p.query(`SELECT t.bayi_lisans_no, t.lisans_sahibi, t.il, t.tip,
+                      t.eski_deger, t.yeni_deger, t.tespit_gun,
+                      e.lisans_baslangic, e.sozlesme_baslangic, e.dagitim_sirketi,
+                      (t.tespit_gun - e.sozlesme_baslangic::date) sozlesme_yas_gun,
+                      (t.tespit_gun - e.lisans_baslangic::date)   lisans_yas_gun,
+                      CASE
+                        WHEN t.tip <> 'yeni_bayi' THEN NULL
+                        -- Sözleşme de yeni → gerçekten yeni ticari ilişki
+                        WHEN e.sozlesme_baslangic IS NULL THEN 'belirsiz'
+                        WHEN (t.tespit_gun - e.sozlesme_baslangic::date) <= $1 THEN 'yeni_sozlesme'
+                        -- Sözleşme eski, lisans yeni → yalnız evrak yenilendi
+                        ELSE 'lisans_yenilendi'
+                      END alt_tip
+               FROM transferler t
+               LEFT JOIN bayiler_epdk e ON e.bayi_lisans_no = t.bayi_lisans_no
+               ORDER BY t.tespit_gun DESC, t.id DESC LIMIT 100`,
+        [YENI_SOZLESME_ESIK_GUN],
+      ),
       p.query(`SELECT
                  (SELECT count(*) FROM dagiticilar) dagitici_sayisi,
                  (SELECT count(*) FROM bayiler_epdk WHERE lisans_durumu='ONAYLANDI') aktif_bayi,

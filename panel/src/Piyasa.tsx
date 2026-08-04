@@ -119,6 +119,11 @@ interface IlDagilim { il: string; n: string }
 interface Transfer {
   bayi_lisans_no: string; lisans_sahibi: string | null; il: string | null;
   tip: string; eski_deger: string | null; yeni_deger: string | null; tespit_gun: string;
+  /** yeni_bayi için: 'yeni_sozlesme' | 'lisans_yenilendi' | 'belirsiz'. Diğer tiplerde null. */
+  alt_tip?: string | null;
+  sozlesme_yas_gun?: number | null;
+  lisans_yas_gun?: number | null;
+  dagitim_sirketi?: string | null;
 }
 /** Sözleşme ve lisans tablolarının ortak alanları (kolon şablonu bunu ister). */
 interface BitisSatiri {
@@ -167,6 +172,22 @@ function gunFark(iso: string): string {
 
 // Parkoil'in EPDK'daki tüzel kimliği — "BİZ" perspektifi (bkz docs/bilgi/piyasa-istihbarat.md).
 const BIZ = 'TURGUT DAĞITIM ENERJİ ANONİM ŞİRKETİ';
+
+/** Etiket — `alt_tip` varsa o kazanır (yeni_bayi ikiye ayrılıyor). */
+function transferEtiket(t: { tip: string; alt_tip?: string | null }) {
+  if (t.alt_tip && ALT_TIP_ETIKET[t.alt_tip]) return ALT_TIP_ETIKET[t.alt_tip];
+  return TRANSFER_ETIKET[t.tip] ?? { metin: t.tip, sinif: 'uyari' };
+}
+
+/** ⚠️ "yeni_bayi" İKİ AYRI OLAY (2026-08-04, kullanıcı ayırt etti):
+ *  Kod yalnız "dün listede yoktu, bugün var" diyordu — lisans/sözleşme tarihine
+ *  bakmıyordu. Ölçüm: COB 2 sözleşme 10 günlük (gerçek yeni bayi), SDT GRUP
+ *  sözleşme 259 GÜNLÜK (8,5 aydır aynı dağıtıcıda, yalnız lisansı yenilenmiş). */
+const ALT_TIP_ETIKET: Record<string, { metin: string; sinif: string }> = {
+  yeni_sozlesme: { metin: 'YENİ SÖZLEŞME', sinif: 'iyi-r' },
+  lisans_yenilendi: { metin: 'LİSANS YENİLENDİ', sinif: 'uyari' },
+  belirsiz: { metin: 'YENİ KAYIT', sinif: 'uyari' },
+};
 
 const TRANSFER_ETIKET: Record<string, { metin: string; sinif: string }> = {
   dagitici_degisti: { metin: 'TRANSFER', sinif: 'uyari' },
@@ -367,6 +388,25 @@ export function Piyasa() {
     return liste;
   }, [veri, sozlesmeKapsam]);
 
+  // Transferler üçe ayrılır: yeni sözleşme · lisans yenilendi · diğer hareketler.
+  // Ayrım sunucuda (alt_tip); burada yalnız gruplanır.
+  const yeniSozlesmeler = useMemo(
+    () => (veri?.transferler ?? []).filter((t) => t.alt_tip === 'yeni_sozlesme'),
+    [veri],
+  );
+  const lisansYenilenenler = useMemo(
+    () => (veri?.transferler ?? []).filter((t) => t.alt_tip === 'lisans_yenilendi'),
+    [veri],
+  );
+  // 'belirsiz' (sözleşme tarihi yok) da buraya düşer — gizlenmesin.
+  const digerHareketler = useMemo(
+    () =>
+      (veri?.transferler ?? []).filter(
+        (t) => t.alt_tip !== 'yeni_sozlesme' && t.alt_tip !== 'lisans_yenilendi',
+      ),
+    [veri],
+  );
+
   // Lisans bitecekler — sözleşmeden AYRI liste, aynı süzme mantığı.
   const lisansFiltreli = useMemo(() => {
     const liste = veri?.lisansBitecek ?? [];
@@ -388,6 +428,65 @@ export function Piyasa() {
   // İLK KOLON = ad kolonu (`ad-hucre`) olmak ZORUNDA: mobilde CSS
   // `th:first-child` + `td.ad-hucre` çiftini sabitliyor. Rozet kolonunu başa
   // koymak başlıkta "Tip", gövdede "Bayi" sabitleyip hizayı bozuyordu.
+  // Yeni bayi tabloları (yeni sözleşme / lisans yenilendi): "Eski → Yeni"
+  // kolonları anlamsız (eski değer hep boş). Onun yerine DAĞITICI ve iki tarih
+  // yaşı gösterilir — ayrımın DAYANAĞI görünsün, kullanıcı kararı denetleyebilsin.
+  const YENI_BAYI_KOLONLARI = useMemo<TabloKolon<Transfer>[]>(
+    () => [
+      {
+        id: 'bayi', ad: 'Bayi', varsayilan: true, sabit: true, sinif: 'ad-hucre',
+        sirala: (t) => t.lisans_sahibi ?? t.bayi_lisans_no,
+        ara: (t) => `${t.lisans_sahibi ?? ''} ${t.bayi_lisans_no}`,
+        hucre: (t) => (
+          <>
+            {t.lisans_sahibi ?? t.bayi_lisans_no}
+            <div className="alt-satir mono">{t.bayi_lisans_no}</div>
+          </>
+        ),
+        metin: (t) => `${t.lisans_sahibi ?? ''} (${t.bayi_lisans_no})`,
+      },
+      {
+        id: 'dagitici', ad: 'Dağıtıcı', varsayilan: true, sinif: 'soluk',
+        sirala: (t) => t.dagitim_sirketi ?? '',
+        ara: (t) => t.dagitim_sirketi ?? '',
+        hucre: (t) =>
+          t.dagitim_sirketi === BIZ ? (
+            <b>Parkoil (Turgut)</b>
+          ) : (
+            t.dagitim_sirketi ?? <Bos />
+          ),
+        metin: (t) => t.dagitim_sirketi ?? '',
+      },
+      {
+        id: 'il', ad: 'İl', varsayilan: true, sinif: 'soluk',
+        sirala: (t) => t.il ?? '', ara: (t) => t.il ?? '',
+        hucre: (t) => t.il ?? <Bos />,
+      },
+      {
+        id: 'sozYas', ad: 'Sözleşme yaşı', varsayilan: true, sinif: 'sag mono',
+        sirala: (t) => t.sozlesme_yas_gun ?? -1,
+        hucre: (t) =>
+          t.sozlesme_yas_gun == null ? <Bos /> : <>{t.sozlesme_yas_gun} gün</>,
+        metin: (t) => (t.sozlesme_yas_gun == null ? '' : `${t.sozlesme_yas_gun} gün`),
+      },
+      {
+        id: 'lisYas', ad: 'Lisans yaşı', varsayilan: false, sinif: 'sag mono soluk',
+        sirala: (t) => t.lisans_yas_gun ?? -1,
+        hucre: (t) => (t.lisans_yas_gun == null ? <Bos /> : <>{t.lisans_yas_gun} gün</>),
+        metin: (t) => (t.lisans_yas_gun == null ? '' : `${t.lisans_yas_gun} gün`),
+      },
+      {
+        id: 'tarih', ad: 'Tespit', varsayilan: true, sinif: 'sag soluk',
+        sirala: (t) => new Date(t.tespit_gun).getTime(),
+        hucre: (t) => (
+          <time dateTime={t.tespit_gun.slice(0, 10)}>{gunFark(t.tespit_gun)}</time>
+        ),
+        metin: (t) => trTarih(t.tespit_gun),
+      },
+    ],
+    [],
+  );
+
   const TRANSFER_KOLONLARI = useMemo<TabloKolon<Transfer>[]>(() => [
     {
       // ⚠️ EPDK LİSANS NO ŞART (2026-08-04, kullanıcı yakaladı): bir tüzel kişinin
@@ -408,10 +507,10 @@ export function Piyasa() {
     },
     {
       id: 'tip', ad: 'Tip', varsayilan: true,
-      sirala: (t) => TRANSFER_ETIKET[t.tip]?.metin ?? t.tip,
-      ara: (t) => TRANSFER_ETIKET[t.tip]?.metin ?? t.tip,
+      sirala: (t) => transferEtiket(t).metin,
+      ara: (t) => transferEtiket(t).metin,
       hucre: (t) => {
-        const e = TRANSFER_ETIKET[t.tip] ?? { metin: t.tip, sinif: 'uyari' };
+        const e = transferEtiket(t);
         return <span className={`rozet ${e.sinif}`}>{e.metin}</span>;
       },
     },
@@ -781,14 +880,60 @@ export function Piyasa() {
                       (Günlük snapshot karşılaştırması.)
                     </div>
                   ) : (
-                    <Tablo
-                      anahtar="transferler"
-                      baslik="Bayi Transferleri"
-                      kolonlar={TRANSFER_KOLONLARI}
-                      satirlar={veri.transferler}
-                      satirAnahtar={(t) => `${t.bayi_lisans_no}-${t.tespit_gun}-${t.tip}`}
-                      aramaEtiket="Bayi, il veya dağıtıcı ara"
-                    />
+                    <>
+                      {/* ⚠️ YENİ BAYİLER İKİ TABLOYA AYRILDI (2026-08-04, kullanıcı
+                          isteği). Tek "YENİ BAYİ" etiketi iki farklı olayı
+                          birleştiriyordu: gerçekten yeni ticari ilişki mi, yoksa
+                          mevcut bayinin lisansı mı yenilendi. Ölçüm: COB 2 sözleşme
+                          10 günlük (yeni), SDT GRUP 259 günlük (yalnız lisans). */}
+                      {yeniSozlesmeler.length > 0 && (
+                        <Tablo
+                          aciklama={
+                            <div className="analiz-not">
+                              Bayinin dağıtıcıyla <b>sözleşmesi de yeni</b> (≤30 gün) —
+                              gerçek anlamda yeni ticari ilişki.
+                            </div>
+                          }
+                          anahtar="yeniSozlesme"
+                          baslik="Yeni Dağıtıcı Sözleşmesi"
+                          kolonlar={YENI_BAYI_KOLONLARI}
+                          satirlar={yeniSozlesmeler}
+                          satirAnahtar={(t) => `${t.bayi_lisans_no}-${t.tespit_gun}-ys`}
+                          aramaEtiket="Bayi, il veya dağıtıcı ara"
+                        />
+                      )}
+                      {lisansYenilenenler.length > 0 && (
+                        <Tablo
+                          aciklama={
+                            <div className="analiz-not">
+                              EPDK kaydı yeni göründü ama <b>sözleşme 30 günden eski</b> —
+                              bayi zaten o dağıtıcıdaydı, yalnız bayilik lisansı yenilendi.
+                              Yeni müşteri <b>değil</b>.
+                            </div>
+                          }
+                          anahtar="lisansYenilendi"
+                          baslik="Bayilik Lisansı Yenilendi"
+                          kolonlar={YENI_BAYI_KOLONLARI}
+                          satirlar={lisansYenilenenler}
+                          satirAnahtar={(t) => `${t.bayi_lisans_no}-${t.tespit_gun}-ly`}
+                          aramaEtiket="Bayi, il veya dağıtıcı ara"
+                        />
+                      )}
+                      <Tablo
+                        aciklama={
+                          <div className="analiz-not">
+                            Dağıtıcı değişikliği, lisans durumu değişikliği ve piyasadan
+                            ayrılanlar.
+                          </div>
+                        }
+                        anahtar="transferler"
+                        baslik="Diğer Piyasa Hareketleri"
+                        kolonlar={TRANSFER_KOLONLARI}
+                        satirlar={digerHareketler}
+                        satirAnahtar={(t) => `${t.bayi_lisans_no}-${t.tespit_gun}-${t.tip}`}
+                        aramaEtiket="Bayi, il veya dağıtıcı ara"
+                      />
+                    </>
                   )
                 ),
               },
