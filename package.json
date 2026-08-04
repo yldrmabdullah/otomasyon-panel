@@ -19,7 +19,8 @@
     "mobil": "tsx araclar/mobilTest.ts",
     "satis": "tsx araclar/satisCek.ts",
     "seviye": "tsx araclar/seviyeCek.ts",
-    "piyasa:mail": "tsx araclar/piyasaMail.ts"
+    "piyasa:mail": "tsx araclar/piyasaMail.ts",
+    "kolon:test": "tsx araclar/kolonMenuTest.ts"
   },
   "dependencies": {
     "fast-xml-parser": "^4.5.0",

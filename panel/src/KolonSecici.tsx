@@ -72,7 +72,7 @@ export function KolonSecici({
 
   useEffect(() => {
     if (!acik) return;
-    const kapat = (e: MouseEvent) => {
+    const kapat = (e: Event) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setAcik(false);
     };
     // Escape dinlenmiyordu → klavye kullanıcısı menüden Tab'la çıkmak zorundaydı.
@@ -83,9 +83,14 @@ export function KolonSecici({
       btnRef.current?.focus(); // focus body'ye düşmesin, tetikleyiciye dönsün
     };
     document.addEventListener('mousedown', kapat);
+    // ⚠️ touchstart DE GEREKLİ (2026-08-04): mobilde menü artık alt sayfa
+    // (position:fixed) — dışına dokunup kapatmak tek doğal yol. iOS Safari
+    // dokunmada mousedown'ı gecikmeli/hiç üretmiyor, menü açık kalıyordu.
+    document.addEventListener('touchstart', kapat, { passive: true });
     document.addEventListener('keydown', tus);
     return () => {
       document.removeEventListener('mousedown', kapat);
+      document.removeEventListener('touchstart', kapat);
       document.removeEventListener('keydown', tus);
     };
   }, [acik]);

@@ -381,10 +381,25 @@ button.kart.sec { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accen
   box-shadow: 0 8px 24px rgba(0,0,0,.35);
   padding: var(--s-2); display: flex; flex-direction: column; gap: 1px;
 }
-.kolon-oge { display: flex; align-items: center; gap: 9px; padding: var(--s-2) 10px; border-radius: var(--r-sm);
-  cursor: pointer; font-size: var(--t-md); color: var(--metin-2); user-select: none; }
+/* ⚠️ DOKUNMA HEDEFİ 44px (2026-08-04, kullanıcı: "mobilde imkansız").
+   Önce satır ~33px (8+8+17) ve checkbox 13px'ti. <label> tüm satırı sarmaladığı
+   için teknik olarak satırın her yeri tıklanabilirdi ama GÖRSEL OLARAK öyle
+   durmuyordu: kutu küçük, satırda vurgu yok, hover'da bir şey olmuyor gibi
+   görünüyordu → kullanıcı kutuyu hedeflemeye çalışıyordu. Çözüm hem alanı
+   büyütmek hem de tıklanabilirliği GÖRÜNÜR kılmak. */
+.kolon-oge { display: flex; align-items: center; gap: 10px; padding: 0 10px; border-radius: var(--r-sm);
+  min-height: 44px; cursor: pointer; font-size: var(--t-md); color: var(--metin-2);
+  user-select: none; -webkit-tap-highlight-color: transparent;
+  transition: background .12s, color .12s; }
 .kolon-oge:hover { background: var(--panel-2); color: var(--metin); }
-.kolon-oge input { accent-color: var(--marka); }
+/* Dokunmatikte hover yok → basılı tutarken geri bildirim ver */
+.kolon-oge:active { background: var(--panel-3); }
+/* Klavye odağı label'a değil input'a düşer → satırı :has ile vurgula.
+   :has desteklemeyen tarayıcıda input'un kendi odak halkası zaten var. */
+.kolon-oge:has(input:focus-visible) { background: var(--panel-2); outline: 2px solid var(--accent); outline-offset: -2px; }
+/* Seçili satır belli olsun — sadece kutuya bakmak gerekmesin */
+.kolon-oge:has(input:checked) { color: var(--metin); }
+.kolon-oge input { accent-color: var(--marka); width: 18px; height: 18px; flex: none; cursor: inherit; margin: 0; }
 .kolon-oge.sabit { opacity: .6; cursor: default; }
 .kolon-sabit-not { margin-left: auto; font-size: 9.5px; text-transform: uppercase; color: var(--soluk-2); letter-spacing: .04em; }
 
@@ -731,7 +746,10 @@ td.yok { color: var(--soluk-2); font-style: italic; }
   .filtre-cubugu .arama { flex: 1 1 100%; min-width: 0; }
   .filtre-cubugu select { flex: 1 1 calc(50% - 4px); max-width: none; min-width: 0; }
   .biz-toggle, .kolon-secici { flex: 1 1 calc(50% - 4px); }
-  .kolon-btn { width: 100%; justify-content: center; }
+  /* Dokunma hedefi: ikisi de 44px (WCAG 2.5.5). aktar-btn kolon-btn ile aynı
+     görsel dili paylaşıyor ve YAN YANA duruyorlar — biri 44 biri 33 olursa
+     hem tutarsız görünür hem CSV'ye basmak zorlaşır. */
+  .kolon-btn, .aktar-btn { width: 100%; justify-content: center; min-height: 44px; }
 
   /* Segment: 6 buton taşıp sayfayı yatay kaydırıyordu → sar, hepsi görünsün */
   .segment { display: flex; flex-wrap: wrap; width: 100%; }
@@ -819,7 +837,28 @@ td.yok { color: var(--soluk-2); font-style: italic; }
   .filtre-cubugu select, .filtre-cubugu .arama { max-width: none; width: 100%; }
   /* Kolon menüsü konteynere sabitlenir → viewport dışına taşma imkânsız */
   .kolon-secici { width: 100%; }
-  .kolon-menu { left: 0; right: 0; min-width: 0; max-width: none; }
+  /* ⚠️ MOBİLDE ALT SAYFA (2026-08-04): açılır menü, tetikleyici butonun altına
+     sağa yaslı çiziliyordu. Buton sayfanın sağ üstünde olduğu için menü sık sık
+     ekran kenarına yapışıyor, uzun listede sayfa kaydırınca kayboluyordu.
+     Alt sayfa mobilde standart: sabit konum, başparmağa yakın, geniş hedef. */
+  .kolon-menu {
+    position: fixed; left: 0; right: 0; bottom: 0; top: auto;
+    min-width: 0; max-width: none; max-height: 70vh;
+    border-radius: var(--r) var(--r) 0 0;
+    border-bottom: none;
+    padding: var(--s-2) var(--s-2) calc(var(--s-3) + env(safe-area-inset-bottom));
+    box-shadow: 0 -8px 32px rgba(0,0,0,.45);
+    animation: kolon-yukari .16s ease-out;
+  }
+  /* Tutamaç — bunun bir alt sayfa olduğunu ve kapatılabileceğini anlatır */
+  .kolon-menu::before {
+    content: ''; display: block; width: 36px; height: 4px; margin: 2px auto 8px;
+    border-radius: 2px; background: var(--cizgi-2); flex: none;
+  }
+  @keyframes kolon-yukari { from { transform: translateY(12px); opacity: .6 } to { transform: none; opacity: 1 } }
+  @media (prefers-reduced-motion: reduce) { .kolon-menu { animation: none } }
+  /* Dokunmatikte satırlar daha da rahat olsun */
+  .kolon-oge { min-height: 48px; font-size: var(--t-lg); }
   /* Alarm kartında ad tam görünsün */
   .alarm-ust { flex-direction: column; align-items: flex-start; gap: 2px; }
   .alarm-ad { white-space: normal; overflow: visible; text-overflow: clip; }
