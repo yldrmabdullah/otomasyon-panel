@@ -28,6 +28,16 @@ on:
   # ama gün sınırını aşarsa snapshot yanlış güne yazılabilir → kaçarsa elle tetikle.
   schedule:
     - cron: '0 21 * * *'
+  # ⚠️⚠️ GÜN ORTASINDA ELLE TETİKLEMEK SEVİYE VERİSİNİ BOZAR (2026-08-04, yaşandı).
+  # Snapshot ANLIK: kayda giren ölçüm saati = koşunun saati. Zamanlanmış koşu TR
+  # 00:56'da doğru "gün kapanışı" yazmıştı; telafi adımını test etmek için TR
+  # 08:48'de elle tetiklediğim iki koşu aynı günü EZDİ ve o satır sabah ölçümü
+  # taşımaya başladı → mutabakat aralığının ucu gün ortasına kaydı, günlük satış
+  # toplamı aralığa oturmadı, o gün kullanılamaz hale geldi.
+  #   → seviyeCek.ts artık KENDİNİ KORUYOR: gün kapanışı sayılabilir bir kayıt
+  #     (TR 22:00–06:00) varsa gün ortası çekimi ATLAR. Bilinçli tazeleme: ZORLA=1.
+  #   → Yalnız satış çekmek istiyorsan tarih girerek tetikle; seviye adımı zaten
+  #     kendi kendine atlayacak.
   workflow_dispatch:
     inputs:
       satis_bas:

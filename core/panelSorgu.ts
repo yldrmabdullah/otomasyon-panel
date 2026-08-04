@@ -581,6 +581,223 @@ export async function operasyonVerisi(p: Pool) {
   };
 }
 
+/** EPDK A1a eşikleri — 1240 sayılı Kurul Kararı (bkz docs/bilgi/epdk-mutabakat.md).
+ *  İKİSİ BİRLİKTE aşılırsa bildirim gerekir; biri tek başına yeterli değil. */
+export const A1A_LITRE_ESIK = 288;
+export const A1A_YUZDE_ESIK = 3;
+
+/**
+ * EPDK A1a mutabakatı — tank bazında stok farkı.
+ *
+ *   Fark = (Açılış + Dolum − Satış) − Kapanış
+ *
+ * ⚠️⚠️ EN BÜYÜK TUZAK — BU BİR **ARALIK** HESABIDIR, GÜN HESABI DEĞİL.
+ * `acilis_lt` "bir gün önce"nin değil, o tankın **en son ölçülen kapanışının**
+ * değeri (bkz db.ts `oncekiGunKapanis` — cron gün atlayınca zincir kopmasın diye
+ * DISTINCT ON ... gun DESC). Cron 2 Ağustos'u atladığı için 3 Ağustos satırının
+ * açılışı 1 Ağustos'tan geliyor → o satır **2 GÜNLÜK** aralığı temsil ediyor.
+ * Dolum/satış 1 günden toplanırsa fark tamamen uydurma olur.
+ * Ölçüldü (2026-08-04): gün-bazlı hesap 398 tankın yalnız 64'ünü limitte
+ * gösteriyordu; doğru aralıkla 669'un 394'ü limitte. Aynı veri, 6 kat fark.
+ *   → `kaynak_gun` (açılışın geldiği gün) her satırda taşınır ve aralık ondan kurulur.
+ *
+ * ⚠️ ANAHTAR ÇEVİRİSİ: `satis_ozet.istasyon_kod` = **TIstasyonID** (ör. "201"),
+ * `tank_seviye_gun`/`tank_dolum` ise **IstasyonKod** (ör. "210006"). Bunlar AYNI
+ * DEĞİL — doğrudan birleştirmek 0 satır döndürür (ölçüldü: 176 vs 154 istasyon,
+ * kesişim 0). Köprü `istasyonlar.t_istasyon_id` ↔ `istasyonlar.istasyon_kod`;
+ * 154/154 çevrildi, t_istasyon_id 269/269 tekil ve boş yok.
+ *
+ * ⚠️ KAPSAM DÜRÜSTLÜĞÜ: satışı olup seviye kaydı olmayan 81 tank var (557.197 lt,
+ * toplam satışın %9,5'i — hepsi yüksek tank no: 4,5,6,7; istasyonun kendisi
+ * seviye gönderiyor ama o tank göndermiyor, muhtemelen LPG/otogaz). Bunlar
+ * mutabakat DIŞI: "fark" sütununa yazılsa tüm satış kaçak gibi görünürdü.
+ * Hiç gösterilmezse de kayıp sessizleşir → `kapsam` alanında ayrıca raporlanır.
+ */
+export async function mutabakatVerisi(p: Pool, gun?: string) {
+  // Hedef gün: verilmezse **hem seviye hem satış** verisi olan en son gün.
+  //
+  // ⚠️ NEDEN İKİSİ BİRLİKTE (2026-08-04, ölçüldü): satış çekimi bir gün geriden
+  // çalışır (satisCek.ts TR günü olarak DÜNü çeker), seviye ise o geceyi yazar.
+  // Sadece seviyeye bakınca hedef 4 Ağustos oluyordu ama o günün satışı henüz
+  // yok → C=0 → 669 tankın TAMAMI "satış yok", dolum farkı komple "eksik stok"
+  // görünüyordu (bir tankta %996 sapma; gerçekte yalnız veri eksikti).
+  const g = await p.query(
+    gun
+      ? `SELECT $1::date::text gun`
+      : `SELECT max(t.gun)::text gun FROM tank_seviye_gun t
+         WHERE t.acilis_lt IS NOT NULL
+           AND EXISTS (SELECT 1 FROM satis_ozet s WHERE s.gun = t.gun)`,
+    gun ? [gun] : [],
+  );
+  const hedefGun: string | null = g.rows[0]?.gun ?? null;
+  if (!hedefGun) {
+    return { gun: null, gunler: [], satirlar: [], ozet: null, kapsam: null };
+  }
+
+  const [gunler, satirlar, kapsam] = await Promise.all([
+    // Seçilebilir günler — yalnız açılışı olanlar (ilk gün hesaplanamaz).
+    p.query(
+      `SELECT gun::text, count(*)::int tank
+       FROM tank_seviye_gun WHERE acilis_lt IS NOT NULL
+       GROUP BY gun ORDER BY gun DESC LIMIT 60`,
+    ),
+
+    // ── ASIL HESAP ────────────────────────────────────────────────────────
+    p.query(
+      `WITH sev AS (
+         -- Her tankın hedef gündeki açılış/kapanışı + açılışın GELDİĞİ gün.
+         -- kaynak_gun: bu tankın hedef günden önceki en son kaydı = aralığın başı.
+         SELECT t.istasyon_kod, t.tank_no, t.urun, t.acilis_lt, t.kapanis_lt,
+                t.kapanis_zaman,
+                pr.gun           kaynak_gun,
+                pr.kapanis_zaman acilis_zaman
+         FROM tank_seviye_gun t
+         LEFT JOIN LATERAL (
+           SELECT p2.gun, p2.kapanis_zaman FROM tank_seviye_gun p2
+           WHERE p2.istasyon_kod = t.istasyon_kod AND p2.tank_no = t.tank_no
+             AND p2.gun < t.gun AND p2.kapanis_lt IS NOT NULL
+           ORDER BY p2.gun DESC LIMIT 1
+         ) pr ON true
+         WHERE t.gun = $1::date AND t.acilis_lt IS NOT NULL AND t.kapanis_lt IS NOT NULL
+       ),
+       -- ⚠️⚠️ ARALIK **ÖLÇÜM ZAMANI** İLE KURULUR, GÜN ETİKETİYLE DEĞİL.
+       --
+       -- Bu, bu sorgunun en pahalı dersi (2026-08-04, canlı ölçüldü). Snapshot
+       -- ANLIK: gun sütunu "o günün kapanışı" demek DEĞİL, "cron o gün koştu"
+       -- demek. Gerçek ölçüm zamanları taban tabana zıt çıktı:
+       --     gun=2026-08-01 → ölçüm 01 Ağu 12:00  (öğlen!)
+       --     gun=2026-08-03 → ölçüm 04 Ağu 00:30  (ERTESİ GÜN)
+       --     gun=2026-08-04 → ölçüm 04 Ağu 08:30  (sabah)
+       -- Gün-bazlı pencere kurunca 210192 t2'de A=1.992 (01 Ağu ÖĞLEN ölçümü)
+       -- alınıyor, ama o tankın 01 Ağu 13:37'deki 28.266 lt dolumu pencerenin
+       -- DIŞINDA kalıyordu → B=0, C=19.628 → tank eksiye düşüyor (fiziksel
+       -- olarak imkânsız) ve %1.495 sapma raporlanıyordu. 669 tankın 260'ı
+       -- "eşik aşımı", net fark −518.957 lt: tamamı bu hatanın eseri.
+       --   → Doğrusu: (acilis_zaman, kapanis_zaman] = iki ölçüm ARASI.
+       --
+       -- ⚠️ HASSASİYET SINIRI: dolum TIMESTAMP (saat hassas) ama satis_ozet
+       -- GÜNLÜK toplam — satış saate bölünemez. Ölçüm gece yarısına yakınsa
+       -- (664/669 tank 00:xx) hata küçük; öğlen ölçümünde o günün satışının
+       -- yarısı yanlış tarafta kalır. Bu satırlar zaman_riski ile işaretlenir;
+       -- gizlenmez, ekranda "hassas değil" diye ayrılır.
+       ar AS (
+         SELECT *,
+                coalesce(acilis_zaman, ($1::date - 1) + time '00:00') bas_zaman,
+                coalesce(kapanis_zaman, ($1::date + 1) + time '00:00') bit_zaman
+         FROM sev
+       ),
+       dol AS (
+         SELECT a.istasyon_kod, a.tank_no,
+                sum(coalesce(d.dolum_miktari_net, d.dolum_miktari)) lt,
+                count(*)::int adet
+         FROM ar a JOIN tank_dolum d
+           ON d.istasyon_kod = a.istasyon_kod AND d.tank_no = a.tank_no
+          AND d.dolum_bitim >  a.bas_zaman
+          AND d.dolum_bitim <= a.bit_zaman
+         GROUP BY 1,2
+       ),
+       -- Satış GÜNLÜK: aralığa DEĞEN her günü al. Kısmi günlerde (ölçüm gün
+       -- ortasındaysa) fazla/eksik sayar → zaman_riski bayrağı bunu duyurur.
+       sat AS (
+         SELECT a.istasyon_kod, a.tank_no, sum(so.litre) lt, sum(so.fis_sayisi)::int fis
+         FROM ar a
+         JOIN istasyonlar i ON i.istasyon_kod = a.istasyon_kod
+         JOIN satis_ozet so ON so.istasyon_kod = i.t_istasyon_id
+          AND so.tank_no = a.tank_no
+          AND so.gun >  a.bas_zaman::date
+          AND so.gun <= a.bit_zaman::date
+         GROUP BY 1,2
+       )
+       SELECT a.istasyon_kod, coalesce(i.ad, a.istasyon_kod) istasyon_ad,
+              i.sehir, i.bolge, a.tank_no, a.urun,
+              a.kaynak_gun::text, $1::text hedef_gun,
+              a.bas_zaman, a.bit_zaman,
+              -- Aralık uzunluğu SAAT cinsinden ölçülür (gün etiketi yanıltıcı).
+              round(extract(epoch FROM (a.bit_zaman - a.bas_zaman)) / 3600)::int aralik_saat,
+              -- Kısmi gün riski: iki uçtan biri gün başına yakın DEĞİLSE günlük
+              -- satış toplamı aralığa tam oturmaz (bkz. sat CTE yorumu).
+              (a.bas_zaman::time > time '02:00' AND a.bas_zaman::time < time '22:00')
+                OR (a.bit_zaman::time > time '02:00' AND a.bit_zaman::time < time '22:00')
+                                               zaman_riski,
+              round(a.acilis_lt)::int         acilis,
+              round(coalesce(dol.lt, 0))::int  dolum,
+              coalesce(dol.adet, 0)            dolum_adet,
+              round(coalesce(sat.lt, 0))::int  satis,
+              coalesce(sat.fis, 0)             fis,
+              round(a.kapanis_lt)::int         kapanis,
+              sat.lt IS NULL                   satis_yok,
+              -- Fark = beklenen − gerçek.  (+) fazla stok, (−) eksik stok.
+              round((a.acilis_lt + coalesce(dol.lt,0) - coalesce(sat.lt,0)) - a.kapanis_lt)::int fark,
+              -- Yüzde tabanı: hareket hacmi (açılış+dolum). Kapanışa bölmek
+              -- boş tankta sonsuza gider; EPDK hareket üzerinden bakar.
+              CASE WHEN (a.acilis_lt + coalesce(dol.lt,0)) > 0
+                   THEN round(100.0 * abs((a.acilis_lt + coalesce(dol.lt,0) - coalesce(sat.lt,0)) - a.kapanis_lt)
+                              / (a.acilis_lt + coalesce(dol.lt,0)), 2)
+              END fark_yuzde,
+              a.kapanis_zaman
+       FROM ar a
+       LEFT JOIN istasyonlar i ON i.istasyon_kod = a.istasyon_kod
+       LEFT JOIN dol ON dol.istasyon_kod = a.istasyon_kod AND dol.tank_no = a.tank_no
+       LEFT JOIN sat ON sat.istasyon_kod = a.istasyon_kod AND sat.tank_no = a.tank_no
+       ORDER BY abs((a.acilis_lt + coalesce(dol.lt,0) - coalesce(sat.lt,0)) - a.kapanis_lt) DESC`,
+      [hedefGun],
+    ),
+
+    // KAPSAM — satışı olup seviyesi olmayan tanklar (mutabakat dışı kalan hacim).
+    p.query(
+      `WITH s AS (
+         SELECT i.istasyon_kod, so.tank_no, sum(so.litre) lt
+         FROM satis_ozet so JOIN istasyonlar i ON i.t_istasyon_id = so.istasyon_kod
+         WHERE so.gun = $1::date GROUP BY 1,2),
+       t AS (SELECT istasyon_kod, tank_no FROM tank_seviye_gun WHERE gun = $1::date)
+       SELECT count(*) FILTER (WHERE t.tank_no IS NULL)::int kapsamsiz_tank,
+              round(coalesce(sum(s.lt) FILTER (WHERE t.tank_no IS NULL), 0))::int kapsamsiz_lt,
+              round(coalesce(sum(s.lt), 0))::int toplam_satis_lt
+       FROM s LEFT JOIN t ON t.istasyon_kod = s.istasyon_kod AND t.tank_no = s.tank_no`,
+      [hedefGun],
+    ),
+  ]);
+
+  // Özet: EPDK eşiği İKİ koşulu birlikte ister (288 lt VE %3).
+  const r = satirlar.rows;
+  const asan = r.filter(
+    (x) => Math.abs(Number(x.fark)) > A1A_LITRE_ESIK && Number(x.fark_yuzde) > A1A_YUZDE_ESIK,
+  );
+  const k = kapsam.rows[0];
+  return {
+    gun: hedefGun,
+    gunler: gunler.rows,
+    satirlar: r,
+    ozet: {
+      tank: r.length,
+      limitte: r.length - asan.length,
+      asan: asan.length,
+      // Satışı hiç eşleşmeyen tank: farkı olduğu gibi okunmamalı
+      satisYok: r.filter((x) => x.satis_yok).length,
+      // Aralık 30 saati aştıysa arada bir cron koşusu düşmüş (normal ~24 sa).
+      kesintiliAralik: r.filter((x) => Number(x.aralik_saat) > 30).length,
+      // Ölçüm gün ortasında → günlük satış toplamı aralığa tam oturmuyor.
+      zamanRiski: r.filter((x) => x.zaman_riski).length,
+      fazla: r.filter((x) => Number(x.fark) > 0).length,
+      eksik: r.filter((x) => Number(x.fark) < 0).length,
+      netFark: r.reduce((a, x) => a + Number(x.fark), 0),
+      litreEsik: A1A_LITRE_ESIK,
+      yuzdeEsik: A1A_YUZDE_ESIK,
+    },
+    kapsam: k
+      ? {
+          kapsamsizTank: k.kapsamsiz_tank,
+          kapsamsizLt: k.kapsamsiz_lt,
+          toplamSatisLt: k.toplam_satis_lt,
+          kapsamsizYuzde:
+            k.toplam_satis_lt > 0
+              ? Math.round((1000 * k.kapsamsiz_lt) / k.toplam_satis_lt) / 10
+              : 0,
+        }
+      : null,
+  };
+}
+
 /** Filtre açılırlarını besleyen ayrık değerler (il + dağıtıcı listesi).
  *  Ayrı endpoint: tüm bayiyi indirmeden dropdown doldurulabilsin. */
 export async function bayiSecenekleri(p: Pool) {

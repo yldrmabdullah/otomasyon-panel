@@ -283,6 +283,38 @@ export async function oncekiGunKapanis(
   );
 }
 
+/** "Gün kapanışı sayılabilir" ölçüm penceresi (TR saati).
+ *
+ *  ⚠️ EŞİK GERÇEK CRON DAVRANIŞINDAN ÖLÇÜLDÜ (2026-08-04): cron 21:00 UTC'ye
+ *  kurulu (TR 00:00) ama GH Actions ücretsiz planda geciktiriyor — 3 Ağustos
+ *  koşusu 21:56 UTC'de başladı, ölçüm TR **03:30**'a düştü. İlk yazdığım ≤02:00
+ *  eşiği bu yüzden hiçbir gerçek kaydı yakalamıyordu (0/669). Pencere gecikmeyi
+ *  kapsayacak kadar geniş, ama gün ortasını dışlayacak kadar dar olmalı. */
+export const KAPANIS_PENCERE_BAS = 22; // TR 22:00'dan sonrası
+export const KAPANIS_PENCERE_BIT = 6; //  TR 06:00'a kadar
+
+/** O gün için gün kapanışı sayılabilecek (TR ≥22:00 veya ≤06:00) bir seviye
+ *  kaydı var mı? Varsa ölçüm zamanını okunur biçimde döndürür, yoksa null.
+ *
+ *  ⚠️ NİYE: snapshot ANLIK — kayda giren ölçüm saati = aracın koştuğu saat.
+ *  Gün ortasında koşan bir çekim gece kapanışını ezerse mutabakat aralığının
+ *  ucu kayar ve o gün kullanılamaz olur (2026-08-04'te elle tetiklediğim iki
+ *  test koşusu 4 Ağustos'u tam böyle bozdu). seviyeCek.ts bunu kontrol eder. */
+export async function gunBasiKaydiVar(gun: string): Promise<string | null> {
+  const r = await pool().query<{ z: string }>(
+    `SELECT to_char(max(kapanis_zaman) AT TIME ZONE 'Europe/Istanbul',
+                    'YYYY-MM-DD HH24:MI') z
+     FROM tank_seviye_gun
+     WHERE gun = $1 AND kapanis_zaman IS NOT NULL
+       -- ⚠️ OR parantez İÇİNDE: parantezsiz OR, gun filtresini de kapsayıp
+       --    tüm tabloyu tarardı (SQL'de AND, OR'dan önce bağlar).
+       AND ((kapanis_zaman AT TIME ZONE 'Europe/Istanbul')::time <= make_time($3, 0, 0)
+         OR (kapanis_zaman AT TIME ZONE 'Europe/Istanbul')::time >= make_time($2, 0, 0))`,
+    [gun, KAPANIS_PENCERE_BAS, KAPANIS_PENCERE_BIT],
+  );
+  return r.rows[0]?.z ?? null;
+}
+
 /** Son N günde `satis_ozet`'te EKSİK olan günleri döndür (bugün hariç — henüz
  *  tamamlanmadı). Cron kaçırdığı günü telafi etsin diye.
  *

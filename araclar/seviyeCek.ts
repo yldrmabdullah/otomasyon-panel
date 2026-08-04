@@ -24,7 +24,10 @@
 //   node --env-file=.env --import tsx araclar/seviyeCek.ts 2026-08-01
 
 import { config } from '../core/config.js';
-import { seviyeGunKaydet, oncekiGunKapanis, acilisZinciriOnar, kapat } from '../core/db.js';
+import {
+  seviyeGunKaydet, oncekiGunKapanis, acilisZinciriOnar, gunBasiKaydiVar,
+  KAPANIS_PENCERE_BAS, KAPANIS_PENCERE_BIT, kapat,
+} from '../core/db.js';
 
 const K = config.asis;
 
@@ -52,6 +55,34 @@ async function main() {
   }
 
   console.log(`Tank seviye snapshot: ${gun}`);
+
+  // ── GÜN ORTASI ÇEKİM KORUMASI ─────────────────────────────────────────────
+  //
+  // ⚠️ NEDEN (2026-08-04, kendi hatamla kanıtlandı): snapshot ANLIK, yani kayda
+  // giren ölçüm saati = bu aracın koştuğu saat. Zamanlanmış koşu 21:56 UTC'de
+  // (TR 00:56) doğru "gün kapanışı" yazmıştı; sonra elle tetiklediğim iki test
+  // koşusu (05:48 ve 05:50 UTC = TR 08:48) aynı günü EZDİ ve o satır artık
+  // SABAH ölçümü taşıyor. Sonuç: mutabakat aralığının bir ucu gün ortasına
+  // kayıyor, günlük satış toplamı aralığa oturmuyor → tüm gün kullanılamaz hale
+  // geliyor (669 tankın tamamı "zaman riski").
+  //
+  // Kural: gün kapanışı sayılabilir bir kayıt (TR ≥22:00 / ≤06:00 — pencere
+  // db.ts'de, cron gecikmesi ölçülerek belirlendi) VARSA, gün ortasında koşan
+  // bir çekim onu ezmez. Bilinçli tazeleme için ZORLA=1.
+  const trSaat = trSimdi.getUTCHours() + trSimdi.getUTCMinutes() / 60;
+  const gunBasinaYakin = trSaat <= KAPANIS_PENCERE_BIT || trSaat >= KAPANIS_PENCERE_BAS;
+  if (!gunBasinaYakin && process.env.ZORLA !== '1') {
+    const mevcut = await gunBasiKaydiVar(gun);
+    if (mevcut) {
+      const ss = String(Math.floor(trSaat)).padStart(2, '0');
+      const dd = String(Math.round((trSaat % 1) * 60)).padStart(2, '0');
+      console.log(`  ⏭️  ATLANDI: ${gun} için gün başına yakın kayıt var (${mevcut}).`);
+      console.log(`     Şu an TR ${ss}:${dd} — gün ortası ölçüm gece kapanışını EZERSE mutabakat bozulur.`);
+      console.log('     Bilinçli tazeleme için: ZORLA=1');
+      await kapat();
+      return;
+    }
+  }
 
   // ⚠️ PARAMETRE SIRASI ÖNEMLİ (ASMX pozisyonel): guidKey, dagiticiKod, IstasyonKod.
   // Ters sıra "Code=0 başarılı" ama BOŞ liste döndürür.

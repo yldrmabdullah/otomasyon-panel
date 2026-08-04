@@ -660,3 +660,86 @@ Dönüşe `kaynakGun` eklendi → araç "669 tank ← 2026-08-03" yazıyor, 1 g�
 **gecikmeyi** çözmüyor. İzleme job'unda cron-job.org kullanılıyor (bkz.
 `docs/DIS_TETIKLEME_KURULUM.md`); aynı düzenek buraya da eklenebilir — `workflow_dispatch`
 zaten açık, yalnız cron-job.org'da ikinci bir iş tanımlanması gerekiyor.
+
+---
+
+## ⭐⭐⭐ PANEL SORGUSU YAZILDI — ve 4 KÖK HATA CANLIDA BULUNDU (2026-08-04)
+
+`core/panelSorgu.ts > mutabakatVerisi()` yazıldı. Her hata **canlı veriyle** ortaya
+çıktı; hiçbiri kod okumakla görülmezdi. Sonuç sayıları peş peşe şöyle değişti:
+
+| Aşama | "Eşik aşan" tank | Net fark | Fiziksel imkânsız |
+|---|---|---|---|
+| İlk yazım (gün-bazlı) | 260 / 669 | −518.957 lt | 260 |
+| Zaman-bazlı aralığa geçince | 240 / 669 | +259.758 lt | **9** |
+
+### Hata 1 — anahtar uyumsuzluğu (sorgu 0 satır dönerdi)
+`satis_ozet.istasyon_kod` = **TIstasyonID** (ör. "201").
+`tank_seviye_gun` / `tank_dolum` = **IstasyonKod** (ör. "210006").
+Ölçüldü: 176 vs 154 istasyon, **kesişim 0**. Doğrudan JOIN sessizce boş döner.
+→ Köprü: `istasyonlar.t_istasyon_id` ↔ `istasyonlar.istasyon_kod` (154/154 çevrildi,
+`t_istasyon_id` 269/269 tekil, boş yok).
+
+### Hata 2 — hedef gün yalnız seviyeye bakıyordu
+Satış çekimi bir gün geriden çalışır (`satisCek.ts` TR günü = DÜN), seviye ise o
+geceyi yazar. "En son seviye günü" = 4 Ağustos seçiliyordu ama o günün satışı henüz
+yok → **C=0** → 669 tankın TAMAMI "satış yok", dolum farkı komple "eksik stok".
+Bir tankta **%996** sapma raporlanıyordu; gerçekte yalnız veri eksikti.
+→ Hedef gün artık **hem seviye hem satış** verisi olan en son gün.
+
+### Hata 3 — dolum/satış pencere asimetrisi
+Dolum `baslangic + 1 gün`den, satış `> baslangic`ten başlıyordu. Satışı 10–39 bin lt
+olan tanklarda **B=0** çıkıyor, tüm hacim "kayıp" görünüyordu.
+
+### ⭐ Hata 4 (EN PAHALI) — `gun` sütunu "o günün kapanışı" DEMEK DEĞİL
+Snapshot **ANLIK**: kayda giren ölçüm saati = cron'un koştuğu saat. Gerçek zamanlar:
+
+```
+gun=2026-08-01 → ölçüm 01 Ağu 15:00 TR   (gün ortası!)
+gun=2026-08-03 → ölçüm 04 Ağu 03:30 TR   (ertesi gün, doğru kapanış)
+gun=2026-08-04 → ölçüm 04 Ağu 12:00 TR   (öğlen!)
+```
+
+Gün-bazlı pencere kurunca 210192 t2'de A=1.992 (01 Ağu **öğlen** ölçümü) alınıyor,
+ama o tankın 01 Ağu **13:37**'deki 28.266 lt dolumu pencerenin DIŞINDA kalıyor →
+B=0, C=19.628 → **tank eksiye düşüyor** (fiziksel olarak imkânsız), %1.495 sapma.
+→ **Aralık ölçüm zaman damgaları arasıdır:** `(acilis_zaman, kapanis_zaman]`.
+`gun` yalnız bir etiket; hesapta kullanılmaz.
+
+### ⛔ SONUÇ: hesap doğru ama VERİ HENÜZ YETERSİZ
+```
+zaman_riski OLMAYAN satır = 0 / 669
+ideal çift (iki ucu da gece ölçümü) = 0
+```
+Kullanılabilir tek satır yok. Sebep: `satis_ozet` **günlük** toplam, saate bölünemez.
+Aralığın bir ucu gün ortasındaysa o günün satışının bir kısmı yanlış tarafta kalır.
+**Mutabakatın çalışması için ölçümler her gün gece penceresinde alınmalı** — o zaman
+uçlar 00:xx→00:xx olur ve günlük satış toplamı aralığa tam oturur.
+
+### ⭐ GÜN ORTASI ÇEKİM KORUMASI eklendi (`db.ts > gunBasiKaydiVar`)
+**Bu hatayı kendim yaptım:** 3 Ağustos zamanlanmış koşusu 21:56 UTC'de (TR 00:56)
+doğru kapanışı yazmıştı; sonra telafi adımını test etmek için elle tetiklediğim iki
+koşu (05:48 + 05:50 UTC = TR 08:48) **4 Ağustos'u ezdi** ve o satır sabah ölçümü
+taşımaya başladı.
+→ Artık gün kapanışı sayılabilir bir kayıt varsa, gün ortasında koşan çekim onu
+ezmez (`ZORLA=1` ile bilinçli aşılabilir). Canlı doğrulandı:
+```
+⏭️  ATLANDI: 2026-08-03 için gün başına yakın kayıt var (2026-08-04 03:30).
+sonra: 3 Ağustos ölçümü hâlâ 03:30 ✓ (ezilmedi)
+```
+
+**Pencere gerçek cron davranışından ölçüldü:** `KAPANIS_PENCERE_BAS=22`,
+`KAPANIS_PENCERE_BIT=6` (TR). İlk yazdığım ≤02:00 eşiği hiçbir gerçek kaydı
+yakalamıyordu (0/669) — çünkü GH Actions gecikmesi ölçümü TR 03:30'a itiyor.
+
+### Kapsam dürüstlüğü (gizlenmeyecek)
+Satışı olup seviye kaydı olmayan **79–81 tank**: 81.746 lt, o günün satışının **%10'u**.
+Hepsi yüksek tank no (4,5,6,7); istasyonun kendisi seviye gönderiyor ama o tank
+göndermiyor (muhtemelen LPG/otogaz). Mutabakat DIŞI — "fark" sütununa yazılsa tüm
+satış kaçak gibi görünürdü, hiç gösterilmezse kayıp sessizleşirdi. `kapsam` alanında
+ayrıca raporlanır.
+
+### Ekleme sırasında iki kez yaptığım aynı hata (kayıt için)
+SQL template literal (`` ` ``) içindeki **yorumda backtick** kullanmak string'i erken
+kapatıyor → `Expected ")" but found "gun"`. Bu dosyadaki SQL yorumlarında backtick
+KULLANILMAZ, düz tırnak yazılır.
