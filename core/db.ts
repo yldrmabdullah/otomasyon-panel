@@ -283,6 +283,52 @@ export async function oncekiGunKapanis(
   );
 }
 
+/** Son N günde `satis_ozet`'te EKSİK olan günleri döndür (bugün hariç — henüz
+ *  tamamlanmadı). Cron kaçırdığı günü telafi etsin diye.
+ *
+ *  ⚠️ TR günü kullanılır: cron 21:00 UTC'de koşuyor ve gecikme UTC gününü
+ *  değiştirebiliyor (bkz. satisCek.ts). */
+export async function eksikSatisGunleri(gunSayi = 7): Promise<string[]> {
+  const r = await pool().query<{ gun: string }>(
+    `WITH tr AS (SELECT (now() + interval '3 hours')::date bugun),
+     seri AS (
+       SELECT (SELECT bugun FROM tr) - g AS gun
+       FROM generate_series(1, $1) g)
+     SELECT s.gun::text FROM seri s
+     LEFT JOIN (SELECT DISTINCT gun FROM satis_ozet) o ON o.gun = s.gun
+     WHERE o.gun IS NULL
+     ORDER BY s.gun`,
+    [gunSayi],
+  );
+  return r.rows.map((x) => x.gun);
+}
+
+/** Açılışı boş kalmış tank-günleri onar: her biri için o günden önceki en son
+ *  kapanışı açılış olarak yazar. Serinin ilk günü ATLANIR (öncesi yok).
+ *
+ *  ⚠️ NEDEN: snapshot geriye dönük çekilemez (anlık veri) ama açılış DB'den
+ *  türetilebilir. Cron bir gün atlayıp zincir koptuğunda (2026-08-04) bu onarır.
+ *  Döner: doldurulan satır sayısı. */
+export async function acilisZinciriOnar(): Promise<number> {
+  const r = await pool().query(
+    `WITH ilk AS (SELECT min(gun) g FROM tank_seviye_gun),
+     onceki AS (
+       SELECT DISTINCT ON (t.gun, t.istasyon_kod, t.tank_no)
+              t.gun, t.istasyon_kod, t.tank_no, k.kapanis_lt
+       FROM tank_seviye_gun t
+       JOIN tank_seviye_gun k
+         ON k.istasyon_kod = t.istasyon_kod AND k.tank_no = t.tank_no
+        AND k.gun < t.gun AND k.kapanis_lt IS NOT NULL
+       WHERE t.acilis_lt IS NULL AND t.gun > (SELECT g FROM ilk)
+       ORDER BY t.gun, t.istasyon_kod, t.tank_no, k.gun DESC)
+     UPDATE tank_seviye_gun t SET acilis_lt = o.kapanis_lt, guncelleme = now()
+     FROM onceki o
+     WHERE t.gun = o.gun AND t.istasyon_kod = o.istasyon_kod AND t.tank_no = o.tank_no
+       AND t.acilis_lt IS NULL`,
+  );
+  return r.rowCount ?? 0;
+}
+
 // --- Sistem ayar (cursor) oku/yaz ---
 export async function ayarOku(anahtar: string): Promise<string | null> {
   const r = await pool().query<{ deger: string }>('SELECT deger FROM sistem_ayar WHERE anahtar=$1', [anahtar]);

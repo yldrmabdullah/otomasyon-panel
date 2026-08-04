@@ -610,3 +610,53 @@ günü arasındaki TÜM dolum ve satış toplanmalı. Mutabakat modülü yazıl�
 Ağustos atladı. Bu bilinen GH Actions ücretsiz plan kısıtı — izleme job'unda
 cron-job.org dış tetikleyicisiyle çözülmüştü, burada henüz yok.
 → Aynı çözüm buraya da uygulanmalı, yoksa açılış zinciri sürekli kopar.
+
+---
+
+## ⭐ VERİ SÜREKLİLİĞİ — 3 katmanlı koruma (2026-08-04)
+
+Mutabakatın en kırılgan yeri **eksik gün**: bir günün verisi gelmezse açılış zinciri
+kopuyor ve o günden sonrası hesaplanamıyor. Üç katman eklendi.
+
+### Katman 1: TR günü kullanılıyor (UTC değil)
+
+⚠️ **Sessiz tuzak:** `new Date().toISOString()` **UTC** günü verir. Cron 21:00 UTC'ye
+kurulu (= 00:00 TR) ve GH Actions schedule'ı ücretsiz planda ortalama 95 dk, **en kötü
+202 dk** geciktiriyor (izleme job'unda ölçüldü).
+
+```
+21:00 UTC + 95 dk  = 22:35 UTC → TR 01:35  ✓ aynı gün
+21:00 UTC + 202 dk = 00:22 UTC → TR 03:22  ⚠ UTC GÜNÜ DEĞİŞTİ
+```
+
+En kötü senaryoda snapshot **yanlış güne** yazılırdı: bir gün iki kez, sonraki gün hiç.
+→ `seviyeCek` ve `satisCek` artık TR günü (UTC+3) kullanıyor. ASIS tarihleri de TR
+yerel saati taşıdığı için (TZ'siz) doğru referans bu.
+
+### Katman 2: satış telafisi — `npm run satis -- --telafi 7`
+
+Son 7 günde `satis_ozet`'te eksik olan günleri bulup doldurur. Workflow'a adım olarak
+eklendi (elle tarih verilmişse atlanır). Kaçan gün **ertesi koşuda otomatik kapanır** —
+dış tetikleyiciye bağımlı değil.
+
+Canlı test: 28 Temmuz eksikmiş, kendisi bulup 523 özet satır yazdı.
+
+### Katman 3: açılış zinciri onarımı — `acilisZinciriOnar()`
+
+Snapshot geriye dönük **çekilemez** (anlık veri) ama açılış değeri DB'den türetilebilir:
+o günden önceki en son kapanış. `seviyeCek` her koşuda çağırıyor.
+
+Kanıt (kasıtlı kopukluk yaratılarak test edildi):
+- 4 Ağustos'un 669 açılışı boşaltıldı → onarım **669 satır doldurdu**
+- Serinin ilk günü (1 Ağustos) **dokunulmadı** — öncesi yok, boş kalması doğru
+
+### Ayrıca: `oncekiGunKapanis()` artık "en son mevcut gün" arıyor
+Önceki sürüm kesin "bir gün önce" arıyordu; bir gün atlanınca zincir kalıcı kopuyordu.
+Dönüşe `kaynakGun` eklendi → araç "669 tank ← 2026-08-03" yazıyor, 1 günden eskiyse
+**"⚠ aralık kesintili"** uyarısı veriyor.
+
+### Hâlâ açık: dış tetikleyici
+`mutabakat-cek.yml` schedule'a bağlı. Katman 2 ve 3 eksik günü telafi ediyor ama
+**gecikmeyi** çözmüyor. İzleme job'unda cron-job.org kullanılıyor (bkz.
+`docs/DIS_TETIKLEME_KURULUM.md`); aynı düzenek buraya da eklenebilir — `workflow_dispatch`
+zaten açık, yalnız cron-job.org'da ikinci bir iş tanımlanması gerekiyor.

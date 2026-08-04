@@ -19,7 +19,7 @@
 //   node --env-file=.env --import tsx araclar/satisCek.ts 2026-07-01 2026-07-31
 
 import { config } from '../core/config.js';
-import { satisOzetKaydet, kapat } from '../core/db.js';
+import { satisOzetKaydet, eksikSatisGunleri, kapat } from '../core/db.js';
 
 const K = config.asis;
 /** ASIS sabit sayfa boyutu (ölçüldü: her zaman 10.000). */
@@ -144,6 +144,39 @@ async function gunCek(gun: Date): Promise<{ ozet: number; ham: number }> {
 }
 
 async function main() {
+  // --telafi: son N günde DB'de EKSİK olan günleri bul ve doldur.
+  //
+  // ⚠️ NEDEN GEREKLİ (2026-08-04): cron kaçırdığı günü bir daha denemiyordu ve
+  // eksik gün kalıcı oluyordu. Mutabakatta bir günün eksik olması açılış zincirini
+  // kopardığı için (bkz. epdk-mutabakat.md) telafi ŞART. Her koşuda çalışırsa
+  // kaçan gün ertesi gün otomatik kapanır — dış tetikleyiciye bağımlı değil.
+  if (process.argv.includes('--telafi')) {
+    const gunSayi = Number(process.argv[process.argv.indexOf('--telafi') + 1]) || 7;
+    const eksik = await eksikSatisGunleri(gunSayi);
+    if (eksik.length === 0) {
+      console.log(`Telafi: son ${gunSayi} günde eksik gün yok ✓`);
+      await kapat();
+      return;
+    }
+    console.log(`Telafi: ${eksik.length} eksik gün bulundu → ${eksik.join(', ')}`);
+    let t = 0;
+    for (const g of eksik) {
+      console.log(`
+${g}:`);
+      try {
+        const r = await gunCek(new Date(g + 'T00:00:00Z'));
+        console.log(`  ✔ ${r.ham.toLocaleString('tr')} satış → ${r.ozet} özet satır`);
+        t += r.ozet;
+      } catch (e) {
+        console.error(`  ✗ HATA: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+    console.log(`
+✔ Telafi bitti. ${t} özet satır yazıldı.`);
+    await kapat();
+    return;
+  }
+
   const arg1 = process.argv[2];
   const arg2 = process.argv[3];
 
@@ -153,10 +186,16 @@ async function main() {
     bas = new Date(arg1 + 'T00:00:00Z');
     bit = arg2 ? new Date(arg2 + 'T00:00:00Z') : new Date(bas);
   } else {
-    // Varsayılan: DÜN (bugün henüz tamamlanmadı, yarım gün özet yanlış olur)
-    bas = new Date();
-    bas.setUTCDate(bas.getUTCDate() - 1);
-    bas.setUTCHours(0, 0, 0, 0);
+    // Varsayılan: DÜN (bugün henüz tamamlanmadı, yarım gün özet yanlış olur).
+    //
+    // ⚠️ TÜRKİYE günü (UTC+3), UTC DEĞİL: cron 21:00 UTC'ye kurulu ve GH Actions
+    // schedule'ı en kötü 202 dk geciktiriyor → 00:22 UTC'de UTC günü değişmiş
+    // olur ve "dün" bir gün kayar (aynı gün iki kez, sonraki gün hiç çekilmez).
+    // ASIS tarihleri de TR yerel saati taşıyor (TZ'siz), bu yüzden TR günü doğru
+    // referans. Bkz. seviyeCek.ts'teki aynı gerekçe.
+    const trSimdi = new Date(Date.now() + 3 * 3_600_000);
+    trSimdi.setUTCDate(trSimdi.getUTCDate() - 1);
+    bas = new Date(trSimdi.toISOString().slice(0, 10) + 'T00:00:00Z');
     bit = new Date(bas);
   }
   if (Number.isNaN(bas.getTime()) || Number.isNaN(bit.getTime())) {

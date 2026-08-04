@@ -81,3 +81,17 @@ jobs:
           ASIS_GUID_KEY: ${{ secrets.ASIS_GUID_KEY }}
           ASIS_DAGITICI_KOD: ${{ secrets.ASIS_DAGITICI_KOD }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # ⚠️ TELAFİ — cron kaçırdığı günü bir daha denemiyordu ve eksik gün KALICI
+      # oluyordu. Mutabakatta bir günün eksikliği açılış zincirini koparıyor
+      # (bkz. docs/bilgi/epdk-mutabakat.md). Bu adım son 7 günde eksik olan günleri
+      # bulup dolduruyor → kaçan gün ertesi koşuda otomatik kapanır.
+      # Elle tarih verilmişse ATLANIR (kullanıcı ne istediğini biliyor).
+      - name: Satış telafi (son 7 günün eksikleri)
+        if: github.event.inputs.satis_bas == ''
+        run: npm run satis -- --telafi 7
+        env:
+          ASIS_GATEWAY: ${{ secrets.ASIS_GATEWAY }}
+          ASIS_GUID_KEY: ${{ secrets.ASIS_GUID_KEY }}
+          ASIS_DAGITICI_KOD: ${{ secrets.ASIS_DAGITICI_KOD }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

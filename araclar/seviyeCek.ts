@@ -24,7 +24,7 @@
 //   node --env-file=.env --import tsx araclar/seviyeCek.ts 2026-08-01
 
 import { config } from '../core/config.js';
-import { seviyeGunKaydet, oncekiGunKapanis, kapat } from '../core/db.js';
+import { seviyeGunKaydet, oncekiGunKapanis, acilisZinciriOnar, kapat } from '../core/db.js';
 
 const K = config.asis;
 
@@ -33,9 +33,19 @@ function xmlKacir(s: string): string {
 }
 
 async function main() {
-  // Hedef gün: verilmezse BUGÜN (snapshot "şu anki" durumu yazar)
+  // Hedef gün: verilmezse TÜRKİYE saatine göre bugün.
+  //
+  // ⚠️ NEDEN UTC DEĞİL (2026-08-04): cron 21:00 UTC'ye kurulu (= 00:00 TR) ve GH
+  // Actions schedule'ı ücretsiz planda ortalama 95 dk, en kötü 202 dk geciktiriyor
+  // (izleme job'unda ölçüldü). 202 dk gecikme = 00:22 UTC → UTC günü DEĞİŞMİŞ olur
+  // ve `new Date().toISOString()` snapshot'ı YANLIŞ GÜNE yazar. Sonuç: bir gün iki
+  // kez yazılır, ertesi gün hiç yazılmaz → açılış zinciri yine kopar.
+  //
+  // TR saati (UTC+3) kullanmak bunu çözüyor: 21:00 UTC + 202 dk = TR 03:22, hâlâ
+  // aynı TR günü. Tank verisi de TR yerel saatiyle geliyor (ASIS TZ taşımıyor).
   const arg = process.argv[2];
-  const gun = arg ?? new Date().toISOString().slice(0, 10);
+  const trSimdi = new Date(Date.now() + 3 * 3_600_000);
+  const gun = arg ?? trSimdi.toISOString().slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(gun)) {
     console.error('Geçersiz tarih. Kullanım: seviyeCek.ts [YYYY-AA-GG]');
     process.exit(1);
@@ -126,6 +136,16 @@ async function main() {
   }
   if (acilisVar === 0) console.log('     ℹ️ İLK KOŞU — açılış yarından itibaren dolacak');
   if (bayat) console.log(`     ⚠ ${bayat} tankın ölçümü ${gun} tarihinden eski (veri göndermiyor)`);
+
+  // ZİNCİR ONARIMI — geçmişte açılışı boş kalmış günleri doldur.
+  //
+  // ⚠️ Snapshot geriye dönük ÇEKİLEMEZ (anlık veri) ama açılış değeri DB'den
+  // türetilebilir: o günden önceki en son kapanış. Cron bir gün atlayıp zincir
+  // koptuğunda (2026-08-04'te yaşandı) bu adım sessizce onarır.
+  // Serinin ilk günü hariç — onun öncesi yok, açılışı boş kalması NORMAL.
+  const onarildi = await acilisZinciriOnar();
+  if (onarildi > 0) console.log(`  ✔ zincir onarımı: ${onarildi} tank-gün açılışı dolduruldu`);
+
   await kapat();
 }
 
