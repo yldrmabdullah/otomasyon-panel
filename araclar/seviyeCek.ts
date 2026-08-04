@@ -65,10 +65,11 @@ async function main() {
   const x = await r.text();
   console.log(`  ASIS: ${Date.now() - t0} ms · ${(x.length / 1024).toFixed(0)} KB`);
 
-  // Bir önceki günün kapanışı → bugünün açılışı
-  const oncekiGun = new Date(gun + 'T00:00:00Z');
-  oncekiGun.setUTCDate(oncekiGun.getUTCDate() - 1);
-  const onceki = await oncekiGunKapanis(oncekiGun.toISOString().slice(0, 10));
+  // Hedef günden ÖNCEKİ en son kapanış → bugünün açılışı.
+  // ⚠️ "bir gün önce" DEĞİL: cron bir gün atlarsa zincir kopuyordu (2026-08-04'te
+  // canlıda yaşandı — 2 Ağustos eksik olduğu için 3 Ağustos'un 669 tankında
+  // açılış 0 kalmıştı). Artık her tank kendi en son kapanışını alıyor.
+  const onceki = await oncekiGunKapanis(gun);
 
   const liste: {
     gun: string; istasyonKod: string; tankNo: string; urun: string;
@@ -98,7 +99,7 @@ async function main() {
       istasyonKod: istKod,
       tankNo,
       urun: al('UrunAdi') || al('Urun'),
-      acilisLt: onceki.get(`${istKod}|${tankNo}`) ?? null,
+      acilisLt: onceki.get(`${istKod}|${tankNo}`)?.lt ?? null,
       kapanisLt: lt,
       acilisZaman: null,
       kapanisZaman: olcumZaman,
@@ -112,8 +113,17 @@ async function main() {
 
   await seviyeGunKaydet(liste);
   const acilisVar = liste.filter((v) => v.acilisLt !== null).length;
+  // Açılış kaç gün öncesinden geldi — kesintili aralık uyarısı için
+  const kaynaklar = new Map<string, number>();
+  for (const [, v] of onceki) kaynaklar.set(v.kaynakGun, (kaynaklar.get(v.kaynakGun) ?? 0) + 1);
   console.log(`  ✔ ${liste.length} tank yazıldı`);
-  console.log(`     açılış değeri olan: ${acilisVar} (önceki günden)`);
+  console.log(`     açılış değeri olan: ${acilisVar}`);
+  for (const [g, n] of [...kaynaklar].sort()) {
+    const fark = Math.round(
+      (Date.parse(gun) - Date.parse(g)) / 86_400_000,
+    );
+    console.log(`       ${n} tank ← ${g}${fark > 1 ? `  ⚠ ${fark} gün önce (aralık kesintili)` : ''}`);
+  }
   if (acilisVar === 0) console.log('     ℹ️ İLK KOŞU — açılış yarından itibaren dolacak');
   if (bayat) console.log(`     ⚠ ${bayat} tankın ölçümü ${gun} tarihinden eski (veri göndermiyor)`);
   await kapat();

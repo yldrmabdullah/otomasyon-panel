@@ -248,14 +248,39 @@ export async function seviyeGunKaydet(
   }
 }
 
-/** Bir günün kapanış seviyeleri → ertesi günün açılışı olarak kullanılır.
- *  Döner: "istasyonKod|tankNo" → kapanis_lt */
-export async function oncekiGunKapanis(gun: string): Promise<Map<string, number>> {
-  const r = await pool().query<{ istasyon_kod: string; tank_no: string; kapanis_lt: string }>(
-    'SELECT istasyon_kod, tank_no, kapanis_lt FROM tank_seviye_gun WHERE gun = $1 AND kapanis_lt IS NOT NULL',
-    [gun],
+/** Hedef günden ÖNCEKİ en son kapanış seviyeleri → hedef günün açılışı.
+ *
+ *  ⚠️ NEDEN "EN SON MEVCUT GÜN", KESİN OLARAK "BİR GÜN ÖNCE" DEĞİL (2026-08-04):
+ *  İlk sürüm `gun = hedef - 1` arıyordu. Cron bir gün atlayınca (GH Actions
+ *  ücretsiz planda oluyor) zincir kopuyor ve `acilis_lt` bir daha DOLMUYOR.
+ *  Canlıda yaşandı: 1 ve 3 Ağustos snapshot'ı var, 2 Ağustos yok → 3 Ağustos'un
+ *  669 tankında açılış değeri 0 kaldı.
+ *
+ *  Artık her tank için o tankın EN SON kapanışı alınır (hedef günden önceki).
+ *  `atlananGun` alanı, açılışın kaç gün öncesinden geldiğini söyler — mutabakat
+ *  hesabı bunu görüp "bu aralık kesintili" diyebilir, sessizce yanlış hesaplamaz.
+ *
+ *  Döner: "istasyonKod|tankNo" → { lt, kaynakGun } */
+export async function oncekiGunKapanis(
+  hedefGun: string,
+): Promise<Map<string, { lt: number; kaynakGun: string }>> {
+  // Her tank için hedef günden önceki EN SON kapanış (DISTINCT ON = tank başına 1 satır)
+  const r = await pool().query<{
+    istasyon_kod: string; tank_no: string; kapanis_lt: string; gun: string;
+  }>(
+    `SELECT DISTINCT ON (istasyon_kod, tank_no)
+            istasyon_kod, tank_no, kapanis_lt, gun::text
+     FROM tank_seviye_gun
+     WHERE gun < $1 AND kapanis_lt IS NOT NULL
+     ORDER BY istasyon_kod, tank_no, gun DESC`,
+    [hedefGun],
   );
-  return new Map(r.rows.map((x) => [`${x.istasyon_kod}|${x.tank_no}`, Number(x.kapanis_lt)]));
+  return new Map(
+    r.rows.map((x) => [
+      `${x.istasyon_kod}|${x.tank_no}`,
+      { lt: Number(x.kapanis_lt), kaynakGun: x.gun },
+    ]),
+  );
 }
 
 // --- Sistem ayar (cursor) oku/yaz ---

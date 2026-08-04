@@ -563,3 +563,50 @@ npm run satis -- 2026-07-01 2026-07-31   # aralık
 `tank_seviye_gun` tablosu hazır (şemada), `GetTankLevelList` ile doldurulacak.
 Bu gelince mutabakatın A/D kalemi (dönem başı/sonu stok) tamamlanır ve
 **A1a kriterleri hesaplanabilir hale gelir.**
+
+---
+
+## ⭐ MUTABAKAT İLK KEZ HESAPLANDI + 2 KIRILGANLIK DÜZELTİLDİ (2026-08-04)
+
+Formülün 4 girdisi tamamlandı ve `(A + B − C) − D` canlı veriyle çalıştı.
+
+### ⚠️ KIRILGANLIK 1: açılış zinciri kopuyordu
+
+`oncekiGunKapanis()` **kesin olarak "bir gün önce"** arıyordu. Cron bir gün atlayınca
+(GH Actions ücretsiz planda oldu: 1 ve 3 Ağustos var, 2 Ağustos yok) zincir koptu ve
+**669 tankın tamamında `acilis_lt` boş kaldı** — bir daha da dolmuyordu.
+
+**Düzeltme:** her tank için hedef günden önceki **EN SON** kapanış alınıyor
+(`DISTINCT ON ... ORDER BY gun DESC`). Dönüş tipine `kaynakGun` eklendi; araç
+"669 tank ← 2026-08-03" diye yazıyor ve 1 günden eskiyse **"⚠ aralık kesintili"**
+uyarısı veriyor. Sessizce yanlış hesaplamıyor.
+
+Doğrulama: düzeltmeden sonra 669/669 tankta açılış dolu.
+
+### ⚠️ KIRILGANLIK 2: aralık tanımı — asıl tuzak burası
+
+3 Ağustos'un açılışı 1 Ağustos'tan geldiğinde, o gün için `(A+B−C)−D` hesaplamak
+**YANLIŞ**: A ile D arasında 2 günlük hareket var ama B ve C tek gün alınıyor.
+
+Ölçüm — aynı veri, iki farklı aralık yorumu:
+
+| Aralık | Tank | Limit içi (≤288 lt) | Ort. fark |
+|---|---|---|---|
+| Yalnız 3 Ağustos (**yanlış**) | 398 | **64** | 3.018 lt |
+| 1 → 3 Ağustos (**doğru**) | 669 | **394** | 1.644 lt |
+
+**Ders:** mutabakat "gün" değil **ARALIK** hesabıdır. A'nın kaynak günü ile D'nin
+günü arasındaki TÜM dolum ve satış toplanmalı. Mutabakat modülü yazılırken
+`acilis` kaynak gününe göre aralık kurulacak — yoksa %84 tank sahte ihlal görünür.
+
+### Durum
+- `satis_ozet`: 6 gün kesintisiz (29 Tem – 3 Ağu), günde ~520 satır
+- `tank_seviye_gun`: 1, 3, 4 Ağustos (2 Ağustos cron atlaması yüzünden eksik)
+- Kalan sapma (394/669 limit içi) büyük olasılıkla veri kesintilerinden; günlük
+  kesintisiz seri oluşunca tekrar ölçülmeli.
+
+### ⚠️ AÇIK: mutabakat cron'u güvenilir değil
+`mutabakat-cek.yml` 21:00 UTC'ye kurulu ama **3 Ağustos'ta 1 kez koştu**, 2 ve 4
+Ağustos atladı. Bu bilinen GH Actions ücretsiz plan kısıtı — izleme job'unda
+cron-job.org dış tetikleyicisiyle çözülmüştü, burada henüz yok.
+→ Aynı çözüm buraya da uygulanmalı, yoksa açılış zinciri sürekli kopar.
