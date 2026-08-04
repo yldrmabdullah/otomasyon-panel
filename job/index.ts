@@ -128,7 +128,12 @@ async function main() {
     const gerek = bildirimGerekli(mevcut?.son_bildirim ?? null, simdi, mevcut?.acildi ?? null);
     if (!gerek) continue;
 
-    await gonder(t, !mevcut);
+    // ⚠️ GERÇEKTEN GİTTİYSE İŞARETLE (2026-08-04): eskiden gonder() sonucu yok
+    // sayılıp koşulsuz "bildirildi" yazılıyordu. SMTP yapılandırılmamışsa ya da
+    // gönderim patlarsa alarm bildirilmiş sayılır, debounce devreye girer ve
+    // olay bir daha ASLA bildirilmezdi — sessiz başarısızlık.
+    const gitti = await gonder(t, !mevcut);
+    if (!gitti) continue; // işaretleme yok → kanal düzelince tekrar denenir
     await db.alarmBildirimIsaretle(id);
     bildirilen++;
   }
@@ -208,7 +213,9 @@ function bildirimOlgun(t: Tespit, simdi: Date): boolean {
   return saat >= config.esik.bildirimTankSaat;
 }
 
-async function gonder(t: Tespit, yeni: boolean): Promise<void> {
+/** Bildirimi gönderir. Döner: en az bir kanaldan GERÇEKTEN gitti mi?
+ *  false dönerse alarm "bildirildi" işaretlenmez (bkz. çağrı yerindeki not). */
+async function gonder(t: Tespit, yeni: boolean): Promise<boolean> {
   const no = tespitEpdkNo(t);
   const iletisim = iletisimCoz(no); // BFF + POL birleşik
   const baslik = t.tip === 'baglanti_kopuk' ? 'Bağlantı Kopuk' : 'Tank Veri Yok';
@@ -233,6 +240,22 @@ async function gonder(t: Tespit, yeni: boolean): Promise<void> {
   if (sonuc.hatalar.length) {
     log(`  bildirim hatası (${t.istasyonAd}): ${sonuc.hatalar.join(' | ')}`);
   }
+
+  // DRY_RUN'da gerçekten gönderilmez ama akış test edilebilsin diye "gitti"
+  // sayılır (aksi halde test koşusu her seferinde aynı alarmı yeniden dener).
+  if (config.dryRun) return true;
+
+  const gitti = sonuc.mailDenendi > 0 || sonuc.smsDenendi > 0;
+  if (!gitti) {
+    // Kanal yok/yapılandırılmamış: sessiz kalmasın, işaretleme de yapılmasın.
+    log(
+      `  ⚠ bildirim GİTMEDİ (${t.istasyonAd}) — ` +
+        `mail ${config.mail.gecerli ? 'hazır' : 'YAPILANDIRILMAMIŞ'}, ` +
+        `sms ${config.sms.gecerli ? 'hazır' : 'yapılandırılmamış'}, ` +
+        `hedef ${config.mail.ekip.length} ekip adresi. Alarm bildirilmemiş sayılıyor.`,
+    );
+  }
+  return gitti;
 }
 
 main().catch(async (e) => {

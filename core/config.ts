@@ -74,8 +74,12 @@ export const config = {
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean),
+    /** ⚠️ PAROLA DA ŞART (2026-08-04): eskiden yalnız host+user bakılıyordu, bu
+     *  yüzden SMTP_PASS boşken de "geçerli" görünüyordu — job mail göndermeye
+     *  kalkıp SMTP'de takılırdı ve hata yalnız alarm log'una düşerdi (sessiz
+     *  başarısızlık: sistem "bildirdim" sayar, kimse haber almaz). */
     get gecerli() {
-      return !!this.host && !!this.user;
+      return !!this.host && !!this.user && !!this.pass;
     },
   },
   sms: {
