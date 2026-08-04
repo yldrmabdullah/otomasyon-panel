@@ -46,6 +46,11 @@ jobs:
   mail:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # ⭐ BİLDİRİM KAPALIYSA HİÇ KOŞMA — repo variable BILDIRIM_KAPALI=1.
+    # Alarm job'undan farklı: orada job koşar ama susar (izleme sürmeli).
+    # Piyasa maili yalnız mail üretir, başka işi yok → tamamen atlanır.
+    # Elle tetikleme bundan ETKİLENMEZ (kapalıyken de test edilebilsin).
+    if: github.event_name == 'workflow_dispatch' || vars.BILDIRIM_KAPALI != '1'
     steps:
       - uses: actions/checkout@v4
 

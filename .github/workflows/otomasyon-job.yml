@@ -45,8 +45,26 @@ jobs:
       - name: Bağımlılıklar
         run: npm ci
 
+      # ⚠️ ŞEMA HATASI ALARM TURUNU DÜŞÜRMESİN (2026-08-04, canlıda yaşandı).
+      #
+      # 09:15 koşusu "Connection terminated due to connection timeout" ile
+      # patladı ve TÜM tur düştü — alarm hiç değerlendirilmedi. Oysa şema
+      # idempotent ve zaten yerinde; geçici bir Supabase/ağ hıçkırığıydı
+      # (40 koşuda 1, %2,5). İzleme turunu şema adımına bağlamak yanlış:
+      # asıl iş alarm üretmek, şema yalnız güvenlik ağı.
+      #
+      # continue-on-error: adım patlasa da tur devam eder. Şema gerçekten
+      # eksikse sonraki adım kendi hatasını verir (sessiz kalmaz).
+      # 3 denemeli geri çekilme, geçici kopmayı kendi içinde yutar.
       - name: Şema (idempotent)
-        run: npm run db:migrate
+        continue-on-error: true
+        run: |
+          for i in 1 2 3; do
+            npm run db:migrate && exit 0
+            echo "  şema denemesi $i başarısız, ${i}0 sn sonra tekrar..."
+            sleep "${i}0"
+          done
+          echo "::warning::Şema uygulanamadı (3 deneme). Tur devam ediyor."
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
@@ -84,4 +102,15 @@ jobs:
           NETGSM_HEADER: ${{ secrets.NETGSM_HEADER }}
           EKIP_TELEFON: ${{ secrets.EKIP_TELEFON }}
           # workflow_dispatch'ten gelen dry_run; cron'da boş → '0'
-          DRY_RUN: ${{ github.event.inputs.dry_run || '0' }}
+          # ⭐ BİLDİRİM AÇMA/KAPAMA — repo variable ile, KOD DEĞİŞTİRMEDEN.
+          #
+          # Öncelik: (1) elle tetiklemede girilen dry_run, (2) repo variable
+          # BILDIRIM_KAPALI, (3) varsayılan açık.
+          #   BILDIRIM_KAPALI=1 → DRY_RUN=1 → job çalışır, alarm açar, panele
+          #     yazar ama MAİL ATMAZ. İzleme kesintiye girmez, yalnız susar.
+          #   Açmak için: Settings → Variables → BILDIRIM_KAPALI = 0
+          #     (ya da `gh variable set BILDIRIM_KAPALI --body 0`)
+          #
+          # ⚠️ DRY_RUN'da "bildirildi" İŞARETLENMEZ (job/index.ts) — kapalı
+          # dönemde biriken alarmlar açıldığında ilk maillerini alır.
+          DRY_RUN: ${{ github.event.inputs.dry_run || vars.BILDIRIM_KAPALI || '0' }}
