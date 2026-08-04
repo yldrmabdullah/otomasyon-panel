@@ -399,13 +399,16 @@ export async function iletisimHaritasiTumu(): Promise<Map<string, Iletisim>> {
 export interface AcikAlarm {
   id: string;
   anahtar: string;
+  acildi: Date;
   son_bildirim: Date | null;
   bildirim_sayisi: number;
 }
 
 export async function acikAlarmlar(): Promise<Map<string, AcikAlarm>> {
   const r = await pool().query<AcikAlarm>(
-    'SELECT id::text, anahtar, son_bildirim, bildirim_sayisi FROM alarmlar WHERE kapandi IS NULL',
+    // acildi: kronik alarmda tekrar-bildirim aralığını kademeli açmak için
+    // gerekli (bkz. job/index.ts bildirimGerekli).
+    'SELECT id::text, anahtar, acildi, son_bildirim, bildirim_sayisi FROM alarmlar WHERE kapandi IS NULL',
   );
   return new Map(r.rows.map((a) => [a.anahtar, a]));
 }

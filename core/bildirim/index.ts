@@ -41,12 +41,32 @@ export async function bildir(
   smsMetin: string,
   hedef: BildirimHedefi,
 ): Promise<BildirimSonuc> {
-  const hamEpostalar = tekil([...hedef.epostalar, ...config.mail.ekip]);
+  // ⭐⭐ BAYİYE GÖNDERİM AYRI ANAHTARLA AÇILIR (2026-08-04, bilinçli karar).
+  //
+  // Varsayılan KAPALI: secret'lar girildiği an 178 bayi telefonuna + 168 bayi
+  // mailine mesaj gitmesin. Yanlış alarm bayiye gidince geri alınamıyor ve
+  // CLAUDE.md kuralı bunu yasaklıyor ("yanlış alarm bayiyi yorar").
+  // Ölçüm bu riski somutlaştırdı: tank alarmlarının %63'ü 30 dakikada
+  // kendiliğinden kapanıyor; tek istasyon 24 saatte 51 alarm üretti.
+  //
+  // Açmadan önce yapılacaklar: bildirim eşiği canlıda birkaç gün izlenmeli
+  // (BILDIRIM_TANK_ESIK_SAAT), sonra BAYIYE_GONDER=1.
+  const bayiyeGonder = config.bildirim.bayiyeGonder;
+  const bayiEpostalar = bayiyeGonder ? hedef.epostalar : [];
+  const bayiTelefonlar = bayiyeGonder ? hedef.telefonlar : [];
+  const hamEpostalar = tekil([...bayiEpostalar, ...config.mail.ekip]);
   // Geçersiz adres TÜM gönderimi düşürmesin (ekip maili de gitmez) → ayıkla.
   const epostalar = hamEpostalar.filter(teslimEdilebilirMi);
   const bozuk = hamEpostalar.filter((e) => !teslimEdilebilirMi(e));
-  const telefonlar = tekil([...hedef.telefonlar, ...config.sms.ekipTelefon]);
+  const telefonlar = tekil([...bayiTelefonlar, ...config.sms.ekipTelefon]);
   const sonuc: BildirimSonuc = { mailDenendi: 0, smsDenendi: 0, hatalar: [] };
+  if (!bayiyeGonder && (hedef.epostalar.length || hedef.telefonlar.length)) {
+    // Sessiz kalmasın: bayi hedefi VAR ama bilinçli olarak atlandı.
+    console.log(
+      `  ℹ️ bayiye gönderim KAPALI (BAYIYE_GONDER=1 ile açılır) — ` +
+        `atlanan: ${hedef.epostalar.length} mail, ${hedef.telefonlar.length} telefon`,
+    );
+  }
   if (bozuk.length) {
     // Sessiz kalmasın: düzeltilmesi gereken veri kaydı.
     const uyari = `Geçersiz e-posta atlandı: ${bozuk.join(', ')}`;

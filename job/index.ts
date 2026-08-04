@@ -112,15 +112,33 @@ async function main() {
       mesaj: t.mesaj,
     });
 
+    // ⭐ BİLDİRİM OLGUNLUK KAPISI (2026-08-04) — alarm açılır ama hemen bildirilmez.
+    //
+    // NEDEN: tank alarmı 35 dk'da açılıyor ve %63'ü 30 dakika içinde kendiliğinden
+    // kapanıyor (flapping). Bunları mail'lemek 7 günde 1.915 mesaj demekti. Ölçüm
+    // 3 saatlik kapıyı seçti: 49 gerçek olay kalıyor (44 tekil tank), gürültü gidiyor.
+    // Bağlantı alarmı zaten 3 saat eşikle açıldığı için kapı onu geciktirmez.
+    //
+    // ⚠️ ÖLÇÜ "alarm ne zaman açıldı" DEĞİL, "ne kadar süre veri gelmedi":
+    // alarm 35 dk'da açıldığı için `acildi` kullanmak 3 saati 3sa 35dk yapardı.
+    // sonVeriZamani doğrudan tespitten gelir.
+    if (!bildirimOlgun(t, simdi)) continue;
+
     // Debounce: yeni alarm mı, yoksa tekrar-bildirim aralığı geçti mi?
-    const gerek = bildirimGerekli(mevcut?.son_bildirim ?? null, simdi);
+    const gerek = bildirimGerekli(mevcut?.son_bildirim ?? null, simdi, mevcut?.acildi ?? null);
     if (!gerek) continue;
 
     await gonder(t, !mevcut);
     await db.alarmBildirimIsaretle(id);
     bildirilen++;
   }
-  log(`Bildirim gönderilen alarm: ${bildirilen}.`);
+  const olgunOlmayan = tumTespitler.filter((t) => !bildirimOlgun(t, simdi)).length;
+  log(
+    `Bildirim gönderilen alarm: ${bildirilen}.` +
+      (olgunOlmayan
+        ? ` (${olgunOlmayan} alarm bildirim eşiğini —${config.esik.bildirimTankSaat} sa— henüz geçmedi, panelde görünür)`
+        : ''),
+  );
 
   // 8) Tank dolumları (artımlı) — mutabakat için. Alarm akışını bloklamaz.
   await dolumSyncEt();
@@ -152,10 +170,42 @@ async function dolumSyncEt(): Promise<void> {
   else log('Dolum sync: yeni kayıt yok.');
 }
 
-function bildirimGerekli(sonBildirim: Date | null, simdi: Date): boolean {
+/** Tekrar bildirim zamanı geldi mi? Kronik alarmlarda aralık kademeli açılır.
+ *
+ *  ⚠️ NEDEN KADEMELİ (2026-08-04, canlı ölçüm): sabit 6 saatlik aralık, günlerdir
+ *  süren bir arızada işe yaramaz tekrar üretiyor — 210057 istasyonu 6 gündür
+ *  kopuk ve alarmı **22 kez** bildirilmiş. Ekip ilk mailde öğrendi; 21'i gürültü.
+ *  (Yaygın değil: 30 günde 1.963 alarmın hepsi ≤5 bildirim, ortalama 1,0 —
+ *  yalnız kronikler patlıyor. O yüzden çözüm de yalnız kroniği hedefliyor.)
+ *
+ *  Kademeler: ilk gün 6 sa · 1-3 gün 12 sa · 3+ gün 24 sa.
+ *  Alarm kapanmıyor, panelde açık kalıyor — yalnız hatırlatma seyreltiliyor. */
+function bildirimGerekli(sonBildirim: Date | null, simdi: Date, acildi?: Date | null): boolean {
   if (!sonBildirim) return true; // hiç bildirilmemiş (yeni alarm)
   const saatGecti = (simdi.getTime() - new Date(sonBildirim).getTime()) / 3_600_000;
-  return saatGecti >= config.esik.tekrarBildirimSaat;
+
+  let aralik = config.esik.tekrarBildirimSaat;
+  if (acildi) {
+    const yasSaat = (simdi.getTime() - new Date(acildi).getTime()) / 3_600_000;
+    if (yasSaat >= 72) aralik = Math.max(aralik, 24);
+    else if (yasSaat >= 24) aralik = Math.max(aralik, 12);
+  }
+  return saatGecti >= aralik;
+}
+
+/** Bu tespit bildirilecek kadar OLGUN mu? (bkz. config.esik.bildirimTankSaat)
+ *
+ *  Tank alarmı 35 dk'da açılır — panelde görünmesi doğru, ama mail atmak için
+ *  fazla erken: %63'ü 30 dakikada kapanıyor. Bağlantı alarmı zaten 3 saat
+ *  eşikle açıldığı için ek kapı UYGULANMAZ (iki kez gecikmesin).
+ *
+ *  ⚠️ sonVeriZamani YOKSA bildirilir: "veri hiç yok" gerçek bir durumdur ve
+ *  sessizce yutulmamalı (tank ilk kez bağlanıyor ya da kayıt bozuk). */
+function bildirimOlgun(t: Tespit, simdi: Date): boolean {
+  if (t.tip !== 'tank_veri_yok') return true;
+  if (!t.sonVeriZamani) return true;
+  const saat = (simdi.getTime() - t.sonVeriZamani.getTime()) / 3_600_000;
+  return saat >= config.esik.bildirimTankSaat;
 }
 
 async function gonder(t: Tespit, yeni: boolean): Promise<void> {

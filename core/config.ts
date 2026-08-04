@@ -41,6 +41,25 @@ export const config = {
     kopukSaat: sayi('KOPUK_ESIK_SAAT', 3),
     tankVeriDk: sayi('TANK_VERI_ESIK_DK', 35),
     tekrarBildirimSaat: sayi('TEKRAR_BILDIRIM_SAAT', 6),
+
+    // ⭐ BİLDİRİM EŞİĞİ — ALARM EŞİĞİNDEN AYRI (2026-08-04, ölçülerek belirlendi).
+    //
+    // NEDEN AYRI: panelde 35 dk doğru eşik — tank gerçekten veri göndermiyor ve
+    // otomasyon ekibi bunu GÖRMELİ. Ama aynı eşikle MAİL atmak posta kutusunu
+    // çöpe çevirir: alarmların %63'ü 30 dakika içinde kendiliğinden kapanıyor
+    // (tank 35 dk sessiz kalıyor, sonra veri geliyor → flapping).
+    //
+    // 7 günlük gerçek veriyle ölçülen alarm ömrü dağılımı:
+    //     eşik 35 dk → 1.915 alarm  (≈274/gün — kabul edilemez)
+    //     eşik  1 sa →    ~33/gün
+    //     eşik  2 sa →   192 (≈27/gün — hâlâ fazla)
+    //     eşik  3 sa →    49 (≈7/gün, 44 tekil tank) ← SEÇİLDİ
+    //     eşik  6 sa →    39 (fark küçük, ama 2 saat daha kör kalınır)
+    // 3 saat flapping'i eliyor ama gerçek olayları kaçırmıyor. Bağlantı alarmı
+    // zaten 3 saatlik eşikte (24 saatte 1 alarm) — ikisi tutarlı oldu.
+    //
+    // Alarm yine 35 dk'da AÇILIR ve panelde görünür; yalnız bildirim beklemeli.
+    bildirimTankSaat: sayi('BILDIRIM_TANK_ESIK_SAAT', 3),
     // Son bu kadar günden daha eski veri gönderen istasyon "pasif/ölü" sayılır → alarm atlamaz.
     // (Aylardır/yıllardır veri göndermeyen kayıtlar gerçek kopukluk değil.)
     pasifGun: sayi('PASIF_ESIK_GUN', 7),
@@ -70,6 +89,16 @@ export const config = {
     get gecerli() {
       return !!this.userCode && !!this.password;
     },
+  },
+  bildirim: {
+    /** Bayilere de mail/SMS gitsin mi? VARSAYILAN KAPALI (bilinçli).
+     *
+     *  ⚠️ Açmadan önce bildirim eşiği canlıda izlenmeli. Ölçüm (2026-08-04):
+     *  tank alarmlarının %63'ü 30 dakikada kendiliğinden kapanıyor, tek istasyon
+     *  24 saatte 51 alarm üretti. Bayiye yanlış giden mesaj geri alınamaz ve
+     *  CLAUDE.md kuralı bunu yasaklıyor ("yanlış alarm bayiyi yorar").
+     *  Kapalıyken bildirim yalnız EKIP_MAIL / EKIP_TELEFON'a gider. */
+    bayiyeGonder: opt('BAYIYE_GONDER', '0') === '1',
   },
   dryRun: opt('DRY_RUN', '1') === '1',
 };
