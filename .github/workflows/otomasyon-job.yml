@@ -63,6 +63,16 @@ jobs:
           # KRİTİK: pasif filtre. Bu geçmezse aylardır kapalı ~90 istasyon her
           # turda alarm üretir ve bayiler boş yere rahatsız edilir.
           PASIF_ESIK_GUN: ${{ vars.PASIF_ESIK_GUN }}
+          # ⭐ BİLDİRİM eşiği — ALARM eşiğinden AYRI (ölçüldü 2026-08-04).
+          # Alarm 35 dk'da açılır ve panelde görünür; mail 3 saat bekler çünkü
+          # alarmların %63'ü 30 dakikada kendiliğinden kapanıyor (flapping).
+          # 7 günlük ölçüm: 35dk→1.915 mail · 2sa→192 · 3sa→49 (44 tekil tank).
+          BILDIRIM_TANK_ESIK_SAAT: ${{ vars.BILDIRIM_TANK_ESIK_SAAT || '3' }}
+          # ⚠️⚠️ BAYİLERE gönderim — VARSAYILAN KAPALI. Açmadan önce bildirim
+          # hacmi canlıda izlenmeli: yanlış giden mesaj geri alınamaz ve bayi
+          # güvenini yıkar. 178 bayi telefonu + 168 bayi maili DB'de HAZIR ama
+          # kullanılmıyor. Açmak için repo variable BAYIYE_GONDER=1.
+          BAYIYE_GONDER: ${{ vars.BAYIYE_GONDER || '0' }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
