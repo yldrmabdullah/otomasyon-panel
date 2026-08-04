@@ -65,6 +65,69 @@ Kaydet ve **Test run** ile dene. Başarılıysa HTTP **204 No Content** döner
 
 ---
 
+## 2b) ⭐ İKİNCİ İŞ — mutabakat çekimi (günde 1 kez)
+
+> **Bu ayrı bir cron-job.org işidir.** Yukarıdaki iş alarm turunu (bağlantı/tank)
+> 15 dakikada bir tetikler. Bu ikincisi tank seviyesi + satış özetini günde bir
+> kez çeker — mutabakat hesabının A/C/D kalemleri.
+
+**Neden gerekli (2026-08-04 ölçümü):** `mutabakat-cek.yml` GitHub `schedule`'ına
+bağlı ve gecikme ölçümü BOZUYOR. Snapshot **anlık** — kayda giren ölçüm saati =
+cron'un koştuğu saat. Gerçek koşular:
+
+```
+21:00 UTC'ye kurulu ama 21:56'da koştu  → ölçüm TR 03:30
+elle tetiklenen koşular                 → ölçüm TR 08:30, 12:00, 15:00
+```
+
+Ölçümler gün ortasına kayınca mutabakat aralığının ucu kayıyor, `satis_ozet`
+günlük toplam olduğu için aralığa oturmuyor ve **669 tankın tamamı "zaman riski"**
+işaretleniyor → panelde gösterilebilir tek satır kalmıyor.
+
+Dış tetikleyici gecikmeyi kaldırır, ölçüm her gün aynı gece saatinde alınır.
+
+| Alan | Değer |
+|---|---|
+| Title | `Parkoil mutabakat çekimi` |
+| URL | `https://api.github.com/repos/yldrmabdullah/otomasyon-panel/actions/workflows/mutabakat-cek.yml/dispatches` |
+| Schedule | **Every day at 00:15** (saat dilimi: Europe/Istanbul) |
+| Request method | **POST** |
+
+Headers ve body **birinci işle aynı** — aynı token kullanılabilir, yeni token
+üretmeye gerek yok:
+
+```
+Accept: application/vnd.github+json
+Authorization: Bearer github_pat_BURAYA_TOKEN
+X-GitHub-Api-Version: 2022-11-28
+```
+
+```json
+{"ref":"master"}
+```
+
+⚠️ **Saat 00:15 seçildi, keyfi değil:** TR gece yarısını 15 dakika geçe koşarsa
+gün tam kapanmış olur ve ölçüm `KAPANIS_PENCERE_BAS=22` / `BIT=6` aralığına
+rahatça düşer (bkz. `core/db.ts`). Daha erken (23:xx) çalışırsa günün son
+saatlerindeki satış kaçar; daha geç (06:00 sonrası) çalışırsa `seviyeCek.ts`'in
+gün-ortası koruması devreye girip **çekimi atlar**.
+
+⚠️ **YAML'daki `schedule` KALSIN** — dış tetikleyici düşerse (token süresi dolar,
+cron-job.org hesabı kapanır) sistem tamamen durmasın. İkisi aynı gün koşarsa
+sorun olmaz: gün-ortası koruması ve `ON CONFLICT` üst üste yazmayı engelliyor.
+
+### Kurulduktan sonra doğrulama
+
+```bash
+# Ölçüm saatleri gece penceresine düştü mü (TR saati)
+gh run list --workflow=mutabakat-cek.yml --limit 5 --json createdAt,event
+```
+
+Panelde 3-4 gün sonra Mevzuat → mutabakat tablosunda "zaman riski" olmayan
+satırlar görünmeye başlamalı.
+
+---
+
 ## 3) Doğrula
 
 ```bash
