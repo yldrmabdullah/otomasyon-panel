@@ -23,9 +23,29 @@ on:
   # 21:00 UTC = 00:00 TR → günün kapanış seviyesi. Satış varsayılanı "dün" olduğu
   # için bu saatte TR'de yeni gün başlamış olur ve tamamlanmış günü çeker.
   #
-  # ⚠️ GH Actions ücretsiz planda schedule'ı kısıyor (izleme job'unda ölçüldü:
-  # */15 istenirken gerçek ~95 dk). Günlük işte birkaç saat kayması tolere edilir
-  # ama gün sınırını aşarsa snapshot yanlış güne yazılabilir → kaçarsa elle tetikle.
+  # ⭐ DIŞ TETİKLEYİCİYE GEREK YOK (2026-08-04, ölçüldü — önceki değerlendirme yanlıştı).
+  #
+  # 15 dakikalık alarm job'unun gecikmesi (ortalama 95, en kötü 202 dk) bu GÜNLÜK
+  # job'a atfedilmişti. Gerçek ölçüm çok daha iyi:
+  #     cron '0 21' → gerçek koşu 21:56 UTC = TR 00:56  (yalnız 56 dk gecikme)
+  #     ölçüm TR 03:30'a düştü → KAPANIS penceresi (22:00–06:00) İÇİNDE ✓
+  #     3 Ağustos: 669 tankın 667'si pencere içinde
+  # GH Actions sıklığı yüksek job'ları kısıyor; günde 1 koşan iş bu kısıtlamadan
+  # neredeyse etkilenmiyor. Zamanlanmış koşu DÜZGÜN çalışıyor.
+  #
+  # 1 ve 4 Ağustos'un bozuk olmasının sebebi cron DEĞİL, ELLE TETİKLEMELERDİ
+  # (TR 15:00 ve 12:00 ölçümü). Ona karşı seviyeCek.ts'e koruma eklendi.
+  #
+  # ⚠️ SAAT 21:00 UTC (TR 00:00) KALMALI — erkene ALINMAZ. Kısa süre 20:30'a
+  # aldım, sonra geri döndüm: seviyeCek.ts hedef günü "TR bugün" olarak seçiyor.
+  # TR 23:30'da koşarsa GÜN HENÜZ BİTMEMİŞTİR — akşam ölçümünü "gün kapanışı"
+  # diye yazar ve satış "dün"ü çektiği için iki kalem farklı günlere bakar.
+  # Gün sınırının HEMEN SONRASI doğru: 21:00 UTC = TR 00:00.
+  #
+  # Kalan risk: gecikme 3 saati aşarsa (ölçülen 56 dk, tipik değil) ölçüm TR
+  # 03:00+ olur — hâlâ pencere içinde, sorun yok. 6 saati aşarsa pencere dışına
+  # çıkar ve gün-ortası koruması o günü ATLAR (bozuk veri yazmaktansa eksik gün
+  # bırakmak doğru). Telafi katmanı satışı zaten sonradan tamamlıyor.
   schedule:
     - cron: '0 21 * * *'
   # ⚠️⚠️ GÜN ORTASINDA ELLE TETİKLEMEK SEVİYE VERİSİNİ BOZAR (2026-08-04, yaşandı).
