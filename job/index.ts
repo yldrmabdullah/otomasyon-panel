@@ -241,9 +241,15 @@ async function gonder(t: Tespit, yeni: boolean): Promise<boolean> {
     log(`  bildirim hatası (${t.istasyonAd}): ${sonuc.hatalar.join(' | ')}`);
   }
 
-  // DRY_RUN'da gerçekten gönderilmez ama akış test edilebilsin diye "gitti"
-  // sayılır (aksi halde test koşusu her seferinde aynı alarmı yeniden dener).
-  if (config.dryRun) return true;
+  // ⚠️ DRY_RUN'da "bildirildi" İŞARETLENMEZ (2026-08-04, canlıda görüldü).
+  //
+  // Önce "akış test edilebilsin" diye true dönüyordum. Yan etkisi canlıya
+  // geçince ortaya çıktı: DRY_RUN döneminde işaretlenmiş alarmlar (son_bildirim
+  // dolu, bildirim_sayisi=1) hiç mail almamış olmalarına rağmen "bildirilmiş"
+  // sayılıyor, debounce devreye giriyor ve İLK GERÇEK MAİLİ KAÇIRIYORLAR.
+  // Test modunun canlı durumu kirletmemesi gerekir — DRY_RUN sadece "gönderme"
+  // demek, "gönderilmiş say" demek değil.
+  if (config.dryRun) return false;
 
   const gitti = sonuc.mailDenendi > 0 || sonuc.smsDenendi > 0;
   if (!gitti) {
