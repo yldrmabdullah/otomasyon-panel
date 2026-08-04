@@ -1,0 +1,73 @@
+name: Kontrol (typecheck + build)
+
+# ⚠️ NEDEN GEREKLİ (2026-08-04): repoda 4 workflow vardı, dördü de VERİ ÇEKİYOR.
+# Hiçbiri kodu doğrulamıyordu → tip hatası olan bir commit fark edilmeden
+# canlıya gidebiliyordu. Panel Vercel'e otomatik deploy olduğu için hata ancak
+# kullanıcı ekranda görünce anlaşılırdı.
+#
+# Bu workflow veri çekmez, DB'ye ya da ASIS'e dokunmaz — secret istemez.
+
+on:
+  push:
+    branches: [master]
+    # Sadece kodu ilgilendiren değişikliklerde koş (doküman push'unda boşa CI yakma).
+    paths:
+      - '**.ts'
+      - '**.tsx'
+      - '**/package.json'
+      - '**/package-lock.json'
+      - '**/tsconfig*.json'
+      - '.github/workflows/kontrol.yml'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # Aynı branch'e arka arkaya push'ta eskisini iptal et — kontrol işi birikmesin.
+  group: kontrol-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  kontrol:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          # İKİ lock dosyası var (kök + panel) — ikisi de cache anahtarına
+          # girmeli, yoksa panel bağımlılığı değişince eski cache kullanılır.
+          cache-dependency-path: |
+            package-lock.json
+            panel/package-lock.json
+
+      - name: Bağımlılıklar (kök)
+        run: npm ci
+
+      # Kök: job, araçlar, core, api (serverless)
+      - name: Typecheck — kök
+        run: npm run typecheck
+
+      - name: Bağımlılıklar (panel)
+        working-directory: panel
+        run: npm ci
+
+      # Panel ayrı tsconfig — kök typecheck onu KAPSAMAZ.
+      - name: Typecheck — panel
+        working-directory: panel
+        run: npm run typecheck
+
+      # Build gerçek derleme hatalarını yakalar (tsc'nin görmediği Vite/CSS sorunları)
+      - name: Panel build
+        working-directory: panel
+        run: npm run build
+
+      # ⚠️ Güvenlik açığı kontrolü. Kırıcı DEĞİL (--audit-level=high ile yalnız
+      # ciddi olanlar) çünkü geçici bir upstream açığı deploy'u durdurmamalı;
+      # ama log'da görünsün ki fark edilsin. 2026-08-04'te nodemailer'da HIGH
+      # bir açık (yanlış alana e-posta) böyle yakalandı.
+      - name: Güvenlik denetimi
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true

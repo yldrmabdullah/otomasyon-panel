@@ -204,7 +204,7 @@ export async function piyasaVerisi(p: Pool) {
  *  ve 60 saniyede bir çekiliyordu (günde ~164 MB boşa trafik). Tank verisi
  *  gerektiğinde ayrı /api/tanklar endpoint'i açılır, ana polling'e binmez. */
 export async function durumVerisi(p: Pool) {
-  const [ist, bag, alarm, tazelik] = await Promise.all([
+  const [ist, bag, alarm, alarmSayi, tazelik] = await Promise.all([
     // tip = ASIS IstasyonTip (İstasyonlu / Köy pompası / Köy tankeri) — hepsi gerçek
     // satış noktası, farklı iş modelleri. Panelde kolon + filtre olarak kullanılır.
     p.query('SELECT istasyon_kod,ad,epdk_kod,sehir,bolge,aktif,tip FROM istasyonlar ORDER BY ad'),
@@ -227,9 +227,26 @@ export async function durumVerisi(p: Pool) {
              FROM baglanti_durum b
              LEFT JOIN istasyonlar i ON i.istasyon_kod=b.istasyon_kod
              LEFT JOIN bayiler_epdk e ON e.bayi_lisans_no=i.epdk_kod`),
-    p.query(`SELECT id::text,tip,istasyon_kod,tank_no,istasyon_ad,epdk_no,mesaj,acildi,
-                    son_bildirim,bildirim_sayisi,kapandi
-             FROM alarmlar ORDER BY (kapandi IS NULL) DESC,acildi DESC LIMIT 300`),
+    // ⚠️ AÇIK ALARMLAR + SON 200 KAPALI (2026-08-04, ölçülerek daraltıldı).
+    //
+    // Önce LIMIT 300 idi ve 2.223 alarmın %86'sı sessizce kırpılıyordu. İlk
+    // düzeltmem sınırı 1000'e çıkarmaktı — sonra UI'ı okudum: panel yalnız
+    // AÇIK alarmları kullanıyor (Izleme.tsx `filter(a => !a.kapandi)`), kapalı
+    // olanlar hiçbir yerde gösterilmiyor. Yani 1000 satır taşımak, 986'sı
+    // kullanılmayan veri demekti (60 sn'de bir çekilen yanıt).
+    //
+    // Doğrusu: AÇIK olanların TAMAMI (kırpılamaz — alarm kaçarsa iş kaçar) +
+    // yakın geçmiş için 200 kapalı. Açık alarm sayısı doğal olarak küçük (14).
+    p.query(`(SELECT id::text,tip,istasyon_kod,tank_no,istasyon_ad,epdk_no,mesaj,acildi,
+                     son_bildirim,bildirim_sayisi,kapandi
+              FROM alarmlar WHERE kapandi IS NULL ORDER BY acildi DESC)
+             UNION ALL
+             (SELECT id::text,tip,istasyon_kod,tank_no,istasyon_ad,epdk_no,mesaj,acildi,
+                     son_bildirim,bildirim_sayisi,kapandi
+              FROM alarmlar WHERE kapandi IS NOT NULL ORDER BY acildi DESC LIMIT 200)`),
+    p.query(`SELECT count(*)::int toplam,
+                    count(*) FILTER (WHERE kapandi IS NULL)::int acik
+             FROM alarmlar`),
     // 7 satır — ana yanıta yük bindirmiyor, karşılığında her ekranda veri yaşı görünür.
     tazelikVerisi(p),
   ]);
@@ -239,6 +256,8 @@ export async function durumVerisi(p: Pool) {
     istasyonlar: ist.rows,
     baglanti: bag.rows,
     alarmlar: alarm.rows,
+    // Panel "N / M gösteriliyor" diyebilsin — sessiz kırpma olmasın.
+    alarmSayi: alarmSayi.rows[0],
     tazelik,
   };
 }
