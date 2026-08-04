@@ -18,3 +18,8 @@ panel/public/api/
 # (yeni kurulumda hangi değişkenler gerektiğini gösteren tek kaynak).
 .env*
 !.env.example
+
+# gecici olcum/test betikleri (AI arac ciktilari)
+.olc.ts
+.mutOlc.ts
+.test.ts
