@@ -47,6 +47,23 @@ CREATE TABLE IF NOT EXISTS bayiler_epdk (
 CREATE INDEX IF NOT EXISTS ix_bayi_dagitim ON bayiler_epdk (dagitim_sirketi);
 CREATE INDEX IF NOT EXISTS ix_bayi_il ON bayiler_epdk (il);
 
+-- ⭐ SÖZLEŞME/LİSANS BİTİŞ SORGULARI İÇİN (2026-08-04, EXPLAIN ile ölçüldü).
+--
+-- Bu iki sorgu panel her açıldığında koşuyor ve 30.323 satırı BAŞTAN SONA
+-- tarıyordu (Seq Scan, maliyet 2792). `lisans_durumu` üzerinde indeks yoktu.
+--
+-- KISMİ indeks (WHERE lisans_durumu='ONAYLANDI'): tabloda 12.633 onaylı bayi
+-- var, yani indeks tam indeksin %42'si kadar. Sorguların HEPSİ zaten bu
+-- filtreyi taşıyor — pasif/iptal bayileri indekslemenin anlamı yok.
+--
+-- ⚠️ Not: panelSorgu.ts'te "mevcut indeksler yeterli; ölçüldü" yazıyor. O ölçüm
+-- BAYİ TABLOSU sorgusu içindi (il/dağıtıcı filtreli); sözleşme ve lisans bitiş
+-- sorguları sonradan eklendi ve farklı kolonlara bakıyor.
+CREATE INDEX IF NOT EXISTS ix_bayi_sozlesme_bitis ON bayiler_epdk (sozlesme_bitis)
+  WHERE lisans_durumu = 'ONAYLANDI';
+CREATE INDEX IF NOT EXISTS ix_bayi_lisans_bitis ON bayiler_epdk (lisans_bitis)
+  WHERE lisans_durumu = 'ONAYLANDI';
+
 -- Şema kayması onarımı: bu iki kolon canlıya `db.ts` üzerinden elle eklenmişti ama
 -- şema dosyasına yazılmamıştı (2026-07-30'da fark edildi). Sıfırdan migrate edilen
 -- ortamda `bayileriKaydet` "column does not exist" ile patlıyordu. Mevcut kurulumlar
