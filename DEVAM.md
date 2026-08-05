@@ -1,8 +1,68 @@
-# DEVAM — kaldığın yer (son güncelleme: 2026-08-03)
+# DEVAM — kaldığın yer (son güncelleme: 2026-08-05)
 
 > Bu dosya **oturumlar arası devir teslim** içindir. Yeni bir oturuma başlarken
 > önce bunu oku, sonra `CLAUDE.md` ve ilgili `docs/bilgi/*.md`.
 > Detaylı iş bilgisi `docs/bilgi/` altında; burada yalnız **durum + sıradaki iş** var.
+
+---
+
+## ⭐⭐ YARIN İLK İŞ (2026-08-06) — mutabakat sapma listesi
+
+**Kullanıcı kararı (2026-08-05):** "olur notunu al yarın bakarız" — bugünkü sapma
+listesi 2 GÜNLÜK aralığı kapsıyor, tek güne oturmuş hâli beklenecek.
+
+### Neden bekliyoruz
+Elde 3 ve 5 Ağustos gece ölçümü var; 4 Ağustos'un kendi ölçümü YOK (test
+koşularımın bozduğu kayıt silindi). Aralık 3 Ağu 03:30 → 5 Ağu 03:30, yani
+**48 saat**. EPDK tek gün bazında bakıyor → rakamlar şişik görünüyor.
+Bu gece cron koşunca 5 Ağustos'un ölçümü gelecek ve 24 saatlik gerçek aralık
+oluşacak.
+
+### Yarın yapılacak
+```bash
+# 1) Gece çekimi doğru saatte koştu mu (TR 22:00–06:00 arası olmalı)
+node --env-file=.env --import tsx -e "
+import { pool, kapat } from './core/db.js';
+const r = await pool().query(\`SELECT gun::text,
+  to_char(max(kapanis_zaman) AT TIME ZONE 'Europe/Istanbul','MM-DD HH24:MI') tr,
+  count(*) n, count(acilis_lt) acilis FROM tank_seviye_gun GROUP BY gun ORDER BY gun\`);
+console.table(r.rows); await kapat();"
+
+# 2) Mutabakat — aralık 24 saate düştü mü, sapma listesi ne
+#    (kullanılabilir satır sayısı ve aralik_saat alanına bak)
+```
+
+### Bugünkü liste (2 günlük — karşılaştırma için)
+Hedef gün 4 Ağustos · 398/669 kullanılabilir · 375 limitte (%94) · 23 aşan (%5,8)
+· net fark −37.215 lt
+
+EPDK eşiğini (288 lt VE %3) aşan ilk 8:
+| Fark | Bayi | İl / kod | Tank |
+|---|---|---|---|
+| −1.157 | BAŞKAN AKARYAKIT | ADANA 210048 | t1 Motorin |
+| +1.071 | NASPET TARIM | MARDİN 210067 | t2 Motorin |
+| −801 | ROZA PETROL | AKSARAY 210006 | t2 + t3 |
+| −778 | EYMEN KELEŞOĞLU | SAMSUN 210240 | t4 K95 |
+| +624 | ONUR GRUP | KIRIKKALE 210237 | t3 |
+| −492 | BAŞKAN AKARYAKIT | NİĞDE 210050 | t2 |
+| −420 | KERVANSARAYKAHVE | K.MARAŞ 210233 | t4 |
+| −417 | ÖZ TOROS | ERZİNCAN 210266 | t4 K95 |
+
+Kalan 5 (300–370 lt): AKBAŞOĞLU/Karabük 210187 · TAHA/Adana 210127 ·
+ŞABAN DÜZGÜN/Aksaray 210214 · DORUK/Uşak 210135 · MSTF/Manisa 210122
+
+### ⚠️ AYRI VAKA: ILGINPARK 210020 tank 4 (KONYA)
+Listede yok (satış eşleşti) ama verisi TUTARSIZ:
+```
+3 Ağu 03:30: 28.995 lt (kapasite 30.000, neredeyse dolu)
+4 Ağu 03:30:  2.578 lt → 26.417 lt DÜŞMÜŞ
+o günün satışı: yalnız 4.368 lt
+dolum: 4 Ağu 01:58→02:47, 26.260 lt (irsaliye SCN2026000186634)
+```
+Bir tank 26 bin litre düşerken 4 bin litre satılamaz. Ölçüm dolumun hemen
+ardından alınmış → 28.995 muhtemelen dolum sırasındaki geçici okuma, gerçek
+stok değil. **Kalibrasyon ya da ölçüm zamanlaması sorunu.** ASIS/bayi tarafına
+sorulmalı. (Aynı irsaliye tank 3'e de 6.918 lt yazmış — tek tankerden iki tank.)
 
 ---
 
@@ -92,8 +152,15 @@ Formülün 4 girdisinden **3'ü hazır**:
 1. ✅ **YAPILDI (2026-08-03)** — `.github/workflows/mutabakat-cek.yml`: `seviyeCek` +
    `satisCek` günlük 21:00 UTC (00:00 TR) cron'a bağlandı. İzleme job'una EKLENMEDİ
    (o 15 dk'da bir koşuyor; aynı iş günde ~96 kez tekrarlanırdı).
-2. Birkaç gün veri biriksin (A kalemi için en az 2 gün gerekiyor)
-3. Mutabakat modülü: istasyon × gün/ay, sapma listesi, 288 lt / %3 uyarısı
+2. ✅ **YAPILDI (2026-08-04/05)** — veri birikti, hesap yazıldı, **ÇALIŞIYOR**:
+   `core/panelSorgu.ts > mutabakatVerisi()`. 398/669 kullanılabilir satır,
+   375 limitte (%94), 23 eşik aşan. Yolda **6 kök tuzak** çözüldü — hepsi
+   `docs/bilgi/epdk-mutabakat.md` sonunda yazılı (anahtar çevirisi, gün etiketi
+   vs zaman damgası, TR/UTC kayması, zaman_riski eşiği tutarsızlığı…).
+3. ⬜ **SIRADAKİ** — Mutabakat modülü PANELDE yok. Sorgu hazır, ekran yazılacak:
+   istasyon × aralık, sapma listesi, 288 lt / %3 uyarısı, kapsam dürüstlüğü
+   (79 tank mutabakat dışı — satışı var seviyesi yok, günün %10'u).
+   Kullanıcı onayladı, veri hazır — tek engel ekranın yazılmamış olması.
 
 ### ⚠️ 1-2 AĞUSTOS SEVİYE VERİSİ KALICI OLARAK KAYIP
 
@@ -112,21 +179,55 @@ workflow'u `satis_bas`/`satis_bit` girdileriyle elle tetikle.
 
 ---
 
-## ⚠️ BİLDİRİMLER FİİLEN KAPALI (sessizce)
+## ✅ BİLDİRİMLER KURULDU — bilinçli olarak KAPALI
 
-Ölçüldü: **GitHub'da SMTP/Netgsm secret'ları HİÇ YOK**, `EKIP_MAIL` boş.
-Job `DRY_RUN: 0` ile "CANLI bildirim" yazıyor ama gönderecek adres olmadığı için
-her turda `Bildirim gönderilen alarm: 0`.
+**Durum (2026-08-05):** altyapı tamam, canlıda test edildi, mail geldi.
+Kullanıcı kararıyla susturuldu: *"mailleri bir süre pasif hale getirelim, güzel
+çalışıyor bildirimler, ben aktif edeceğim sonra."*
 
-Yani alarm tespiti çalışıyor, **haber verme çalışmıyor** ve bu log'a bakmadan
-anlaşılmıyor. Kullanıcı "bildirimleri en son yaparız" demişti — açılacaksa:
-
+### Açma/kapama — TEK ANAHTAR, kod değişmez
 ```bash
-gh secret set SMTP_HOST      # ve SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
-gh secret set EKIP_MAIL      # dağıtım listesi
-gh secret set NETGSM_USERCODE  # ve NETGSM_PASSWORD, NETGSM_HEADER, EKIP_TELEFON
+gh variable set BILDIRIM_KAPALI --body 0   # AÇ
+gh variable set BILDIRIM_KAPALI --body 1   # KAPAT (şu an bu)
 ```
-`DRY_RUN=1` ile önce test edilir (bildirim atmaz, sadece loglar).
+Ya da GitHub → Settings → Secrets and variables → Actions → Variables.
+
+| Kapalıyken | Davranış |
+|---|---|
+| Alarm job'u | Koşar, alarm açar, panele yazar — **mail atmaz** (DRY_RUN=1) |
+| Piyasa mailleri | Hiç koşmaz (`if:` ile atlanır) |
+| Elle tetikleme | Çalışır — kapalıyken de test edilebilir |
+
+⚠️ DRY_RUN "bildirildi" İŞARETLEMEZ → kapalı dönemde biriken alarmlar
+açıldığında ilk maillerini alır (kaçmaz). Uzun kapalı kalırsa açılışta yığın
+gelebilir; gerekirse "yalnız hâlâ açık olanları bildir" modu eklenir.
+
+### Kurulu secret'lar (GitHub)
+`SMTP_HOST/PORT/USER/PASS/FROM` + `EKIP_MAIL`. SMTP = BFF'nin kullandığı hesap
+(`smtp.gmail.com:587`, `parkoildev@gmail.com`). **Netgsm YOK** → SMS gönderilmiyor.
+
+### ⚠️ BAYİLERE GÖNDERİM AYRI ANAHTARLA KAPALI
+`BAYIYE_GONDER=0` (varsayılan). Kod bayi adreslerini ekip adresiyle birleştirip
+hepsine gönderiyordu — secret'lar girildiği an **178 bayi telefonuna + 168 bayi
+mailine** mesaj gidecekti. Açmadan önce bildirim hacmi izlenmeli: ölçüm, tank
+alarmlarının **%63'ünün 30 dakikada kendiliğinden kapandığını** ve tek istasyonun
+24 saatte 51 alarm ürettiğini gösterdi.
+
+### Bildirim eşiği ALARM eşiğinden AYRI
+`BILDIRIM_TANK_ESIK_SAAT=3`. Alarm 35 dk'da açılır (panelde görünür), mail 3 saat
+bekler. 7 günlük ölçüm: eşik 35dk→1.915 mail · 2sa→192 · **3sa→49** (44 tekil tank).
+
+### Mail biçimi: istasyon bazında GRUPLU
+İNCİRLİK'in 4 tankı sessizken 4 ayrı mail gidiyordu. Artık tek mail:
+"Tüm tanklar veri göndermiyor (4/4)" + tank/ürün/son ölçüm tablosu +
+**bağlantı durumu satırı** (teşhisin kendisi: bağlantı çalışıyorsa prob arızası).
+
+### Piyasa mailleri (3 tip, hepsi pasif)
+| Mail | Ne zaman | Pencere |
+|---|---|---|
+| Sözleşme — bizim | Her gün 11:00 TR | 30 gün (boşsa gönderilmez) |
+| Sözleşme — rakip | Pazartesi 11:30 TR | 7 gün (46 bayi) |
+| Transfer | Her gün 20:00 TR | Yalnız o gün |
 
 ---
 
