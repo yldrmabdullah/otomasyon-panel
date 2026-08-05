@@ -743,3 +743,63 @@ ayrıca raporlanır.
 SQL template literal (`` ` ``) içindeki **yorumda backtick** kullanmak string'i erken
 kapatıyor → `Expected ")" but found "gun"`. Bu dosyadaki SQL yorumlarında backtick
 KULLANILMAZ, düz tırnak yazılır.
+
+---
+
+## ⭐⭐⭐ MUTABAKAT İLK KEZ ÇALIŞTI (2026-08-05)
+
+```
+KULLANILABILIR: 398 / 669 tank
+  limitte:    375  (%94)
+  eşik aşan:   23  (%5,8)
+  net fark: −37.215 lt
+```
+
+Önceki denemelerde 0 kullanılabilir satır vardı ve sayılar saçmaydı (−518.957 lt,
++628.409 lt, 260 fiziksel imkânsız satır). Hepsi hata artefaktıydı. Bugün **dört
+ayrı tuzak** çözüldü — dördü de yalnız canlı veriyle görülebilirdi.
+
+### Tuzak 1 — seviye ve satış BİR GÜN KAYIYORDU
+`seviyeCek.ts` "TR bugün"ü, `satisCek.ts` "TR dün"ü etiketliyordu. Cron TR
+00:00'a kurulu ve gecikmeyle TR 01:00–04:00 arası koşuyor:
+```
+5 Ağu 04:00 ölçüm → seviye gun=2026-08-05 · satış gun=2026-08-04
+hedef gün ("hem seviye hem satış olan en son gün") = 3 Ağustos'a düşüyor
+```
+O saatteki ölçüm **biten günün** kapanışıdır. Kural: TR 12:00'den önce koşuyorsa
+dünü etiketle. Mevcut 5 Ağustos kaydı 4 Ağustos'a taşındı (veri değişmedi,
+yalnız etiket).
+
+### Tuzak 2 — satış aralığı UTC gününe bakıyordu
+`bas_zaman::date` TIMESTAMPTZ'i **UTC** gününe çeviriyordu. TR 03:30 = UTC 00:30,
+yani bir gün ileri kayıyor:
+```
+bas TR 04 Ağu 03:30 → ::date = 2026-08-04
+bit TR 05 Ağu 03:30 → ::date = 2026-08-05
+sorgu: gun > 04 AND gun <= 05 → 4 Ağustos satışı DIŞLANIYOR, 5 Ağustos YOK
+→ 669 tankın hepsi "satış yok"
+```
+
+### Tuzak 3 (asıl çözüm) — satış için GÜN ETİKETİ kullanılır
+TR gününe çevirmek de yetmedi. Ölçüm TR 03:30'da alındığı için "4 Ağustos'un
+kapanışı" fiilen 5 Ağustos sabahı — zaman damgasından kurulan aralık satış
+günüyle hiç hizalanmıyor. Oysa **gün etiketleri zaten hizalı**: seviye
+gun=4 Ağustos (biten günün kapanışı) ↔ satış gun=4 Ağustos.
+  → Satış aralığı: `(kaynak_gun, hedef_gun]`
+  → Dolum farklı: TIMESTAMP ve saat hassas → orada zaman damgası doğru.
+
+### Tuzak 4 — zaman_riski eşiği kapanış penceresiyle TUTARSIZ
+Risk eşiği 02:00–22:00 yazılmıştı ama `db.ts`'teki kapanış penceresi 22:00–06:00.
+TR 03:30 **gece** ölçümü "gün ortası riski" diye işaretleniyor ve 669 tankın
+tamamı kullanılamaz sayılıyordu. Artık tek kaynak: `KAPANIS_PENCERE_BAS/BIT`.
+Sonuç: zamanRiski 669 → 6.
+
+### ⚠️ İNCELENECEK: 6 fiziksel imkânsız satır
+Bunlar artefakt DEĞİL, gerçek sinyal olabilir — dolum kaydı olmadan stok artmış:
+```
+210020 t4  A=2.578  B=0      C=13.232  D=15.670  → 26.324 lt açıklanamıyor
+210020 t3  A=203    B=143    C=210     D=7.095   →  6.959 lt
+210116 t1  A=54     B=0      C=54      D=1.627   →  1.627 lt
+```
+Olasılıklar: (a) dolum ASIS'e geç düştü, (b) tank kalibrasyonu bozuk,
+(c) irsaliyesiz dolum. `tank_dolum` tablosuyla çapraz kontrol gerekiyor.

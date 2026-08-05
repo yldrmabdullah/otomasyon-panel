@@ -11,6 +11,7 @@
 // Bundan sonra: sorgu değişikliği YALNIZ bu dosyada yapılır.
 
 import type { Pool } from 'pg';
+import { KAPANIS_PENCERE_BAS, KAPANIS_PENCERE_BIT } from './db.js';
 
 /** Parkoil'in EPDK'daki tüzel kimliği (bkz docs/bilgi/piyasa-istihbarat.md). */
 export const BIZ = 'TURGUT DAĞITIM ENERJİ ANONİM ŞİRKETİ';
@@ -783,8 +784,23 @@ export async function mutabakatVerisi(p: Pool, gun?: string) {
          JOIN istasyonlar i ON i.istasyon_kod = a.istasyon_kod
          JOIN satis_ozet so ON so.istasyon_kod = i.t_istasyon_id
           AND so.tank_no = a.tank_no
-          AND so.gun >  a.bas_zaman::date
-          AND so.gun <= a.bit_zaman::date
+          -- ⚠️⚠️ SATIŞ İÇİN **GÜN ETİKETİ** KULLANILIR, ölçüm zaman damgası DEĞİL
+          -- (2026-08-05, canlıda iki kez yanlış denedim).
+          --
+          -- Ölçüm TR 03:30'da alınıyor, yani "4 Ağustos'un kapanışı" fiilen
+          -- 5 Ağustos sabahı. Zaman damgasından aralık kurulunca:
+          --     bas TR 04 Ağu 03:30 · bit TR 05 Ağu 03:30
+          --     sorgu: gun > 04 AND gun <= 05 → 4 Ağustos satışı DIŞLANIYOR,
+          --     5 Ağustos satışı henüz YOK → 669 tankın hepsi "satış yok"
+          --
+          -- Oysa gün etiketleri zaten hizalı: seviye gun=4 Ağustos (biten günün
+          -- kapanışı) ↔ satış gun=4 Ağustos (o günün satışı). İkisi aynı iş
+          -- gününü temsil ediyor. Aralık = (kaynak_gun, hedef_gun].
+          --
+          -- Dolum farklı: TIMESTAMP ve saat hassas → orada zaman damgası doğru.
+          -- kaynak_gun NULL = serinin ilk günü → bir gün öncesini varsay
+          AND so.gun >  coalesce(a.kaynak_gun, $1::date - 1)
+          AND so.gun <= $1::date
          GROUP BY 1,2
        )
        SELECT a.istasyon_kod, coalesce(i.ad, a.istasyon_kod) istasyon_ad,
@@ -795,8 +811,16 @@ export async function mutabakatVerisi(p: Pool, gun?: string) {
               round(extract(epoch FROM (a.bit_zaman - a.bas_zaman)) / 3600)::int aralik_saat,
               -- Kısmi gün riski: iki uçtan biri gün başına yakın DEĞİLSE günlük
               -- satış toplamı aralığa tam oturmaz (bkz. sat CTE yorumu).
-              (a.bas_zaman::time > time '02:00' AND a.bas_zaman::time < time '22:00')
-                OR (a.bit_zaman::time > time '02:00' AND a.bit_zaman::time < time '22:00')
+              -- ⚠️ TR SAATİ + KAPANIŞ PENCERESİYLE AYNI EŞİK (2026-08-05).
+              -- İki hata birden vardı: (1) ::time UTC saatini alıyordu, 3 saat
+              -- kaydırıyordu; (2) eşik 02:00–22:00 yazılmıştı ama db.ts'teki
+              -- kapanış penceresi 22:00–06:00. Tutarsızlık yüzünden TR 03:30
+              -- GECE ölçümü "gün ortası riski" diye işaretleniyor ve 669 tankın
+              -- tamamı kullanılamaz sayılıyordu. Tek kaynak: $2 (BIT) / $3 (BAS).
+              ((a.bas_zaman AT TIME ZONE 'Europe/Istanbul')::time > make_time($2, 0, 0)
+                AND (a.bas_zaman AT TIME ZONE 'Europe/Istanbul')::time < make_time($3, 0, 0))
+                OR ((a.bit_zaman AT TIME ZONE 'Europe/Istanbul')::time > make_time($2, 0, 0)
+                AND (a.bit_zaman AT TIME ZONE 'Europe/Istanbul')::time < make_time($3, 0, 0))
                                                zaman_riski,
               round(a.acilis_lt)::int         acilis,
               round(coalesce(dol.lt, 0))::int  dolum,
@@ -819,7 +843,7 @@ export async function mutabakatVerisi(p: Pool, gun?: string) {
        LEFT JOIN dol ON dol.istasyon_kod = a.istasyon_kod AND dol.tank_no = a.tank_no
        LEFT JOIN sat ON sat.istasyon_kod = a.istasyon_kod AND sat.tank_no = a.tank_no
        ORDER BY abs((a.acilis_lt + coalesce(dol.lt,0) - coalesce(sat.lt,0)) - a.kapanis_lt) DESC`,
-      [hedefGun],
+      [hedefGun, KAPANIS_PENCERE_BIT, KAPANIS_PENCERE_BAS],
     ),
 
     // KAPSAM — satışı olup seviyesi olmayan tanklar (mutabakat dışı kalan hacim).

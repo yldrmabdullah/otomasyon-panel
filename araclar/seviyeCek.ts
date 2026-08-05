@@ -46,9 +46,23 @@ async function main() {
   //
   // TR saati (UTC+3) kullanmak bunu çözüyor: 21:00 UTC + 202 dk = TR 03:22, hâlâ
   // aynı TR günü. Tank verisi de TR yerel saatiyle geliyor (ASIS TZ taşımıyor).
+  //
+  // ⚠️⚠️ GECE YARISINDAN SONRA KOŞARSA "DÜN"Ü ETİKETLE (2026-08-05, canlıda
+  // yakalandı). Cron TR 00:00'a kurulu ve gecikmeyle TR 01:00–04:00 arası
+  // koşuyor. O saatteki ölçüm BİTEN günün kapanışıdır, yeni günün değil —
+  // ama kod "bugün" yazıyordu. Sonuç: satisCek "dün"ü çekiyor, seviyeCek
+  // "bugün"ü yazıyor, ikisi BİR GÜN KAYIYOR ve mutabakat hiç hizalanmıyordu:
+  //     5 Ağu 04:00 ölçüm → seviye gun=2026-08-05, satış gun=2026-08-04
+  //     hedef gün "hem seviye hem satış olan en son gün" = 3 Ağustos'a düşüyor
+  //     → kullanılabilir satır 0/669, hep bir gün geriden
+  // Kural: TR 12:00'den ÖNCE koşuyorsak biten günü (dün) etiketle. Öğleden
+  // sonra koşan çekim (elle tetikleme) o günü etiketler — zaten gün-ortası
+  // koruması bunu ayrıca engelliyor.
   const arg = process.argv[2];
   const trSimdi = new Date(Date.now() + 3 * 3_600_000);
-  const gun = arg ?? trSimdi.toISOString().slice(0, 10);
+  const hedefTr = new Date(trSimdi);
+  if (trSimdi.getUTCHours() < 12) hedefTr.setUTCDate(hedefTr.getUTCDate() - 1);
+  const gun = arg ?? hedefTr.toISOString().slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(gun)) {
     console.error('Geçersiz tarih. Kullanım: seviyeCek.ts [YYYY-AA-GG]');
     process.exit(1);
