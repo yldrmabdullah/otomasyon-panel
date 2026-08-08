@@ -1239,3 +1239,16 @@ td.uyari-metin, .uyari-metin { color: var(--uyari); font-weight: 600; }
 
 /* Özet kartındaki birim (lt) ve alt not */
 .kart-birim { font-size: var(--t-md); font-weight: 600; color: var(--metin-2); margin-left: 2px; }
+
+/* İndirme butonları (CSV/Excel) — tablo başlığı sağında */
+.mutabakat-indir { display: inline-flex; gap: var(--s-2); }
+
+/* Ürün grubu toplamları — tablo altı özet */
+.urun-toplam { margin-top: var(--s-5); background: var(--panel); border: 1px solid var(--cizgi); border-radius: var(--r); padding: var(--s-4) var(--s-5); }
+.urun-toplam-baslik { font-size: var(--t-lg); font-weight: 700; color: var(--metin); margin: 0 0 var(--s-3); }
+.urun-toplam-tablo { width: 100%; border-collapse: collapse; font-size: var(--t-md); }
+.urun-toplam-tablo th { text-align: left; color: var(--soluk); font-weight: 600; font-size: var(--t-sm); padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--cizgi-2); }
+.urun-toplam-tablo th.sag, .urun-toplam-tablo td.sag { text-align: right; }
+.urun-toplam-tablo td { padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--cizgi); color: var(--metin); }
+.urun-toplam-tablo tbody tr:hover td { background: var(--panel-2); }
+.urun-toplam-genel td { border-top: 2px solid var(--cizgi-2); border-bottom: none; font-weight: 700; color: var(--metin); padding-top: var(--s-3); }

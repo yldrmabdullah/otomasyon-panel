@@ -7,6 +7,7 @@
 import { useMemo, useState } from 'react';
 import { Tablo, type TabloKolon } from './Tablo.js';
 import { Bos, useVeri } from './ortak.js';
+import { csvIndir, xlsIndir } from './disaAktar.js';
 
 interface DonemOzet {
   donem: string; ad: string | null; faturaSayisi: number; tamSayisi: number; sorunluSayisi: number;
@@ -39,6 +40,22 @@ const lt = (v: number | null | undefined) =>
   v == null ? '—' : v.toLocaleString('tr-TR', { maximumFractionDigits: 0 }) + ' lt';
 const tesisKisa = (s: string | null) => (s ?? '').replace(/^DEP\/[^/]*\//, '').trim() || '—';
 
+// Ürün grubu kanonik (a3Kiyas ile aynı mantık) — özet toplamları için.
+const URUN_AD: Record<string, string> = {
+  benzin: 'Kurşunsuz Benzin', motorin: 'Motorin', fueloil: 'Fuel Oil',
+  gazyagi: 'Gazyağı', kalorifer: 'Kalorifer', belirsiz: 'Diğer',
+};
+function urunKanon(s: string | null | undefined): string {
+  const t = String(s ?? '').toLocaleLowerCase('tr');
+  if (/benzin|95\s*oktan|kur[şs]unsuz/.test(t)) return 'benzin';
+  if (/motorin|mazot|d[ií]zel/.test(t)) return 'motorin';
+  if (/fuel\s*oil|f\.?oil/.test(t)) return 'fueloil';
+  if (/gaz\s*ya[ğg]/.test(t)) return 'gazyagi';
+  if (/kalorifer|kalyak/.test(t)) return 'kalorifer';
+  return 'belirsiz';
+}
+const litreTam = (v: number) => v.toLocaleString('tr-TR', { maximumFractionDigits: 0 });
+
 export function Mutabakat() {
   const [donem, setDonem] = useState<string | null>(null);
   const url = donem ? `/api/mutabakat?donem=${encodeURIComponent(donem)}` : '/api/mutabakat';
@@ -50,6 +67,40 @@ export function Mutabakat() {
     const s = veri?.satirlar ?? [];
     return yalnizSorun ? s.filter((r) => r.durum !== 'tam') : s;
   }, [veri, yalnizSorun]);
+
+  // Ürün grubu kırılımında toplam (A3 litre / Logo litre / fark) — TÜM dönem satırları
+  // üzerinden (filtreden bağımsız; mutabakat toplamı hep tam evren olmalı).
+  const urunToplam = useMemo(() => {
+    const tum = veri?.satirlar ?? [];
+    const grup = new Map<string, { a3: number; logo: number }>();
+    for (const r of tum) {
+      const k = urunKanon(r.a3Urun ?? r.logoUrun);
+      const g = grup.get(k) ?? { a3: 0, logo: 0 };
+      g.a3 += r.a3Litre ?? 0;
+      g.logo += r.logoLitre ?? 0;
+      grup.set(k, g);
+    }
+    const satir = [...grup.entries()]
+      .map(([k, g]) => ({ ad: URUN_AD[k] ?? k, a3: g.a3, logo: g.logo, fark: g.logo - g.a3 }))
+      .sort((a, b) => b.a3 - a.a3);
+    const genel = satir.reduce((a, x) => ({ a3: a.a3 + x.a3, logo: a.logo + x.logo }), { a3: 0, logo: 0 });
+    return { satir, genel: { ...genel, fark: genel.logo - genel.a3 } };
+  }, [veri]);
+
+  const disaAktarSatir = () =>
+    satirlar.map((r) => [
+      r.faturaNo, r.irsaliyeNo ?? '', r.epdkKod ?? '', r.istasyon ?? '',
+      r.a3Urun ?? '', r.logoUrun ?? '', litreTam(r.a3Litre ?? 0), r.logoLitre == null ? '' : litreTam(r.logoLitre),
+      r.litreFark == null ? '' : litreTam(r.litreFark), r.a3Tesis ?? '', r.logoTesis ?? '',
+      DURUM_ETIKET[r.durum]?.ad ?? r.durum,
+    ]);
+  const disaAktarBaslik = ['Fatura No', 'İrsaliye No', 'EPDK Kodu', 'İstasyon', 'A3 Ürün', 'Logo Ürün', 'A3 Litre', 'Logo Litre', 'Fark', 'A3 Tesis', 'Logo Tesis', 'Durum'];
+  // İndirmeye ürün grubu toplamlarını da ekle (alt özet).
+  const disaAktarOzet = () => [
+    ...urunToplam.satir.map((g) => [`TOPLAM · ${g.ad}`, '', '', '', '', '', litreTam(g.a3), litreTam(g.logo), litreTam(g.fark), '', '', '']),
+    ['GENEL TOPLAM', '', '', '', '', '', litreTam(urunToplam.genel.a3), litreTam(urunToplam.genel.logo), litreTam(urunToplam.genel.fark), '', '', ''],
+  ];
+  const dosyaAd = `a3-logo-mutabakat-${veri?.ozet?.donem ?? 'donem'}`;
 
   const kolonlar: TabloKolon<Satir>[] = useMemo(() => [
     {
@@ -205,7 +256,64 @@ export function Mutabakat() {
         kaydirmaEsigi={20}
         ilkGosterim={60}
         bosMesaj={yukleniyor ? 'Yükleniyor…' : (yalnizSorun ? 'Bu dönemde uyuşmayan kayıt yok — hepsi tutuyor.' : 'Kayıt yok.')}
+        aktarGizle
+        ustSag={
+          <div className="mutabakat-indir">
+            <button type="button" className="cikis-btn" disabled={!satirlar.length}
+              onClick={() => csvIndir(dosyaAd, disaAktarBaslik, [...disaAktarSatir(), [], ...disaAktarOzet()])}>
+              CSV
+            </button>
+            <button type="button" className="cikis-btn" disabled={!satirlar.length}
+              onClick={() => xlsIndir(dosyaAd, disaAktarBaslik, disaAktarSatir(), disaAktarOzet())}>
+              Excel
+            </button>
+          </div>
+        }
       />
+
+      {/* Ürün grubu kırılımında toplam — tablonun altında (footer yerine ayrı blok) */}
+      {ozet && urunToplam.satir.length > 0 && (
+        <section className="urun-toplam" aria-label="Ürün grubu toplamları">
+          <h3 className="urun-toplam-baslik">Ürün Grubu Toplamları · {ozet.ad}</h3>
+          <table className="urun-toplam-tablo">
+            <thead>
+              <tr>
+                <th>Ürün Grubu</th>
+                <th className="sag">A3 (ASIS) Litre</th>
+                <th className="sag">Logo Litre</th>
+                <th className="sag">Fark</th>
+                <th className="sag">Fark %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {urunToplam.satir.map((g) => {
+                const pct = g.a3 ? (g.fark / g.a3) * 100 : 0;
+                const asim = Math.abs(pct) > 3;
+                return (
+                  <tr key={g.ad}>
+                    <td>{g.ad}</td>
+                    <td className="sag mono">{litreTam(g.a3)}</td>
+                    <td className="sag mono">{litreTam(g.logo)}</td>
+                    <td className={`sag mono ${g.fark !== 0 ? 'uyari-metin' : ''}`}>{g.fark > 0 ? '+' : ''}{litreTam(g.fark)}</td>
+                    <td className={`sag mono ${asim ? 'krit-metin' : ''}`}>%{pct.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr className="urun-toplam-genel">
+                <td>GENEL TOPLAM</td>
+                <td className="sag mono">{litreTam(urunToplam.genel.a3)}</td>
+                <td className="sag mono">{litreTam(urunToplam.genel.logo)}</td>
+                <td className="sag mono">{urunToplam.genel.fark > 0 ? '+' : ''}{litreTam(urunToplam.genel.fark)}</td>
+                <td className="sag mono">
+                  %{(urunToplam.genel.a3 ? (urunToplam.genel.fark / urunToplam.genel.a3) * 100 : 0).toLocaleString('tr-TR', { maximumFractionDigits: 2 })}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </section>
+      )}
     </div>
   );
 }

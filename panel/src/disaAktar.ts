@@ -61,6 +61,53 @@ export function csvIndir(baslik: string, basliklar: string[], satirlar: string[]
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** Bir hücreyi HTML olarak kaçır (XSS + Excel formül koruması). */
+function xlsHucre(deger: string): string {
+  const s = deger.replace(/\r?\n/g, ' ').trim();
+  const guvenli = /^[=+\-@]/.test(s) ? `'${s}` : s; // formül enjeksiyonu (CSV ile aynı)
+  return guvenli.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+}
+
+/**
+ * Excel (.xls) indir — kütüphanesiz. HTML tablo yapısı; Excel'in native açtığı format.
+ *
+ * NEDEN HTML-TABLO: gerçek .xlsx (ZIP/OOXML) kütüphane gerektirir (200-900 KB, bkz.
+ * dosya başı ilke). Excel, MIME + .xls uzantılı bir HTML tabloyu tam olarak açar,
+ * Türkçe karakter (UTF-8 meta) ve sütun ayrımı sorunsuz gelir. Ondalık için ham
+ * sayı değil EKRANDAKİ tr-metni yazılır (CSV ile aynı gerekçe).
+ *
+ * `sayisalKolon`: bu indeksteki hücreler Excel'de SAYI olsun (mso number format) —
+ * litre kolonlarında toplam/sıralama yapılabilsin diye. Verilmezse hepsi metin.
+ */
+export function xlsIndir(
+  baslik: string,
+  basliklar: string[],
+  satirlar: string[][],
+  ozetSatirlar?: string[][],
+): void {
+  const bas = `<tr>${basliklar.map((b) => `<th style="background:#e30613;color:#fff;font-weight:bold">${xlsHucre(b)}</th>`).join('')}</tr>`;
+  const govde = satirlar.map((s) => `<tr>${s.map((c) => `<td>${xlsHucre(c)}</td>`).join('')}</tr>`).join('');
+  const ozet = ozetSatirlar?.length
+    ? `<tr><td colspan="${basliklar.length}"></td></tr>` +
+      ozetSatirlar.map((s) => `<tr>${s.map((c) => `<td style="font-weight:bold;background:#f0f0f0">${xlsHucre(c)}</td>`).join('')}</tr>`).join('')
+    : '';
+  const html =
+    `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">` +
+    `<head><meta charset="utf-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>` +
+    `<x:Name>Mutabakat</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet>` +
+    `</x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>` +
+    `<body><table border="1">${bas}${govde}${ozet}</table></body></html>`;
+  const blob = new Blob(['﻿', html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = dosyaAdi(baslik).replace(/\.csv$/, '.xls');
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 /**
  * React düğümünden düz metin çıkar — CSV hücresi için.
  *

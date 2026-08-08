@@ -56,6 +56,9 @@ interface TabloProps<T> {
   adim?: number;
   /** Başlığın sağına ek kontrol (segment filtre vb.). */
   ustSag?: ReactNode;
+  /** Tablo'nun kendi CSV butonunu GİZLE — çağıran kendi indirmesini (CSV+Excel,
+   *  toplam satırlı vb.) `ustSag` ile koyuyorsa çift buton olmasın diye. */
+  aktarGizle?: boolean;
   baslik: ReactNode;
   /** Başlığın ALTINA açıklama şeridi. Tablo'nun dışına konursa başlığın ÜSTÜNDE
    *  kalıp önceki bölüme aitmiş gibi görünüyor (canlıda görüldü). */
@@ -115,6 +118,7 @@ export function Tablo<T>({
   ilkGosterim,
   adim,
   ustSag,
+  aktarGizle,
   baslik,
   aciklama,
   sunucu,
@@ -260,7 +264,7 @@ export function Tablo<T>({
           {/* CSV: Excel doğrudan açıyor. Yazdırma/PDF için tarayıcının kendi
               diyaloğu kullanılır (Ctrl+P → "PDF olarak kaydet") — @media print
               stili sayfayı buna hazırlıyor. */}
-          {(() => {
+          {!aktarGizle && (() => {
             // Sunucu modunda CSV'yi çağıran taraf üretir (tüm sayfaları çeker);
             // Tablo'nun kendi aktarımı yalnız eldeki sayfayı indirirdi = yarım dosya.
             const sunucuCsv = sunucu?.csvAktar;
