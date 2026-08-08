@@ -1002,3 +1002,65 @@ export async function bayiSecenekleri(p: Pool) {
     toplamBayi: Number(toplam.rows[0].n),
   };
 }
+
+/**
+ * A3 (ASIS POL) ↔ Logo mutabakatı — dönem listesi + seçili dönemin fatura satırları.
+ * Kaynak: mutabakat_a3 / mutabakat_a3_donem (a3Kiyas aracı doldurur).
+ * `donem` verilmezse en güncel dönem seçilir. Satırlar durum önceliğine göre:
+ * sorunlular üstte (panelde sarı/kırmızı), tam olanlar altta.
+ */
+export async function a3LogoVerisi(p: Pool, donem?: string) {
+  const donemler = await p.query(
+    `SELECT donem, ad, fatura_sayisi, tam_sayisi, sorunlu_sayisi,
+            a3_toplam_litre, logo_toplam_litre, cekim_zamani
+     FROM mutabakat_a3_donem ORDER BY donem DESC`,
+  );
+  if (donemler.rows.length === 0) {
+    return { donemler: [], secili: null, ozet: null, satirlar: [] };
+  }
+  // İstenen dönem yoksa en güncel.
+  const secili = (donem && donemler.rows.some((r) => r.donem === donem)) ? donem : donemler.rows[0].donem;
+  const ozetSatir = donemler.rows.find((r) => r.donem === secili)!;
+
+  const satirlar = await p.query(
+    `SELECT fatura_no, irsaliye_no, epdk_kod, logo_cari_kod, istasyon,
+            a3_urun, a3_litre, a3_tesis, logo_urun, logo_litre, logo_tesis, logo_iptal,
+            durum, litre_fark
+     FROM mutabakat_a3
+     WHERE donem = $1
+     ORDER BY (durum <> 'tam') DESC, ABS(COALESCE(litre_fark,0)) DESC, fatura_no`,
+    [secili],
+  );
+
+  const a3T = Number(ozetSatir.a3_toplam_litre);
+  const logoT = Number(ozetSatir.logo_toplam_litre);
+  const farkLt = logoT - a3T;
+  return {
+    donemler: donemler.rows.map((r) => ({
+      donem: r.donem, ad: r.ad,
+      faturaSayisi: Number(r.fatura_sayisi), tamSayisi: Number(r.tam_sayisi), sorunluSayisi: Number(r.sorunlu_sayisi),
+      cekimZamani: r.cekim_zamani,
+    })),
+    secili,
+    ozet: {
+      donem: secili, ad: ozetSatir.ad,
+      faturaSayisi: Number(ozetSatir.fatura_sayisi),
+      tamSayisi: Number(ozetSatir.tam_sayisi),
+      sorunluSayisi: Number(ozetSatir.sorunlu_sayisi),
+      a3ToplamLitre: a3T, logoToplamLitre: logoT,
+      farkLitre: farkLt,
+      farkYuzde: a3T > 0 ? (farkLt / a3T) * 100 : 0,
+      // EPDK aylık mutabakat toleransı ±%3 (bkz. docs/bilgi/epdk-mutabakat.md 1240 kararı).
+      epdkLimitAsim: a3T > 0 && Math.abs((farkLt / a3T) * 100) > 3,
+      cekimZamani: ozetSatir.cekim_zamani,
+    },
+    satirlar: satirlar.rows.map((r) => ({
+      faturaNo: r.fatura_no, irsaliyeNo: r.irsaliye_no, epdkKod: r.epdk_kod, logoCariKod: r.logo_cari_kod,
+      istasyon: r.istasyon,
+      a3Urun: r.a3_urun, a3Litre: r.a3_litre == null ? null : Number(r.a3_litre), a3Tesis: r.a3_tesis,
+      logoUrun: r.logo_urun, logoLitre: r.logo_litre == null ? null : Number(r.logo_litre), logoTesis: r.logo_tesis,
+      logoIptal: r.logo_iptal, durum: r.durum,
+      litreFark: r.litre_fark == null ? null : Number(r.litre_fark),
+    })),
+  };
+}

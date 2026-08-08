@@ -9,6 +9,7 @@
   },
   "scripts": {
     "job": "tsx job/index.ts",
+    "a3": "tsx araclar/a3Kiyas.mts",
     "piyasa": "tsx araclar/piyasaCek.ts --tum-durumlar",
     "job:build": "tsc -p tsconfig.json",
     "db:migrate": "tsx core/migrate.ts",
@@ -23,8 +24,10 @@
   },
   "dependencies": {
     "fast-xml-parser": "^5.10.1",
+    "mssql": "^12.7.0",
     "nodemailer": "^9.0.4",
-    "pg": "^8.13.1"
+    "pg": "^8.13.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

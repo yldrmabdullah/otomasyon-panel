@@ -1,0 +1,67 @@
+name: A3 ↔ Logo Mutabakatı (aylık)
+
+# POL "A3 Aylık Satış Kontrol" raporunu indirip Logo (BFF /dis/v1) ile karşılaştırır,
+# sonucu Postgres'e yazar (mutabakat_a3). Panel Mevzuat → "A3 ↔ Logo Mutabakatı" okur.
+#
+# ⚠️ Logo VPN arkasında; runner Logo'ya DOĞRUDAN erişemez → Logo verisi BFF üstünden
+# (reportapi, public) çekilir. POL internete açık (izleme job'u zaten oraya bağlanıyor).
+#
+# ⚠️ Playwright gerekir (POL Excel indirmesi ViewState-ağır, saf-HTTP kırılgan) → runner'da
+# chromium kurulur. Vercel serverless'ta Playwright çalışmadığı için bu iş Actions'ta koşar
+# (ASIS izleme/mutabakat-cek ile aynı mimari; cron-job.org tetikler, kota public'te yenmez).
+
+on:
+  # Her ayın 2'si 06:00 UTC — bir ÖNCEKİ ay kapanmış olur, o ay çekilir ('onceki').
+  # Cron ay-başında güvenli pay (ayın 1'i gece yarısı değil, 2'si sabah).
+  schedule:
+    - cron: '0 6 2 * *'
+  # Elle VE dışarıdan (cron-job.org → GitHub API). Dönem seçilebilir.
+  workflow_dispatch:
+    inputs:
+      donem:
+        description: "POL dönem kodu (boş: bir önceki ay · 18=2026 Tem · 19=Ağu · 'guncel': en yeni)"
+        required: false
+        default: ''
+
+concurrency:
+  group: a3-mutabakat
+  cancel-in-progress: false
+
+jobs:
+  mutabakat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Bağımlılıklar
+        run: npm ci
+
+      # Playwright chromium — POL Excel indirmesi için (yalnız chromium, hızlı).
+      - name: Playwright chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Şema (idempotent)
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # Dönem: workflow_dispatch girdisi > 'onceki' (cron varsayılanı = bir önceki ay).
+      # 'guncel' verilirse en yeni ay; boş dispatch/cron → 'onceki'.
+      - name: A3 çek + Logo kıyas
+        run: npm run a3 -- "${DONEM:-onceki}"
+        env:
+          DONEM: ${{ github.event.inputs.donem }}
+          POL_URL: ${{ secrets.POL_URL }}
+          POL_KULLANICI: ${{ secrets.POL_KULLANICI }}
+          POL_SIFRE: ${{ secrets.POL_SIFRE }}
+          # Logo BFF (canlı, public). Anahtar = BFF dış API X-Api-Key.
+          BFF_URL: ${{ secrets.BFF_URL }}
+          BFF_API_KEY: ${{ secrets.BFF_API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

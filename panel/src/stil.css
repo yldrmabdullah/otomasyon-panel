@@ -1209,3 +1209,33 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   .marka-logo-img { width: 36px; }
   .kenar { gap: 2px; padding: 8px 6px; }
 }
+
+/* ── A3 ↔ Logo Mutabakatı (Mevzuat sekmesi) ── */
+.mutabakat-ust { display: flex; align-items: center; gap: var(--s-4); flex-wrap: wrap; margin-bottom: var(--s-4); }
+.mutabakat-donem-secim { display: inline-flex; align-items: center; gap: var(--s-2); font-size: var(--t-sm); color: var(--metin-2); }
+.mutabakat-donem-secim > span { font-weight: 600; }
+.mutabakat-donem-secim select {
+  font: inherit; font-size: var(--t-md); color: var(--metin); background: var(--panel-2);
+  border: 1px solid var(--cizgi-2); border-radius: var(--r-sm); padding: 6px var(--s-3); cursor: pointer;
+}
+.mutabakat-donem-secim select:hover { border-color: var(--accent-cizgi); }
+.mutabakat-donem-secim select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Kıyas satır boyama — uyuşmayanlar sarı, iptal/eksik kırmızımsı (satir-alarmli deseniyle aynı) */
+.satir-uyari td { background: var(--uyari-bg); }
+.satir-uyari:hover td { background: color-mix(in srgb, var(--uyari) 15%, var(--panel)); }
+.satir-krit td { background: var(--krit-bg); }
+.satir-krit:hover td { background: color-mix(in srgb, var(--krit) 15%, var(--panel)); }
+.satir-uyari td.soluk, .satir-krit td.soluk { color: var(--metin-2); }
+
+/* Farkı olan hücreyi vurgula (metin) */
+td.uyari-metin, .uyari-metin { color: var(--uyari); font-weight: 600; }
+
+/* Durum rozeti — ortak .rozet ile aynı görünüm */
+.durum-rozet { font-size: var(--t-xs); font-weight: 700; letter-spacing: 0.03em; padding: 3px var(--s-2); border-radius: 5px; white-space: nowrap; display: inline-block; }
+.durum-rozet.iyi { background: var(--iyi-bg); color: var(--iyi); }
+.durum-rozet.uyari { background: var(--uyari-bg); color: var(--uyari); }
+.durum-rozet.krit { background: var(--krit-bg); color: var(--krit); }
+
+/* Özet kartındaki birim (lt) ve alt not */
+.kart-birim { font-size: var(--t-md); font-weight: 600; color: var(--metin-2); margin-left: 2px; }

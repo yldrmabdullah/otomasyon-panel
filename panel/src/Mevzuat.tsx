@@ -1,5 +1,7 @@
-// EPDK Mevzuat modülü — "mevzuat profesörü".
+// EPDK Mevzuat modülü — "mevzuat profesörü" + A3↔Logo mutabakatı.
 // İçerik docs/bilgi/epdk-mutabakat.md bilgi tabanından. DOĞRULANMASI GEREK = Parkoil teyidi bekliyor.
+import { Sekmeler } from './Sekme.js';
+import { Mutabakat } from './Mutabakat.js';
 
 interface Konu {
   baslik: string;
@@ -106,7 +108,7 @@ function mutabakatTakvimi() {
   return donemler;
 }
 
-export function Mevzuat() {
+function MevzuatBilgi() {
   const takvim = mutabakatTakvimi();
   const odak = takvim[0]; // en güncel açık/yakın dönem (geçen ay)
 
@@ -240,5 +242,19 @@ export function Mevzuat() {
         </div>
       </section>
     </>
+  );
+}
+
+// Modül girişi — iki sekme: mevzuat bilgi tabanı + A3↔Logo mutabakatı.
+// Sekmeler bileşeni Piyasa'da da kullanılıyor; localStorage ile son sekme hatırlanır.
+export function Mevzuat() {
+  return (
+    <Sekmeler
+      anahtar="mevzuat"
+      tanimlar={[
+        { id: 'mutabakat', ad: 'A3 ↔ Logo Mutabakatı', icerik: () => <Mutabakat /> },
+        { id: 'bilgi', ad: 'Mevzuat Bilgisi', icerik: () => <MevzuatBilgi /> },
+      ]}
+    />
   );
 }

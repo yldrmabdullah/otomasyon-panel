@@ -10,7 +10,7 @@
 import { createServer } from 'node:http';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { pool, kapat } from '../core/db.js';
-import { piyasaVerisi, durumVerisi, operasyonVerisi, sorunTespiti, bayiVerisi, bayiSecenekleri } from '../core/panelSorgu.js';
+import { piyasaVerisi, durumVerisi, operasyonVerisi, sorunTespiti, bayiVerisi, bayiSecenekleri, a3LogoVerisi } from '../core/panelSorgu.js';
 import {
   girisDogrula, kullaniciBul, kullaniciListesi, kullaniciEkle, kullaniciSil,
   rolDegistir, sifreDegistir, sifreUret, adNormal,
@@ -154,6 +154,7 @@ const sunucu = createServer(async (istek, yanit) => {
     if (url.pathname === '/api/piyasa') return json(200, await piyasaVerisi(p));
     if (url.pathname === '/api/operasyon') return json(200, await operasyonVerisi(p));
     if (url.pathname === '/api/sorun') return json(200, await sorunTespiti(p));
+    if (url.pathname === '/api/mutabakat') return json(200, await a3LogoVerisi(p, q.get('donem') ?? undefined));
     if (url.pathname === '/api/bayiler') {
       if (q.get('secenekler')) return json(200, await bayiSecenekleri(p));
       return json(200, await bayiVerisi(p, {
