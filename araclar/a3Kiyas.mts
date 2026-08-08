@@ -32,7 +32,6 @@ mkdirSync(IND_DIR, { recursive: true });
 const log = (...a: unknown[]) => console.log(new Date().toISOString().slice(11, 19), ...a);
 const num = (v: unknown) => { const x = typeof v === 'number' ? v : parseFloat(String(v ?? '').replace(',', '.')); return isNaN(x) ? 0 : x; };
 // Çıkış tesisi kodu: A3 "DEP/2758-2/28241" / Logo "AYTEMİZ/.../…-28241" → son sayı bloğu eşleştirme anahtarı.
-const tesisKod = (s: string | null | undefined) => String(s ?? '').match(/(\d+)\s*$/)?.[1] ?? '';
 
 // Ürün kanonik: A3 ("Kurşunsuz Benzin 95 Oktan") ve Logo ("K.Benzin 95 Oktan (Etanollü)") aynı
 // yakıtı FARKLI yazıyor. Alt türler (Etanollü/Biodizel) ana yakıtla aynı sayılır — EPDK satış
@@ -195,11 +194,14 @@ async function main() {
       // Ürün: kanonik yakıt eşit mi (yazım/alt-tür farkı tolere). belirsiz kalırsa fark sayma.
       const ka = urunKanon(A.urun), kl = urunKanon(L.urun);
       const urunEsit = ka === kl || ka === 'belirsiz' || kl === 'belirsiz';
-      const tesisEsit = tesisKod(A.tesis) === tesisKod(L.cikisTesisi) || !tesisKod(A.tesis) || !tesisKod(L.cikisTesisi);
+      // ⚠️ ÇIKIŞ TESİSİ KIYASA GİRMEZ (2026-08-08, ölçüldü): A3'ün EPDK depo lisans
+      // no'su (DEP/9318/43037) ile Logo ambar no'su (…ALPET-11083) FARKLI kodlama —
+      // doğrudan eşleşmiyor. Kıyaslasa Ocak-Nisan'da yüzlerce YANLIŞ "tesis farkı"
+      // üretiyordu (litre 0 farkla). Plaka gibi: iki taraf tutmuyor, bilgi olarak
+      // gösterilir ama fark durumu üretmez. Güvenilir kıyas: litre + ürün.
       if (L.iptal) durum = 'iptal';
       else if (Math.abs(litreFark) >= 0.5) durum = 'litre_fark';
       else if (!urunEsit) durum = 'urun_fark';
-      else if (!tesisEsit) durum = 'tesis_fark';
       else durum = 'tam';
     }
     if (durum === 'tam') tam++; else sorunlu++;

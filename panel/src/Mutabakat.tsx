@@ -147,9 +147,10 @@ export function Mutabakat() {
       hucre: (r) => r.a3Tesis || <Bos />, ara: (r) => r.a3Tesis ?? '',
     },
     {
-      id: 'logotesis', ad: 'Logo Çıkış Tesisi', varsayilan: true, sinif: 'soluk',
+      // Çıkış tesisi yalnız BİLGİ — kıyasa girmiyor (A3 EPDK depo no ile Logo ambar
+      // no farklı kodlama, doğrudan eşleşmiyor). Varsayılan gizli, isteyen açar.
+      id: 'logotesis', ad: 'Logo Çıkış Tesisi', varsayilan: false, sinif: 'soluk',
       hucre: (r) => tesisKisa(r.logoTesis), ara: (r) => r.logoTesis ?? '',
-      hucreSinif: (r) => (r.durum === 'tesis_fark' ? 'uyari-metin' : undefined),
     },
     {
       id: 'durum', ad: 'Durum', varsayilan: true, sabit: true,
@@ -245,8 +246,9 @@ export function Mutabakat() {
         anahtar="mutabakat"
         baslik={<>A3 ↔ Logo Fatura Kıyası{ozet?.ad ? ` · ${ozet.ad}` : ''}</>}
         aciklama={
-          <>Fatura no eşleştirmesiyle; ürün, litre ve çıkış tesisi karşılaştırılır.{' '}
-            <b>Plaka/dorse dahil değil</b> — Logo bu alanları tutmuyor.</>
+          <>Fatura no eşleştirmesiyle <b>ürün ve fatura satış litresi</b> karşılaştırılır.{' '}
+            Çıkış tesisi, plaka/dorse kıyasa girmez — Logo ile A3 bu alanları farklı
+            tutuyor (yanlış alarm olurdu).</>
         }
         kolonlar={kolonlar}
         satirlar={satirlar}
