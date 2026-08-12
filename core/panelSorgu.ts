@@ -1101,19 +1101,29 @@ export async function uzlastirmaVerisi(p: Pool, bas?: string, bit?: string, epdk
   const sB = gun(secili.donem_bas);
   const sE = gun(secili.donem_bit);
 
-  // Bayi özet: EPDK bazında topla, ağırlıklı oran, sorunlu tank sayısı, durum.
+  // Bayi özet: EPDK bazında topla + DIŞ SATIŞ (A4). Dış satışı yüksek bayilerde tank
+  // mutabakatı yanıltıcı (BAŞKURT: 244 lt pompa / 745K dış satış = toptancı) → panelde
+  // ayrı işaretlenir. Dış satış tank mutabakatı FARKINA KATILMAZ (POL'ün "Kullanılan"
+  // hesabı farklı, basit çıkarma yanlış sonuç veriyordu — 2026-08-12 ölçüldü); yalnız
+  // BİLGİ + sınıflandırma. LEFT JOIN: dış satışı olmayan bayi de gelir (dis=0).
   const bayiler = await p.query(
-    `SELECT epdk_kod, max(istasyon) istasyon, max(bolge) bolge, max(mintika) mintika,
-            round(sum(a_basi))::numeric a_basi, round(sum(b_dolum))::numeric b_dolum,
-            round(sum(c_satis))::numeric c_satis, round(sum(d_sonu))::numeric d_sonu,
-            round(sum(e_fark))::numeric e_fark,
-            round(sum(e_fark)/nullif(sum(c_satis),0)*100, 2) f_oran,
+    `SELECT u.epdk_kod, max(u.istasyon) istasyon, max(u.bolge) bolge, max(u.mintika) mintika,
+            round(sum(u.a_basi))::numeric a_basi, round(sum(u.b_dolum))::numeric b_dolum,
+            round(sum(u.c_satis))::numeric c_satis, round(sum(u.d_sonu))::numeric d_sonu,
+            round(sum(u.e_fark))::numeric e_fark,
+            round(sum(u.e_fark)/nullif(sum(u.c_satis),0)*100, 2) f_oran,
             count(*)::int tank_sayisi,
-            count(*) filter (where durum='oran_asim')::int asim_tank,
-            count(*) filter (where durum='kalib_degisti')::int kalib_tank
-     FROM uzlastirma WHERE donem_bas=$1 AND donem_bit=$2 AND ${LPG_HARIC}
-     GROUP BY epdk_kod
-     ORDER BY (count(*) filter (where durum='oran_asim') > 0) DESC, abs(sum(e_fark)) DESC`,
+            count(*) filter (where u.durum='oran_asim')::int asim_tank,
+            count(*) filter (where u.durum='kalib_degisti')::int kalib_tank,
+            COALESCE(ds.dis, 0)::numeric dis_satis
+     FROM uzlastirma u
+     LEFT JOIN (
+       SELECT epdk_kod, sum(dis_satis_lt) dis FROM uzlastirma_dissatis
+       WHERE donem_bas=$1 AND donem_bit=$2 GROUP BY epdk_kod
+     ) ds ON ds.epdk_kod = u.epdk_kod
+     WHERE u.donem_bas=$1 AND u.donem_bit=$2 AND ${LPG_HARIC.replace(/\burun\b/g, 'u.urun')}
+     GROUP BY u.epdk_kod, ds.dis
+     ORDER BY (count(*) filter (where u.durum='oran_asim') > 0) DESC, abs(sum(u.e_fark)) DESC`,
     [sB, sE],
   );
 
@@ -1154,12 +1164,19 @@ export async function uzlastirmaVerisi(p: Pool, bas?: string, bit?: string, epdk
     },
     bayiler: bayiler.rows.map((r) => {
       const asim = Number(r.asim_tank) > 0;
+      const cSatis = Number(r.c_satis), disSatis = Number(r.dis_satis);
+      // Dış satış pompanın %20'sinden fazlaysa bayi TOPTANCI karakterli → tank mutabakatı
+      // yanıltıcı (pompadan az satıyor, çoğu kamyonla dış satış). Sorunlu SAYILMAZ, ayrı
+      // işaretlenir. Eşik %20: altında dış satış marjinal, tank mutabakatı hâlâ anlamlı.
+      const disAgirlikli = disSatis > 0 && cSatis > 0 && disSatis > cSatis * 0.2;
+      const durum = disAgirlikli ? 'dis_satis_agirlikli' : asim ? 'oran_asim' : 'uygun';
       return {
         epdk: r.epdk_kod, istasyon: r.istasyon, bolge: r.bolge, mintika: r.mintika,
-        aBasi: Number(r.a_basi), bDolum: Number(r.b_dolum), cSatis: Number(r.c_satis), dSonu: Number(r.d_sonu),
+        aBasi: Number(r.a_basi), bDolum: Number(r.b_dolum), cSatis, dSonu: Number(r.d_sonu),
         eFark: Number(r.e_fark), fOran: r.f_oran == null ? null : Number(r.f_oran),
+        disSatis,
         tankSayisi: Number(r.tank_sayisi), asimTank: Number(r.asim_tank), kalibTank: Number(r.kalib_tank),
-        durum: asim ? 'oran_asim' : 'uygun',
+        durum,
       };
     }),
     detay,

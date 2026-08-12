@@ -60,3 +60,14 @@ jobs:
           POL_KULLANICI: ${{ secrets.POL_KULLANICI }}
           POL_SIFRE: ${{ secrets.POL_SIFRE }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # Dış satış (A4) — uzlaştırmadan bağımsız, satış tarafını tamamlar. Uzlaştırma
+      # başarısız olsa bile çekilsin (ayrı POL raporu).
+      - name: Dış satış (A4) çek
+        if: always()
+        run: npm run dissatis -- ${{ github.event.inputs.bas }} ${{ github.event.inputs.bit }}
+        env:
+          POL_URL: ${{ secrets.POL_URL }}
+          POL_KULLANICI: ${{ secrets.POL_KULLANICI }}
+          POL_SIFRE: ${{ secrets.POL_SIFRE }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

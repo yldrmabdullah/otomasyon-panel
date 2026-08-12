@@ -79,6 +79,23 @@ CREATE INDEX IF NOT EXISTS ix_uzlas_aralik ON uzlastirma (donem_bas, donem_bit);
 CREATE INDEX IF NOT EXISTS ix_uzlas_bayi   ON uzlastirma (donem_bas, donem_bit, epdk_kod);
 CREATE INDEX IF NOT EXISTS ix_uzlas_durum  ON uzlastirma (donem_bas, donem_bit, durum);
 
+-- DIŞ SATIŞ (POL "Tablo A4 - Bayi Dış Satış") — bayi×ürün bazında dış satış litresi.
+-- Uzlaştırmada "sattığı" = pompa (uzlastirma.c_satis) + DIŞ SATIŞ (bu tablo). A4 tank
+-- kırılımı VERMEZ (EPDK+ürün) → bayi düzeyinde tutulur, panel bayi özetine eklenir.
+-- Neden ayrı tablo: uzlastirma tank bazında; dış satışı tanka dağıtamayız (yanlış olur).
+-- Kanıt (2026-08-12): A4 kolonları EPDK/Tarih/Ürün/Plaka/Belgelenen Dış Satış Miktarı.
+CREATE TABLE IF NOT EXISTS uzlastirma_dissatis (
+  donem_bas    DATE NOT NULL,
+  donem_bit    DATE NOT NULL,
+  epdk_kod     TEXT NOT NULL,
+  urun         TEXT NOT NULL,           -- Motorin / K95 (kanonik değil, A4 ham adı)
+  dis_satis_lt NUMERIC NOT NULL DEFAULT 0,
+  satis_adedi  INT NOT NULL DEFAULT 0,  -- kaç dış satış fişi
+  guncelleme   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (donem_bas, donem_bit, epdk_kod, urun)
+);
+CREATE INDEX IF NOT EXISTS ix_dissatis_bayi ON uzlastirma_dissatis (donem_bas, donem_bit, epdk_kod);
+
 -- Çekilen aralıkların özeti (panel dropdown + üst kartlar).
 CREATE TABLE IF NOT EXISTS uzlastirma_donem (
   donem_bas    DATE NOT NULL,

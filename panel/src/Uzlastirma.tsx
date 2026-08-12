@@ -17,6 +17,7 @@ interface Ozet {
 interface Bayi {
   epdk: string; istasyon: string | null; bolge: string | null; mintika: string | null;
   aBasi: number; bDolum: number; cSatis: number; dSonu: number; eFark: number; fOran: number | null;
+  disSatis: number;
   tankSayisi: number; asimTank: number; kalibTank: number; durum: string;
 }
 interface TankSatir {
@@ -34,6 +35,7 @@ const DURUM: Record<string, { ad: string; sinif: string }> = {
   oran_asim: { ad: '±%3 aşıldı', sinif: 'krit' },
   kalib_degisti: { ad: 'Kalibrasyon değişti', sinif: 'uyari' },
   satis_yok: { ad: 'Satış yok', sinif: 'soluk' },
+  dis_satis_agirlikli: { ad: 'Dış satış ağırlıklı', sinif: 'uyari' },
 };
 const lt = (v: number | null | undefined) => v == null ? '—' : v.toLocaleString('tr-TR', { maximumFractionDigits: 0 }) + ' lt';
 /** Oran gösterimi — satış EPDK eşiğinin (288 lt) altındaysa oran matematiksel olarak
@@ -60,6 +62,11 @@ export function Uzlastirma() {
     { id: 'basi', ad: 'Açılış Stok', varsayilan: true, sinif: 'sag mono soluk', hucre: (b) => lt(b.aBasi), sirala: (b) => b.aBasi },
     { id: 'dolum', ad: 'Aldığı (Dolum)', varsayilan: true, sinif: 'sag mono', hucre: (b) => lt(b.bDolum), sirala: (b) => b.bDolum },
     { id: 'satis', ad: 'Sattığı (Pompa)', varsayilan: true, sinif: 'sag mono', hucre: (b) => lt(b.cSatis), sirala: (b) => b.cSatis },
+    {
+      id: 'dissatis', ad: 'Dış Satış', varsayilan: true, sinif: 'sag mono',
+      hucre: (b) => b.disSatis > 0 ? lt(b.disSatis) : <Bos />, sirala: (b) => b.disSatis,
+      hucreSinif: (b) => (b.durum === 'dis_satis_agirlikli' ? 'uyari-metin' : 'soluk'),
+    },
     { id: 'sonu', ad: 'Kapanış Stok', varsayilan: true, sinif: 'sag mono', hucre: (b) => lt(b.dSonu), sirala: (b) => b.dSonu },
     {
       id: 'fark', ad: 'Fark', varsayilan: true, sinif: 'sag mono', sirala: (b) => Math.abs(b.eFark),
@@ -93,10 +100,10 @@ export function Uzlastirma() {
 
   function disaAktar(xls: boolean) {
     const bayiler = veri?.bayiler ?? [];
-    const baslik = ['Bayi', 'EPDK', 'Bölge', 'Aldığı (Dolum) lt', 'Sattığı (Pompa) lt', 'Kalan Stok lt', 'Fark lt', 'Oran %', 'Sorunlu Tank', 'Durum'];
+    const baslik = ['Bayi', 'EPDK', 'Bölge', 'Açılış Stok lt', 'Aldığı (Dolum) lt', 'Sattığı (Pompa) lt', 'Dış Satış lt', 'Kapanış Stok lt', 'Fark lt', 'Oran %', 'Sorunlu Tank', 'Durum'];
     const satir = bayiler.map((b) => [
-      b.istasyon ?? '', b.epdk, b.bolge ?? '', String(Math.round(b.bDolum)), String(Math.round(b.cSatis)),
-      String(Math.round(b.dSonu)), String(Math.round(b.eFark)), b.fOran == null ? '' : String(b.fOran),
+      b.istasyon ?? '', b.epdk, b.bolge ?? '', String(Math.round(b.aBasi)), String(Math.round(b.bDolum)), String(Math.round(b.cSatis)),
+      String(Math.round(b.disSatis)), String(Math.round(b.dSonu)), String(Math.round(b.eFark)), b.fOran == null ? '' : String(b.fOran),
       String(b.asimTank), DURUM[b.durum]?.ad ?? b.durum,
     ]);
     const ad = `tank-uzlastirma-${ozet?.bas ?? 'aralik'}`;
@@ -152,7 +159,7 @@ export function Uzlastirma() {
         kolonlar={bayiKolon}
         satirlar={veri?.bayiler ?? []}
         satirAnahtar={(b) => b.epdk}
-        satirSinif={(b) => (b.durum === 'oran_asim' ? 'satir-krit' : undefined)}
+        satirSinif={(b) => (b.durum === 'oran_asim' ? 'satir-krit' : b.durum === 'dis_satis_agirlikli' ? 'satir-uyari' : undefined)}
         satirTikla={(b) => setAcikBayi(acikBayi === b.epdk ? null : b.epdk)}
         yukleniyor={yukleniyor && !veri?.bayiler.length}
         aramaEtiket="Bayi / EPDK / bölge ara…"

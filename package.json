@@ -11,6 +11,7 @@
     "job": "tsx job/index.ts",
     "a3": "tsx araclar/a3Kiyas.mts",
     "uzlas": "tsx araclar/uzlasCek.mts",
+    "dissatis": "tsx araclar/dissatisCek.mts",
     "piyasa": "tsx araclar/piyasaCek.ts --tum-durumlar",
     "job:build": "tsc -p tsconfig.json",
     "db:migrate": "tsx core/migrate.ts",
