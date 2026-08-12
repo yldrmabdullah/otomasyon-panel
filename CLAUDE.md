@@ -51,6 +51,9 @@ Postgres'te.
 - `job/` — GH Actions entry noktası (`index.ts`): tek seferlik çek→değerlendir→bildir→yaz.
 - `panel/` — React + Vite izleme paneli (Vercel).
 - `docs/bilgi/` — ⭐ AI'ın biriktirdiği iş/mevzuat bilgisi.
+- `docs/bilgi/pol-harita.md` — ⭐⭐ **POL rapor haritası**: 35 rapor, kolonları, filtreleri ve
+  **Excel indirme akışı** (tek tık / Raporla). Yeni bir POL raporunu otomatikleştirmeden ÖNCE
+  buraya bak — sıfırdan keşif yapmaya gerek yok (kullanıcı turu 2026-08-12).
 - `docs/ASIS_METOTLARI.md` — ASIS SOAP 19 metot alan katalogu.
 - `.github/workflows/` — cron job workflow.
 
