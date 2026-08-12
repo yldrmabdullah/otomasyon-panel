@@ -149,6 +149,7 @@ export function Uzlastirma() {
         satirAnahtar={(b) => b.epdk}
         satirSinif={(b) => (b.durum === 'oran_asim' ? 'satir-krit' : undefined)}
         satirTikla={(b) => setAcikBayi(acikBayi === b.epdk ? null : b.epdk)}
+        yukleniyor={yukleniyor && !veri?.bayiler.length}
         aramaEtiket="Bayi / EPDK / bölge ara…"
         kaydirmaEsigi={25}
         ilkGosterim={80}

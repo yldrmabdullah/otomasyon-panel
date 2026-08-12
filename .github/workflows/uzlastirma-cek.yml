@@ -1,0 +1,62 @@
+name: Tank Uzlaştırma (aylık)
+
+# POL Tank Uzlaştırma Raporu'nu (EPDK stok mutabakatı) bir tarih aralığı için indirip
+# bayi×ürün×tank bazında Fark=(A+B−C)−D hesaplar, Postgres'e yazar. Panel Mevzuat →
+# "Tank Uzlaştırma" sekmesi okur. Kaynak: POL, BFF/Logo GEREKMEZ (POL zaten hesaplamış).
+#
+# ⚠️ Playwright (POL Excel indirmesi) → Actions'ta koşar, Vercel'de değil. A3 ile aynı
+# mimari (cron-job.org tetikler; kota public repoda yenmez). Salt-okuma.
+
+on:
+  # Her ayın 3'ü 06:30 UTC — bir ÖNCEKİ ay kapanmış olur (araç varsayılanı geçen ay).
+  # A3 (ayın 2'si) ile çakışmasın diye 3'ü. Uzlaştırma A3'ten bağımsız (farklı POL raporu).
+  schedule:
+    - cron: '30 6 3 * *'
+  # Elle VE dışarıdan (cron-job.org → GitHub API). Tarih aralığı seçilebilir.
+  workflow_dispatch:
+    inputs:
+      bas:
+        description: "Başlangıç YYYY-MM-DD (boş: geçen ayın 1'i)"
+        required: false
+        default: ''
+      bit:
+        description: "Bitiş YYYY-MM-DD (boş: geçen ayın son günü)"
+        required: false
+        default: ''
+
+concurrency:
+  group: uzlastirma-cek
+  cancel-in-progress: false
+
+jobs:
+  uzlastirma:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Bağımlılıklar
+        run: npm ci
+
+      - name: Playwright chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Şema (idempotent)
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # Tarih verilmezse araç geçen ayı seçer. Boş dispatch/cron → geçen ay.
+      - name: Uzlaştırma çek
+        run: npm run uzlas -- ${{ github.event.inputs.bas }} ${{ github.event.inputs.bit }}
+        env:
+          POL_URL: ${{ secrets.POL_URL }}
+          POL_KULLANICI: ${{ secrets.POL_KULLANICI }}
+          POL_SIFRE: ${{ secrets.POL_SIFRE }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

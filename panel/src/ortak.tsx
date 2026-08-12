@@ -7,6 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Tazelik } from './tipler';
+import { IkonSpinner } from './ikon.js';
 
 export type ApiYanit<T> = T | { hata: string };
 
@@ -178,7 +179,7 @@ export function ModulBar({
         )}
         <button className="yenile" type="button" onClick={yenile} disabled={yukleniyor}>
           {yukleniyor ? (
-            'Yükleniyor…'
+            <span className="yenile-yukle"><IkonSpinner boyut={14} />Yükleniyor…</span>
           ) : (
             <>
               <span aria-hidden="true">↻ </span>Yenile

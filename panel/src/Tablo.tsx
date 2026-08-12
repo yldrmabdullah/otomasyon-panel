@@ -46,6 +46,9 @@ interface TabloProps<T> {
   /** Verilirse satır tıklanabilir olur (master-detail açma vb.). Satır butona
    *  dönüşmez ama cursor+hover+Enter/Space ile erişilebilir. */
   satirTikla?: (satir: T) => void;
+  /** İlk yükleme sürüyor + satır yok → "Yükleniyor…" yerine İSKELET satırları
+   *  (gri, animasyonlu placeholder). Boş metinden çok daha az donuk görünür. */
+  yukleniyor?: boolean;
   bosMesaj?: string;
   /** Arama kutusu göster. Kolonların `ara` fonksiyonlarını tarar. */
   aramaEtiket?: string;
@@ -116,6 +119,7 @@ export function Tablo<T>({
   satirAnahtar,
   satirSinif,
   satirTikla,
+  yukleniyor,
   bosMesaj = 'Kayıt yok.',
   aramaEtiket,
   kaydirmaEsigi = 25,
@@ -380,11 +384,20 @@ export function Tablo<T>({
                 ))}
               </tr>
             ))}
-            {gosterilen.length === 0 && (
+            {/* İlk yükleme + satır yok → iskelet satırları (donuk metin yerine). */}
+            {gosterilen.length === 0 && (yukleniyor || sunucu?.ilkYukleme) &&
+              Array.from({ length: 6 }).map((_, r) => (
+                <tr key={`iskelet-${r}`} className="iskelet-satir" aria-hidden="true">
+                  {gorunur.map((k) => (
+                    <td key={k.id} className={k.sinif}><span className="iskelet-cubuk" /></td>
+                  ))}
+                </tr>
+              ))}
+            {gosterilen.length === 0 && !yukleniyor && !sunucu?.ilkYukleme && (
               <tr>
                 <td colSpan={gorunur.length} className="bos">
                   {sunucu
-                    ? sunucu.yukleniyor || sunucu.ilkYukleme
+                    ? sunucu.yukleniyor
                       ? 'Yükleniyor…'
                       : bosMesaj
                     : aramaGecikmeli

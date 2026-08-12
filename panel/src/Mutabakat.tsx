@@ -254,6 +254,7 @@ export function Mutabakat() {
         satirlar={satirlar}
         satirAnahtar={(r) => r.faturaNo}
         satirSinif={(r) => (r.durum === 'tam' ? undefined : (r.durum === 'iptal' || r.durum === 'logoda_yok') ? 'satir-krit' : 'satir-uyari')}
+        yukleniyor={yukleniyor && !satirlar.length}
         aramaEtiket="Fatura / istasyon / EPDK ara…"
         kaydirmaEsigi={20}
         ilkGosterim={60}

@@ -85,3 +85,25 @@ export function IkonSorun() {
     </svg>
   );
 }
+
+/** Yükleme — dönen daire (CSS `.spin` ile animasyonlu). aria-hidden; erişilebilir
+    metin çağıran tarafta (role=status). Boyut currentFontSize'a uyar (em). */
+export function IkonSpinner({ boyut = 16 }: { boyut?: number }) {
+  return (
+    <svg
+      className="spin"
+      width={boyut}
+      height={boyut}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.2}
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      {/* Soluk tam halka + belirgin yay → dönerken hareket okunur */}
+      <circle cx="12" cy="12" r="9" opacity="0.25" />
+      <path d="M21 12a9 9 0 0 0-9-9" />
+    </svg>
+  );
+}
