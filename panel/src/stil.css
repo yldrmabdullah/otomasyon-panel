@@ -432,6 +432,30 @@ th, td { text-align: left; padding: 10px var(--s-4); border-bottom: 1px solid va
 th { background: var(--panel-2); color: var(--soluk); font-weight: 600; font-size: var(--t-xs);
   text-transform: uppercase; letter-spacing: 0.05em; position: sticky; top: 0; z-index: 1; }
 th.sag, td.sag { text-align: right; }
+
+/* ── SOLA SABİT İLK KOLON ──────────────────────────────────────────────────
+   Geniş tablolarda (10+ kolon) yatay kaydırırken "hangi satır" bilgisi kaybolur.
+   İlk kolon (isim/fatura no = satır kimliği) sola sabitlenir → kaydırırken sabit
+   kalır. Başlık hücresi hem üste (top:0) hem sola (left:0) sabit → z-index 2.
+   Arka plan ZORUNLU (altından kayan hücreler görünmesin). */
+.tablo-sar th:first-child { left: 0; z-index: 2; }
+.tablo-sar td:first-child { position: sticky; left: 0; z-index: 1; background: var(--panel); }
+/* Sabit kolon içeriği (fatura no / isim) kesilmesin — okunur bir taban genişlik. */
+.tablo-sar th:first-child, .tablo-sar td:first-child { min-width: 148px; }
+/* İlk kolon 'ad-hucre' ise (uzun isim) sarabilir ama sabit sütunu şişirmesin. */
+.tablo-sar td:first-child.ad-hucre { max-width: 240px; white-space: normal; }
+/* Sabit kolonun sağ kenarına ince ayraç — içerik altından kaydığı belli olsun. */
+.tablo-sar td:first-child::after, .tablo-sar th:first-child::after {
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 1px; background: var(--cizgi); pointer-events: none;
+}
+/* Hover/vurgu satırlarında sabit hücrenin arka planı satırla aynı kalsın
+   (şeffaf olursa altından kayan hücreler sızar). Vurgulu satırlar aşağıda kendi
+   arka planlarını ayrıca veriyor (satir-biz / satir-alarmli). */
+tbody tr:hover td:first-child { background: var(--panel-2); }
+.satir-alarmli td:first-child { background: var(--krit-bg); }
+.satir-alarmli:hover td:first-child { background: color-mix(in srgb, var(--krit) 15%, var(--panel)); }
+.satir-biz td:first-child { background: var(--panel); }
+.satir-biz:hover td:first-child { background: var(--accent-bg); }
 /* Sıralanabilir başlık: gerçek buton (klavyeyle erişilebilir), th padding'i devreder */
 th.sirali { padding: 0; }
 .th-btn {
@@ -1252,3 +1276,35 @@ td.uyari-metin, .uyari-metin { color: var(--uyari); font-weight: 600; }
 .urun-toplam-tablo td { padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--cizgi); color: var(--metin); }
 .urun-toplam-tablo tbody tr:hover td { background: var(--panel-2); }
 .urun-toplam-genel td { border-top: 2px solid var(--cizgi-2); border-bottom: none; font-weight: 700; color: var(--metin); padding-top: var(--s-3); }
+
+/* ── TABLO RESPONSİVE + KAYDIRMA GÖSTERGESİ (2026-08-11) ───────────────────
+   Sorun: 10+ kolonlu tablolar (Mutabakat/Piyasa) geniş ekranda bile sağa taşıyor;
+   kullanıcı sağdaki kolonları görmek için yatay kaydırıyor ve hangi satırda
+   olduğunu kaybediyor. Çözüm: ilk kolon sabit (yukarıda) + mobilde kompakt +
+   sağ kenarda "daha var" gölgesi. */
+
+/* Sağ kenar kaydırma göstergesi — sağda görünmeyen kolon olduğunu belli eder.
+   Kaydırma sonuna gelince kaybolması için JS gerekir; sabit gölge basit ve yeterli. */
+.tablo-sar { position: relative; }
+.tablo-sar::before {
+  content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 24px; z-index: 3;
+  background: linear-gradient(to left, var(--panel-3), transparent);
+  pointer-events: none; opacity: .6;
+}
+
+/* Mobil (≤640px): hücreleri sıkılaştır, yazıyı küçült — daha çok kolon sığsın. */
+@media (max-width: 640px) {
+  th, td { padding: 8px 10px; }
+  td { font-size: var(--t-sm); }
+  th { font-size: 10px; }
+  .th-btn { padding: 8px 10px; min-height: 36px; }
+  /* İsim hücresi mobilde daha dar sarabilir (dikeyde uzasın, yatayı şişirmesin). */
+  .ad-hucre { max-width: 44vw; }
+  /* Özet kartlar: mobilde 2 sütun (zaten sarıyor ama netleştir). */
+  .kartlar { gap: var(--s-2); }
+  .kart { min-width: calc(50% - var(--s-2)); }
+  /* İndirme buton grubu mobilde tam satır. */
+  .mutabakat-indir { width: 100%; }
+  .mutabakat-indir .cikis-btn { flex: 1; }
+}
+

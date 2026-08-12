@@ -261,13 +261,13 @@ export function Mutabakat() {
         aktarGizle
         ustSag={
           <div className="mutabakat-indir">
-            <button type="button" className="cikis-btn" disabled={!satirlar.length}
+            <button type="button" className="temizle" disabled={!satirlar.length}
               onClick={() => csvIndir(dosyaAd, disaAktarBaslik, [...disaAktarSatir(), [], ...disaAktarOzet()])}>
-              CSV
+              ⭳ CSV
             </button>
-            <button type="button" className="cikis-btn" disabled={!satirlar.length}
+            <button type="button" className="temizle" disabled={!satirlar.length}
               onClick={() => xlsIndir(dosyaAd, disaAktarBaslik, disaAktarSatir(), disaAktarOzet())}>
-              Excel
+              ⭳ Excel
             </button>
           </div>
         }
