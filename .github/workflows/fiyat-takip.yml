@@ -1,0 +1,63 @@
+name: Bayi Fiyat Takibi (günlük)
+
+# POL "Tablo A5" (bayi pompa fiyatı) indirip parkoil.com.tr referans fiyatıyla (Petrol Ofisi
+# il/ilçe) karşılaştırır; referansın 0,20 ₺ üstünde satan bayiyi işaretler → panel Mevzuat →
+# "Fiyat Takibi". REKABET göstergesi (bayimiz pahalı satıyor mu), EPDK yasal tavan DEĞİL.
+#
+# ⚠️ Playwright (POL Excel indirmesi) → Actions'ta koşar. Referans fiyat public JSON
+# (parkoil.com.tr/data/fiyatlar-guncel.json) → runner erişebilir, repo bağımlılığı yok.
+# Salt-okuma. Bkz. docs/bilgi/pol-harita.md (A5 indirme akışı: ReportButton1).
+
+on:
+  # Her gün 07:15 UTC (TR 10:15) — akaryakıt zammı genelde gece yarısı geçerli olur,
+  # sabah bayi fiyatları oturmuş olur. Referans JSON da sabah güncellenir.
+  schedule:
+    - cron: '15 7 * * *'
+  workflow_dispatch:
+    inputs:
+      bas:
+        description: 'Başlangıç YYYY-MM-DD (boş: dün)'
+        required: false
+        default: ''
+      bit:
+        description: 'Bitiş YYYY-MM-DD (boş: bugün)'
+        required: false
+        default: ''
+
+concurrency:
+  group: fiyat-takip
+  cancel-in-progress: false
+
+jobs:
+  fiyat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Bağımlılıklar
+        run: npm ci
+
+      - name: Playwright chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Şema (idempotent)
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Fiyat çek + karşılaştır
+        run: npm run fiyat -- ${{ github.event.inputs.bas }} ${{ github.event.inputs.bit }}
+        env:
+          POL_URL: ${{ secrets.POL_URL }}
+          POL_KULLANICI: ${{ secrets.POL_KULLANICI }}
+          POL_SIFRE: ${{ secrets.POL_SIFRE }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # Referans fiyat kaynağı (public). Değişirse secret/variable ile override edilebilir.
+          FIYAT_REF_URL: ${{ vars.FIYAT_REF_URL }}

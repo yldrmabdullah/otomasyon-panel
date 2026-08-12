@@ -1182,3 +1182,47 @@ export async function uzlastirmaVerisi(p: Pool, bas?: string, bit?: string, epdk
     detay,
   };
 }
+
+/**
+ * Bayi FİYAT TAKİBİ — gün listesi + seçili günün bayi fiyatları (rekabet kontrolü).
+ * Kaynak: bayi_fiyat (fiyatKiyas aracı doldurur). Bayi fiyatı > parkoil.com.tr (PO) il
+ * referansı + eşik ise 'pahali'. EPDK yasal tavan DEĞİL — rekabet göstergesi.
+ * `gun` verilmezse en güncel gün.
+ */
+export async function fiyatVerisi(p: Pool, gun?: string) {
+  const gunler = await p.query(
+    `SELECT gun, count(*)::int kayit,
+            count(*) filter (where durum='pahali')::int pahali,
+            max(ref_guncelleme) ref_guncelleme, max(guncelleme) cekim
+     FROM bayi_fiyat GROUP BY gun ORDER BY gun DESC LIMIT 60`,
+  );
+  if (gunler.rows.length === 0) return { gunler: [], secili: null, ozet: null, satirlar: [] };
+  const g = (v: unknown): string => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
+  const secili = gunler.rows.find((r) => g(r.gun) === gun) ?? gunler.rows[0];
+  const sG = g(secili.gun);
+
+  const satirlar = await p.query(
+    `SELECT epdk_kod, ist_kod, istasyon, bolge, il, urun, urun_ham,
+            bayi_fiyat, ref_fiyat, fark, durum
+     FROM bayi_fiyat WHERE gun = $1
+     ORDER BY (durum='pahali') DESC, fark DESC NULLS LAST, istasyon`,
+    [sG],
+  );
+  return {
+    gunler: gunler.rows.map((r) => ({ gun: g(r.gun), kayit: Number(r.kayit), pahali: Number(r.pahali) })),
+    secili: sG,
+    ozet: {
+      gun: sG, kayit: Number(secili.kayit), pahali: Number(secili.pahali),
+      refGuncelleme: secili.ref_guncelleme ? g(secili.ref_guncelleme) : null,
+      cekim: secili.cekim,
+      // Referans fiyat kaç gün eski (bayatsa panelde uyarı gösterilir)
+      refYas: secili.ref_guncelleme ? Math.round((new Date(sG).getTime() - new Date(g(secili.ref_guncelleme)).getTime()) / 864e5) : null,
+    },
+    satirlar: satirlar.rows.map((r) => ({
+      epdk: r.epdk_kod, istKod: r.ist_kod, istasyon: r.istasyon, bolge: r.bolge, il: r.il,
+      urun: r.urun, urunHam: r.urun_ham,
+      bayiFiyat: Number(r.bayi_fiyat), refFiyat: r.ref_fiyat == null ? null : Number(r.ref_fiyat),
+      fark: r.fark == null ? null : Number(r.fark), durum: r.durum,
+    })),
+  };
+}

@@ -3,6 +3,7 @@
 import { Sekmeler } from './Sekme.js';
 import { Mutabakat } from './Mutabakat.js';
 import { Uzlastirma } from './Uzlastirma.js';
+import { Fiyat } from './Fiyat.js';
 
 interface Konu {
   baslik: string;
@@ -255,6 +256,7 @@ export function Mevzuat() {
       tanimlar={[
         { id: 'uzlastirma', ad: 'Tank Uzlaştırma', icerik: () => <Uzlastirma /> },
         { id: 'mutabakat', ad: 'A3 ↔ Logo Mutabakatı', icerik: () => <Mutabakat /> },
+        { id: 'fiyat', ad: 'Fiyat Takibi', icerik: () => <Fiyat /> },
         { id: 'bilgi', ad: 'Mevzuat Bilgisi', icerik: () => <MevzuatBilgi /> },
       ]}
     />
