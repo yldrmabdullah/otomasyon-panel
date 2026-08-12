@@ -442,8 +442,9 @@ th.sag, td.sag { text-align: right; }
 .tablo-sar td:first-child { position: sticky; left: 0; z-index: 1; background: var(--panel); }
 /* Sabit kolon içeriği (fatura no / isim) kesilmesin — okunur bir taban genişlik. */
 .tablo-sar th:first-child, .tablo-sar td:first-child { min-width: 148px; }
-/* İlk kolon 'ad-hucre' ise (uzun isim) sarabilir ama sabit sütunu şişirmesin. */
-.tablo-sar td:first-child.ad-hucre { max-width: 240px; white-space: normal; }
+/* İlk kolon 'ad-hucre' ise (uzun isim) TEK satır + ellipsis — sabit sütunu şişirmesin
+   ve satır yüksekliği sabit kalsın (tam ad detay/CSV'de var). */
+.tablo-sar td:first-child.ad-hucre { max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Sabit kolonun sağ kenarına ince ayraç — içerik altından kaydığı belli olsun. */
 .tablo-sar td:first-child::after, .tablo-sar th:first-child::after {
   content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 1px; background: var(--cizgi); pointer-events: none;
@@ -470,7 +471,7 @@ th.sirali.sag .th-btn { justify-content: flex-end; }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover td { background: var(--panel-2); }
 td.soluk { color: var(--soluk); }
-.ad-hucre { font-weight: 500; max-width: min(380px, 46vw); white-space: normal; }
+.ad-hucre { font-weight: 500; max-width: min(280px, 32vw); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .not-hucre { max-width: min(320px, 40vw); white-space: normal; font-size: var(--t-sm); line-height: 1.4; }
 .bos { text-align: center; color: var(--soluk-2); padding: var(--s-7); }
 
@@ -1344,3 +1345,30 @@ td.uyari-metin, .uyari-metin { color: var(--uyari); font-weight: 600; }
 td.sag .iskelet-cubuk { margin-left: auto; width: 60%; }
 .iskelet-satir td:first-child .iskelet-cubuk { width: 85%; }
 @media (prefers-reduced-motion: reduce) { .iskelet-cubuk { animation: none; } }
+
+/* ── TABLO OKUNABİLİRLİK GEÇİŞİ (2026-08-12, kullanıcı: "izlemesi çok zor") ──── */
+
+/* Uzun bayi ünvanları satırı 4-5 satıra şişiriyordu → 2 satırda kes. Tam ad
+   detayda + CSV/Excel'de zaten var; tabloda tarama hızı önce gelir. */
+
+/* Hücreler dikey ortalı + sayılar hizalı (tabular) → sütunlar taranabilir. */
+td { vertical-align: middle; font-variant-numeric: tabular-nums; }
+
+/* Vurgulu satırlarda SABİT İLK KOLON satırla AYNI renkte olsun. Yarı saydam
+   --krit-bg sticky hücrede iki sorun yaratıyordu: (1) ilk kolon satırdan farklı
+   görünüyordu (tutarsız), (2) yatay kaydırmada altından kayan içerik sızıyordu.
+   → opak karışım. */
+.satir-krit td:first-child { background: color-mix(in srgb, var(--krit) 14%, var(--panel)); }
+.satir-krit:hover td:first-child { background: color-mix(in srgb, var(--krit) 20%, var(--panel)); }
+.satir-uyari td:first-child { background: color-mix(in srgb, var(--uyari) 12%, var(--panel)); }
+.satir-uyari:hover td:first-child { background: color-mix(in srgb, var(--uyari) 18%, var(--panel)); }
+
+/* Buton grubu (CSV/Excel/temizle) — dokunulabilir boy + ikon hizası. */
+.temizle { min-height: 34px; display: inline-flex; align-items: center; gap: 5px; }
+
+/* Detay paneli tablosu mobilde kendi içinde kaydırılır (sayfa taşmaz). */
+.uzlas-detay .tablo-sar { overflow-x: auto; }
+@media (max-width: 640px) {
+  .uzlas-detay { padding: var(--s-3); }
+  .uzlas-detay-bas h3 { font-size: var(--t-md); }
+}

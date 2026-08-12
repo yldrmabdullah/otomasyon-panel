@@ -105,6 +105,10 @@ function oku(yol: string): Satir[] {
   if (bas < 0) throw new Error('Uzlaştırma başlık satırı bulunamadı');
   return rows.slice(bas + 1)
     .filter(r => String(r?.[1] ?? '').startsWith('BAY'))
+    // ⚠️ LPG İZLENMİYOR (kullanıcı kararı 2026-08-12): Parkoil LPG dağıtımı yapmıyor,
+    // LPG tankları bayinin başka tedarikçisinden dolar → bizim mutabakatta her zaman
+    // "satış var dolum yok" sahte alarmı üretir (EFECAN LPG T6: 208.640 lt, −%100).
+    .filter(r => !/lpg/i.test(String(r?.[6] ?? '')))
     .map(r => ({
       epdk: String(r[1]).trim(), ist: String(r[3] ?? '').trim(), istKod: String(r[2] ?? '').trim(),
       mintika: String(r[4] ?? '').trim(), bolge: String(r[5] ?? '').trim(), urun: String(r[6] ?? '').trim(), tank: String(r[7] ?? '').trim(),

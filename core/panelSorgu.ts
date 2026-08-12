@@ -1073,10 +1073,24 @@ export async function a3LogoVerisi(p: Pool, donem?: string) {
  * Bayi oranı AĞIRLIKLI: Σfark/Σsatış (basit ortalama yanlış olurdu).
  */
 export async function uzlastirmaVerisi(p: Pool, bas?: string, bit?: string, epdk?: string) {
+  // ⚠️ LPG İZLENMİYOR (kullanıcı kararı 2026-08-12): Parkoil LPG dağıtmıyor; LPG tankı
+  // başka tedarikçiden dolar → "satış var dolum yok" sahte alarmı. TÜM sorgular hariç
+  // tutar. Aralık özetleri de bu yüzden uzlastirma_donem'den DEĞİL (LPG'li yazılmış
+  // olabilir), satırlardan CANLI hesaplanır — eski çekimler bile doğru görünür.
+  const LPG_HARIC = `urun NOT ILIKE '%lpg%'`;
+
   const araliklar = await p.query(
-    `SELECT donem_bas, donem_bit, ad, bayi_sayisi, tank_sayisi, sorunlu_bayi,
-            toplam_dolum, toplam_satis, cekim_zamani
-     FROM uzlastirma_donem ORDER BY donem_bas DESC, donem_bit DESC`,
+    `SELECT u.donem_bas, u.donem_bit, d.ad, d.cekim_zamani,
+            count(distinct u.epdk_kod)::int bayi_sayisi,
+            count(*)::int tank_sayisi,
+            count(distinct u.epdk_kod) filter (where u.durum='oran_asim')::int sorunlu_bayi,
+            round(sum(u.b_dolum))::numeric toplam_dolum,
+            round(sum(u.c_satis))::numeric toplam_satis
+     FROM uzlastirma u
+     JOIN uzlastirma_donem d ON d.donem_bas=u.donem_bas AND d.donem_bit=u.donem_bit
+     WHERE ${LPG_HARIC}
+     GROUP BY u.donem_bas, u.donem_bit, d.ad, d.cekim_zamani
+     ORDER BY u.donem_bas DESC, u.donem_bit DESC`,
   );
   if (araliklar.rows.length === 0) return { araliklar: [], secili: null, ozet: null, bayiler: [], detay: null };
 
@@ -1097,7 +1111,7 @@ export async function uzlastirmaVerisi(p: Pool, bas?: string, bit?: string, epdk
             count(*)::int tank_sayisi,
             count(*) filter (where durum='oran_asim')::int asim_tank,
             count(*) filter (where durum='kalib_degisti')::int kalib_tank
-     FROM uzlastirma WHERE donem_bas=$1 AND donem_bit=$2
+     FROM uzlastirma WHERE donem_bas=$1 AND donem_bit=$2 AND ${LPG_HARIC}
      GROUP BY epdk_kod
      ORDER BY (count(*) filter (where durum='oran_asim') > 0) DESC, abs(sum(e_fark)) DESC`,
     [sB, sE],
@@ -1109,7 +1123,7 @@ export async function uzlastirmaVerisi(p: Pool, bas?: string, bit?: string, epdk
     const d = await p.query(
       `SELECT ist_kod, istasyon, urun, tank_no, a_basi, b_dolum, c_satis, d_sonu, e_fark, f_oran,
               kalib_ilk, kalib_son, durum
-       FROM uzlastirma WHERE donem_bas=$1 AND donem_bit=$2 AND epdk_kod=$3
+       FROM uzlastirma WHERE donem_bas=$1 AND donem_bit=$2 AND epdk_kod=$3 AND ${LPG_HARIC}
        ORDER BY (durum='oran_asim') DESC, abs(e_fark) DESC`,
       [sB, sE, epdk],
     );

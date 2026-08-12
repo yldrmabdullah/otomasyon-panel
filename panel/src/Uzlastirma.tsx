@@ -36,7 +36,11 @@ const DURUM: Record<string, { ad: string; sinif: string }> = {
   satis_yok: { ad: 'Satış yok', sinif: 'soluk' },
 };
 const lt = (v: number | null | undefined) => v == null ? '—' : v.toLocaleString('tr-TR', { maximumFractionDigits: 0 }) + ' lt';
-const pct = (v: number | null | undefined) => v == null ? '—' : '%' + v.toLocaleString('tr-TR', { maximumFractionDigits: 2 });
+/** Oran gösterimi — satış EPDK eşiğinin (288 lt) altındaysa oran matematiksel olarak
+ *  anlamsız (9 lt satışta −9 lt fark = "%−101" gibi saçma değerler) → '—' gösterilir.
+ *  Durum sınıflandırması zaten |fark|>288 şartı arıyor; bu yalnız GÖSTERİM düzeltmesi. */
+const pct = (v: number | null | undefined, satis?: number) =>
+  v == null || (satis != null && satis < 288) ? '—' : '%' + v.toLocaleString('tr-TR', { maximumFractionDigits: 2 });
 
 export function Uzlastirma() {
   const [aralik, setAralik] = useState<{ bas: string; bit: string } | null>(null);
@@ -53,9 +57,10 @@ export function Uzlastirma() {
     },
     { id: 'bolge', ad: 'Bölge', varsayilan: true, sinif: 'soluk', hucre: (b) => b.bolge || <Bos />, ara: (b) => b.bolge ?? '', sirala: (b) => b.bolge ?? '' },
     { id: 'mintika', ad: 'Mıntıka', varsayilan: false, sinif: 'soluk', hucre: (b) => b.mintika || <Bos />, ara: (b) => b.mintika ?? '' },
+    { id: 'basi', ad: 'Açılış Stok', varsayilan: true, sinif: 'sag mono soluk', hucre: (b) => lt(b.aBasi), sirala: (b) => b.aBasi },
     { id: 'dolum', ad: 'Aldığı (Dolum)', varsayilan: true, sinif: 'sag mono', hucre: (b) => lt(b.bDolum), sirala: (b) => b.bDolum },
     { id: 'satis', ad: 'Sattığı (Pompa)', varsayilan: true, sinif: 'sag mono', hucre: (b) => lt(b.cSatis), sirala: (b) => b.cSatis },
-    { id: 'sonu', ad: 'Kalan Stok', varsayilan: true, sinif: 'sag mono', hucre: (b) => lt(b.dSonu), sirala: (b) => b.dSonu },
+    { id: 'sonu', ad: 'Kapanış Stok', varsayilan: true, sinif: 'sag mono', hucre: (b) => lt(b.dSonu), sirala: (b) => b.dSonu },
     {
       id: 'fark', ad: 'Fark', varsayilan: true, sinif: 'sag mono', sirala: (b) => Math.abs(b.eFark),
       hucre: (b) => (b.eFark > 0 ? '+' : '') + b.eFark.toLocaleString('tr-TR', { maximumFractionDigits: 0 }),
@@ -63,7 +68,7 @@ export function Uzlastirma() {
     },
     {
       id: 'oran', ad: 'Oran', varsayilan: true, sinif: 'sag mono', sirala: (b) => Math.abs(b.fOran ?? 0),
-      hucre: (b) => pct(b.fOran), hucreSinif: (b) => (b.durum === 'oran_asim' ? 'krit' : undefined),
+      hucre: (b) => pct(b.fOran, b.cSatis), hucreSinif: (b) => (b.durum === 'oran_asim' ? 'krit' : undefined),
     },
     {
       id: 'durum', ad: 'Durum', varsayilan: true, sabit: true, sirala: (b) => (b.durum === 'oran_asim' ? 0 : 1),
@@ -197,7 +202,7 @@ export function Uzlastirma() {
                         <td className="sag mono">{lt(t.cSatis)}</td>
                         <td className="sag mono">{lt(t.dSonu)}</td>
                         <td className={`sag mono ${t.durum === 'oran_asim' ? 'krit' : ''}`}>{t.eFark > 0 ? '+' : ''}{t.eFark.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}</td>
-                        <td className={`sag mono ${t.durum === 'oran_asim' ? 'krit' : ''}`}>{pct(t.fOran)}</td>
+                        <td className={`sag mono ${t.durum === 'oran_asim' ? 'krit' : ''}`}>{pct(t.fOran, t.cSatis)}</td>
                         <td className={`sag mono ${kalibDeg ? 'uyari' : 'soluk'}`}>{t.kalibIlk == null ? '—' : `${t.kalibIlk}→${t.kalibSon}`}</td>
                         <td><span className={`durum-rozet ${d.sinif}`}>{d.ad}</span></td>
                       </tr>
