@@ -1064,3 +1064,90 @@ export async function a3LogoVerisi(p: Pool, donem?: string) {
     })),
   };
 }
+
+/**
+ * Tank Uzlaştırma (EPDK stok mutabakatı) — tarih aralığı listesi + seçili aralığın
+ * BAYİ ÖZETİ (üst tablo) + istenirse tek bayinin TANK DETAYI.
+ * Kaynak: uzlastirma / uzlastirma_donem (uzlasCek aracı doldurur).
+ * Formül: Fark=(A+B−C)−D, Oran=(E/C)*100. EPDK limiti |oran|>%3 & |fark|>288 lt.
+ * Bayi oranı AĞIRLIKLI: Σfark/Σsatış (basit ortalama yanlış olurdu).
+ */
+export async function uzlastirmaVerisi(p: Pool, bas?: string, bit?: string, epdk?: string) {
+  const araliklar = await p.query(
+    `SELECT donem_bas, donem_bit, ad, bayi_sayisi, tank_sayisi, sorunlu_bayi,
+            toplam_dolum, toplam_satis, cekim_zamani
+     FROM uzlastirma_donem ORDER BY donem_bas DESC, donem_bit DESC`,
+  );
+  if (araliklar.rows.length === 0) return { araliklar: [], secili: null, ozet: null, bayiler: [], detay: null };
+
+  // pg DATE'i ortamına göre string ('2026-07-01') VEYA Date döndürebilir → güvenli YYYY-MM-DD.
+  const gun = (v: unknown): string => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
+  const secili = araliklar.rows.find((r) => gun(r.donem_bas) === bas && gun(r.donem_bit) === bit)
+    ?? araliklar.rows[0];
+  const sB = gun(secili.donem_bas);
+  const sE = gun(secili.donem_bit);
+
+  // Bayi özet: EPDK bazında topla, ağırlıklı oran, sorunlu tank sayısı, durum.
+  const bayiler = await p.query(
+    `SELECT epdk_kod, max(istasyon) istasyon, max(bolge) bolge, max(mintika) mintika,
+            round(sum(a_basi))::numeric a_basi, round(sum(b_dolum))::numeric b_dolum,
+            round(sum(c_satis))::numeric c_satis, round(sum(d_sonu))::numeric d_sonu,
+            round(sum(e_fark))::numeric e_fark,
+            round(sum(e_fark)/nullif(sum(c_satis),0)*100, 2) f_oran,
+            count(*)::int tank_sayisi,
+            count(*) filter (where durum='oran_asim')::int asim_tank,
+            count(*) filter (where durum='kalib_degisti')::int kalib_tank
+     FROM uzlastirma WHERE donem_bas=$1 AND donem_bit=$2
+     GROUP BY epdk_kod
+     ORDER BY (count(*) filter (where durum='oran_asim') > 0) DESC, abs(sum(e_fark)) DESC`,
+    [sB, sE],
+  );
+
+  // İstenirse tek bayinin tank detayı (satıra tıklayınca).
+  let detay = null;
+  if (epdk) {
+    const d = await p.query(
+      `SELECT ist_kod, istasyon, urun, tank_no, a_basi, b_dolum, c_satis, d_sonu, e_fark, f_oran,
+              kalib_ilk, kalib_son, durum
+       FROM uzlastirma WHERE donem_bas=$1 AND donem_bit=$2 AND epdk_kod=$3
+       ORDER BY (durum='oran_asim') DESC, abs(e_fark) DESC`,
+      [sB, sE, epdk],
+    );
+    detay = {
+      epdk,
+      satirlar: d.rows.map((r) => ({
+        istKod: r.ist_kod, istasyon: r.istasyon, urun: r.urun, tankNo: r.tank_no,
+        aBasi: Number(r.a_basi), bDolum: Number(r.b_dolum), cSatis: Number(r.c_satis), dSonu: Number(r.d_sonu),
+        eFark: Number(r.e_fark), fOran: r.f_oran == null ? null : Number(r.f_oran),
+        kalibIlk: r.kalib_ilk == null ? null : Number(r.kalib_ilk), kalibSon: r.kalib_son == null ? null : Number(r.kalib_son),
+        durum: r.durum,
+      })),
+    };
+  }
+
+  return {
+    araliklar: araliklar.rows.map((r) => ({
+      bas: gun(r.donem_bas), bit: gun(r.donem_bit),
+      ad: r.ad, bayiSayisi: Number(r.bayi_sayisi), sorunluBayi: Number(r.sorunlu_bayi),
+    })),
+    secili: { bas: sB, bit: sE },
+    ozet: {
+      bas: sB, bit: sE, ad: secili.ad,
+      bayiSayisi: Number(secili.bayi_sayisi), tankSayisi: Number(secili.tank_sayisi),
+      sorunluBayi: Number(secili.sorunlu_bayi),
+      toplamDolum: Number(secili.toplam_dolum), toplamSatis: Number(secili.toplam_satis),
+      cekimZamani: secili.cekim_zamani,
+    },
+    bayiler: bayiler.rows.map((r) => {
+      const asim = Number(r.asim_tank) > 0;
+      return {
+        epdk: r.epdk_kod, istasyon: r.istasyon, bolge: r.bolge, mintika: r.mintika,
+        aBasi: Number(r.a_basi), bDolum: Number(r.b_dolum), cSatis: Number(r.c_satis), dSonu: Number(r.d_sonu),
+        eFark: Number(r.e_fark), fOran: r.f_oran == null ? null : Number(r.f_oran),
+        tankSayisi: Number(r.tank_sayisi), asimTank: Number(r.asim_tank), kalibTank: Number(r.kalib_tank),
+        durum: asim ? 'oran_asim' : 'uygun',
+      };
+    }),
+    detay,
+  };
+}

@@ -2,6 +2,7 @@
 // İçerik docs/bilgi/epdk-mutabakat.md bilgi tabanından. DOĞRULANMASI GEREK = Parkoil teyidi bekliyor.
 import { Sekmeler } from './Sekme.js';
 import { Mutabakat } from './Mutabakat.js';
+import { Uzlastirma } from './Uzlastirma.js';
 
 interface Konu {
   baslik: string;
@@ -252,6 +253,7 @@ export function Mevzuat() {
     <Sekmeler
       anahtar="mevzuat"
       tanimlar={[
+        { id: 'uzlastirma', ad: 'Tank Uzlaştırma', icerik: () => <Uzlastirma /> },
         { id: 'mutabakat', ad: 'A3 ↔ Logo Mutabakatı', icerik: () => <Mutabakat /> },
         { id: 'bilgi', ad: 'Mevzuat Bilgisi', icerik: () => <MevzuatBilgi /> },
       ]}

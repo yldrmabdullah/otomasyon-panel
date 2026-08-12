@@ -43,3 +43,52 @@ CREATE TABLE IF NOT EXISTS mutabakat_a3_donem (
   logo_toplam_litre NUMERIC NOT NULL DEFAULT 0,
   cekim_zamani  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ── TANK UZLAŞTIRMA (EPDK stok mutabakatı) — POL Tank Uzlaştırma Raporu ──────
+-- Formül (POL ekranı + Excel ile doğrulandı 2026-08-11): Fark = (A + B − C) − D,
+-- Oran = (Fark/C)*100. A=Dönem Başı Stok, B=Dolum, C=Pompa Satış, D=Dönem Sonu Stok.
+-- EPDK limiti |Oran| ≤ %3 (ve mutlak 288 lt — 1240 kararı). Kırılım: bayi×ürün×tank.
+-- Tarih ARALIĞI anahtar (A3'te ay idi; burada serbest başlangıç–bitiş).
+-- İdempotent. Kaynak: POL TankUzlastirma.aspx (dtpTarih2 Date1/Date2).
+
+CREATE TABLE IF NOT EXISTS uzlastirma (
+  donem_bas    DATE NOT NULL,          -- aralık başlangıcı
+  donem_bit    DATE NOT NULL,          -- aralık bitişi
+  epdk_kod     TEXT NOT NULL,          -- BAY/939-82/...
+  istasyon     TEXT,
+  ist_kod      TEXT,
+  bolge        TEXT,
+  mintika      TEXT,
+  urun         TEXT NOT NULL,          -- Mtrn / K95 / ...
+  tank_no      TEXT NOT NULL,
+  a_basi       NUMERIC,                -- Dönem Başı Stok (lt)
+  b_dolum      NUMERIC,                -- Dolum Miktarı (lt) = bizden aldığı
+  c_satis      NUMERIC,                -- Pompa Satış (lt) = sattığı
+  d_sonu       NUMERIC,                -- Dönem Sonu Stok (lt) = kalan (fiziksel)
+  e_fark       NUMERIC,                -- (A+B−C)−D
+  f_oran       NUMERIC,                -- (E/C)*100
+  kalib_ilk    NUMERIC,                -- İlk kalibrasyon %
+  kalib_son    NUMERIC,                -- Son kalibrasyon %
+  durum        TEXT NOT NULL,          -- 'uygun' | 'oran_asim' | 'kalib_degisti' | 'satis_yok'
+  guncelleme   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- ⚠️ ist_kod anahtarda: bir bayinin (aynı EPDK) BİRDEN ÇOK istasyonu olabilir
+  -- (FULYAKIT: 210114 ana + 210114100 köy pompası, aynı ürün+tank no) → 2026-08-11.
+  PRIMARY KEY (donem_bas, donem_bit, epdk_kod, ist_kod, urun, tank_no)
+);
+CREATE INDEX IF NOT EXISTS ix_uzlas_aralik ON uzlastirma (donem_bas, donem_bit);
+CREATE INDEX IF NOT EXISTS ix_uzlas_bayi   ON uzlastirma (donem_bas, donem_bit, epdk_kod);
+CREATE INDEX IF NOT EXISTS ix_uzlas_durum  ON uzlastirma (donem_bas, donem_bit, durum);
+
+-- Çekilen aralıkların özeti (panel dropdown + üst kartlar).
+CREATE TABLE IF NOT EXISTS uzlastirma_donem (
+  donem_bas    DATE NOT NULL,
+  donem_bit    DATE NOT NULL,
+  ad           TEXT,                   -- '2026 Temmuz' ya da '01.07–31.07.2026'
+  bayi_sayisi  INT NOT NULL DEFAULT 0,
+  tank_sayisi  INT NOT NULL DEFAULT 0,
+  sorunlu_bayi INT NOT NULL DEFAULT 0, -- ±%3 aşan en az 1 tankı olan bayi
+  toplam_dolum NUMERIC NOT NULL DEFAULT 0,
+  toplam_satis NUMERIC NOT NULL DEFAULT 0,
+  cekim_zamani TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (donem_bas, donem_bit)
+);

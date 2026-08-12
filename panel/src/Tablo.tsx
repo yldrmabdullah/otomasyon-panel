@@ -43,6 +43,9 @@ interface TabloProps<T> {
   satirlar: T[];
   satirAnahtar: (satir: T, i: number) => string;
   satirSinif?: (satir: T) => string | undefined;
+  /** Verilirse satır tıklanabilir olur (master-detail açma vb.). Satır butona
+   *  dönüşmez ama cursor+hover+Enter/Space ile erişilebilir. */
+  satirTikla?: (satir: T) => void;
   bosMesaj?: string;
   /** Arama kutusu göster. Kolonların `ara` fonksiyonlarını tarar. */
   aramaEtiket?: string;
@@ -112,6 +115,7 @@ export function Tablo<T>({
   satirlar,
   satirAnahtar,
   satirSinif,
+  satirTikla,
   bosMesaj = 'Kayıt yok.',
   aramaEtiket,
   kaydirmaEsigi = 25,
@@ -361,7 +365,14 @@ export function Tablo<T>({
           </thead>
           <tbody>
             {gosterilen.map((s, i) => (
-              <tr key={satirAnahtar(s, i)} className={satirSinif?.(s)}>
+              <tr
+                key={satirAnahtar(s, i)}
+                className={[satirSinif?.(s), satirTikla ? 'satir-tiklanir' : undefined].filter(Boolean).join(' ') || undefined}
+                onClick={satirTikla ? () => satirTikla(s) : undefined}
+                tabIndex={satirTikla ? 0 : undefined}
+                role={satirTikla ? 'button' : undefined}
+                onKeyDown={satirTikla ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); satirTikla(s); } } : undefined}
+              >
                 {gorunur.map((k) => (
                   <td key={k.id} className={[k.sinif, k.hucreSinif?.(s)].filter(Boolean).join(' ') || undefined}>
                     {k.hucre(s)}

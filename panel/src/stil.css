@@ -1308,3 +1308,14 @@ td.uyari-metin, .uyari-metin { color: var(--uyari); font-weight: 600; }
   .mutabakat-indir .cikis-btn { flex: 1; }
 }
 
+
+/* ── Tıklanabilir satır (master-detail: Uzlaştırma bayi→tank) ── */
+.satir-tiklanir { cursor: pointer; }
+.satir-tiklanir:hover td { background: var(--accent-bg); }
+.satir-tiklanir:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* ── Uzlaştırma tank detayı ── */
+.uzlas-detay { margin-top: var(--s-5); background: var(--panel); border: 1px solid var(--accent-cizgi); border-radius: var(--r); padding: var(--s-4) var(--s-5); box-shadow: var(--golge); }
+.uzlas-detay-bas { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--s-3); gap: var(--s-3); }
+.uzlas-detay-bas h3 { margin: 0; font-size: var(--t-lg); font-weight: 700; color: var(--metin); }
+.uzlas-detay .tablo-sar { box-shadow: none; }
