@@ -46,7 +46,15 @@ export async function tazelikVerisi(p: Pool) {
       ('dolum',       'Tank dolumları',    (SELECT max(dolum_baslama) FROM tank_dolum),  1440),
       ('bayiler',     'EPDK bayi kütüğü',  (SELECT max(guncelleme) FROM bayiler_epdk),   2880),
       ('dagiticilar', 'EPDK dağıtıcılar',  (SELECT max(guncelleme) FROM dagiticilar),    2880),
-      ('snapshot',    'Piyasa snapshot',   (SELECT max(snapshot_gun)::timestamptz FROM bayi_snapshot), 2880)
+      ('snapshot',    'Piyasa snapshot',   (SELECT max(snapshot_gun)::timestamptz FROM bayi_snapshot), 2880),
+      -- ⚠️ 2026-08-13: bu üçü tazelik şeridinde YOKTU. Fiyat çekimi 13.08'de
+      -- cron hatasıyla çöktüğünde panel sessiz kaldı — kullanıcı bayat veriye
+      -- bakıp güncel sandı. İzlenmeyen kaynak = sessizce bayatlayan kaynak.
+      -- Eşikler cron sıklığına göre: fiyat günlük (2 gün tolerans), mutabakat ve
+      -- uzlaştırma AYLIK koşuyor (45 gün — ayın 2-3'ünde çekilir).
+      ('fiyat',       'Bayi fiyat takibi', (SELECT max(guncelleme) FROM bayi_fiyat),      2880),
+      ('mutabakat',   'A3 ↔ Logo kıyası',  (SELECT max(cekim_zamani) FROM mutabakat_a3_donem), 64800),
+      ('uzlastirma',  'Tank uzlaştırma',   (SELECT max(cekim_zamani) FROM uzlastirma_donem),   64800)
     ) t(anahtar, ad, son, esik_dk)
     ORDER BY son NULLS FIRST`);
 
