@@ -650,6 +650,39 @@ td.yok { color: var(--soluk-2); font-style: italic; }
 .tank-rozetler { display: inline-flex; gap: 5px; flex-wrap: wrap; }
 .tank-rozet { font-size: var(--t-xs); font-weight: 600; background: var(--uyari-bg); color: var(--uyari); padding: 2px 7px; border-radius: 4px; font-variant-numeric: tabular-nums; }
 
+/* ══ İKİ SÜTUN: ana içerik + yan panel ═════════════════════════════════════
+   Komuta ekranı dilinin ekran-içi karşılığı (mockup 2a/3a/3c). Ana iş solda
+   (tablo), destekleyici görsel sağda (grafik / harita / özet) — alt alta değil
+   YAN YANA, çünkü ikisi birlikte okunuyor: "hangi istasyon" + "ne kadar kötü".
+
+   Yan panel `position: sticky` DEĞİL: tablo kendi içinde kaydırılıyor
+   (.tablo-sar.kaydirmali), sayfa değil. İkisi birden kaydırılırsa hangi
+   kaydırmanın hangi alana ait olduğu belirsizleşir.
+
+   ⚠️ minmax(0,1fr): grid öğesinin varsayılan min-width'i `auto` — geniş tablo
+   sütunu şişirip yan paneli ezerdi. 0 tabanı tabloyu kendi kutusunda tutar. */
+.iki-sutun {
+  display: grid; grid-template-columns: minmax(0, 1fr) var(--yan-en, 330px);
+  gap: var(--s-4); align-items: start; margin-bottom: var(--s-5);
+}
+.iki-sutun > * { min-width: 0; }
+/* İki sütun düzeninde tabloya kalan genişlik ~950px'e iner (tek başınayken 1360px).
+   Uzun şirket unvanları ad kolonunu 280px'e kadar şişirip tabloyu 1600px'e
+   çıkarıyordu → gereksiz yatay kaydırma. Dar bağlamda ad kolonu kısıtlanır;
+   tam ad `title`'da ve CSV'de duruyor. */
+.iki-sutun .tablo-sar td:first-child,
+.iki-sutun .tablo-sar th:first-child { max-width: 200px; }
+.iki-sutun .tablo-sar td:first-child .hucre-kirp {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; overflow-wrap: anywhere;
+}
+/* Yan panelde birden fazla blok varsa aralarında nefes olsun. */
+.yan-panel { display: flex; flex-direction: column; gap: var(--s-4); }
+/* Dar ekranda yan panel ALTA iner — 330px + tablo yan yana sığmaz. */
+@media (max-width: 1100px) {
+  .iki-sutun { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* ══ MÜDAHALE KUYRUĞU (1c komuta ekranı) ═══════════════════════════════════
    Solda "ne bekliyor" listesi, sağda seçilenin detayı. Eski hâl: 23 alarm kartı
    ızgaraya yayılıyordu — göz nereye bakacağını bilmiyor, hiçbiri aksiyona
@@ -738,6 +771,8 @@ td.yok { color: var(--soluk-2); font-style: italic; }
 .mevzuat-uyari b { color: var(--metin); }
 .krit-metin { color: var(--krit); font-weight: 600; }
 .kural-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap: var(--s-3); }
+/* Yan panelde (380px) iki kart yan yana sıkışıyordu → alt alta. */
+.kural-grid.tek-sutun { grid-template-columns: minmax(0, 1fr); }
 .kural-kart { background: var(--panel); border: 1px solid var(--cizgi); border-top: 3px solid var(--marka); border-radius: var(--r); padding: var(--s-4) var(--s-5); box-shadow: var(--golge); }
 .kural-deger { font-size: var(--t-2xl); font-weight: 700; color: var(--metin); line-height: 1; letter-spacing: -0.02em; }
 .kural-deger span { font-size: var(--t-md); color: var(--soluk); font-weight: 500; }
@@ -1468,6 +1503,17 @@ td.uyari-metin, .uyari-metin { color: var(--uyari); font-weight: 600; }
 
 /* Ürün grubu toplamları — tablo altı özet */
 .urun-toplam { margin-top: var(--s-5); background: var(--panel); border: 1px solid var(--cizgi); border-radius: var(--r); padding: var(--s-4) var(--s-5); }
+/* SABİT ALTLIK (mockup 2b): 1.284 faturalık listede genel toplamı görmek için
+   sayfa sonuna kaydırmak gerekiyordu — oysa mutabakatın ASIL cevabı o rakam.
+   Sticky ile tablo kaydırılırken toplam ekranda kalır.
+   Üstten gölge: altlığın içeriğin ÜSTÜNDE durduğunu belli eder. */
+.urun-toplam.yapisik-alt {
+  position: sticky; bottom: 0; z-index: 5;
+  box-shadow: 0 -6px 18px -8px rgba(0,0,0,.45);
+  border-color: var(--cizgi-2);
+}
+/* Kısa ekranda sticky altlık görüntünün yarısını yerdi → normal akışa dön. */
+@media (max-height: 620px) { .urun-toplam.yapisik-alt { position: static; box-shadow: none; } }
 .urun-toplam-baslik { font-size: var(--t-lg); font-weight: 700; color: var(--metin); margin: 0 0 var(--s-3); }
 .urun-toplam-tablo { width: 100%; border-collapse: collapse; font-size: var(--t-md); }
 .urun-toplam-tablo th { text-align: left; color: var(--soluk); font-weight: 600; font-size: var(--t-sm); padding: var(--s-2) var(--s-3); border-bottom: 1px solid var(--cizgi-2); }

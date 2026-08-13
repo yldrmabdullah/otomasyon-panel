@@ -269,9 +269,12 @@ export function Mutabakat() {
         }
       />
 
-      {/* Ürün grubu kırılımında toplam — tablonun altında (footer yerine ayrı blok) */}
+      {/* Ürün grubu toplamları — mockup 2b: "toplamlar sabit altlıkta".
+          Uzun fatura listesinde toplamı görmek için sayfanın en altına kaydırmak
+          gerekiyordu; oysa mutabakatta asıl sorulan soru "genel fark ne kadar".
+          Sticky altlık: tablo kaydırılırken toplam ekranda kalır. */}
       {ozet && urunToplam.satir.length > 0 && (
-        <section className="urun-toplam" aria-label="Ürün grubu toplamları">
+        <section className="urun-toplam yapisik-alt" aria-label="Ürün grubu toplamları">
           <h3 className="urun-toplam-baslik">Ürün Grubu Toplamları · {ozet.ad}</h3>
           <table className="urun-toplam-tablo">
             <thead>

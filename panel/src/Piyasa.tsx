@@ -668,8 +668,43 @@ export function Piyasa() {
               {
                 id: 'konum',
                 ad: 'Rekabet Konumu',
+                // Mockup 3a: "harita ile tablo yan yana". Dört grafik alt alta
+                // dizilince sayfa 4 ekran boyu oluyordu ve harita ile yanındaki
+                // il listesi ASLA aynı anda görünmüyordu — oysa ikisi aynı soruyu
+                // cevaplıyor ("nerede güçlüyüz"). Harita solda, il yoğunluğu sağda.
                 icerik: () => (
                   <>
+                    <div className="iki-sutun">
+                      {(veri.haritaIl ?? veri.bolgesel).length > 0 && (
+                        <Harita
+                          veri={(veri.haritaIl ?? veri.bolgesel).map((b) => ({
+                            il: b.il,
+                            bizim: Number(b.bizim),
+                            toplam: Number(b.toplam),
+                          }))}
+                          olcu="bizim"
+                          baslik="Bayi Dağılımı — Harita"
+                          altBaslik="Koyu renk = çok bayimiz · bir il üzerine gelin ya da Tab ile gezin"
+                        />
+                      )}
+
+                      {/* Piyasa yoğunluğu ADET, aşağıdaki pazar payı YÜZDE. Aynı rampayı
+                          paylaşıyorlar; ayrımı çubuk formu taşıyor (ısı ızgarası değil)
+                          → "koyu kırmızı" iki farklı anlamda görünmüyor. */}
+                      {veri.ilDagilim.length > 0 && (
+                        <div className="yan-panel">
+                          <CubukYatay
+                            veri={veri.ilDagilim}
+                            ad={(x) => x.il}
+                            deger={(x) => Number(x.n)}
+                            baslik="Piyasa Yoğunluğu"
+                            altBaslik="En yoğun 12 il · tüm dağıtıcılar"
+                            limit={12}
+                          />
+                        </div>
+                      )}
+                    </div>
+
                     <CubukYatay
                       veri={veri.dagiticiBayiDagilim}
                       ad={(d) => (d.dagitim_sirketi === BIZ ? 'Turgut Dağıtım' : d.dagitim_sirketi)}
@@ -680,21 +715,6 @@ export function Piyasa() {
                       limit={12}
                     />
 
-                    {/* Coğrafi bakış — "hangi bölgede bayimiz var" sorusunun
-                        doğrudan cevabı. Gerçek il sınırları (haritaYollari.ts), dış bağımlılık yok. */}
-                    {(veri.haritaIl ?? veri.bolgesel).length > 0 && (
-                      <Harita
-                        veri={(veri.haritaIl ?? veri.bolgesel).map((b) => ({
-                          il: b.il,
-                          bizim: Number(b.bizim),
-                          toplam: Number(b.toplam),
-                        }))}
-                        olcu="bizim"
-                        baslik="Bayi Dağılımı — Harita"
-                        altBaslik="Koyu renk = çok bayimiz · bir il üzerine gelin ya da Tab ile gezin"
-                      />
-                    )}
-
                     {veri.bolgesel.length > 0 && (
                       <IsiIzgara
                         veri={veri.bolgesel}
@@ -704,20 +724,6 @@ export function Piyasa() {
                         baslik="Parkoil'in İl Bazında Pazar Payı"
                         altBaslik={`Bayimizin bulunduğu ${veri.bolgesel.length} il · koyu = yüksek pay`}
                         birim="%"
-                      />
-                    )}
-
-                    {/* Piyasa yoğunluğu ADET, üstteki pazar payı YÜZDE. Aynı rampayı
-                        paylaşıyorlar; ayrımı çubuk formu taşıyor (ısı ızgarası değil)
-                        → "koyu kırmızı" iki farklı anlamda görünmüyor. */}
-                    {veri.ilDagilim.length > 0 && (
-                      <CubukYatay
-                        veri={veri.ilDagilim}
-                        ad={(x) => x.il}
-                        deger={(x) => Number(x.n)}
-                        baslik="Piyasa Yoğunluğu — İl Bazında Toplam Bayi"
-                        altBaslik="En yoğun 20 il (tüm dağıtıcılar, tüm markalar)"
-                        limit={20}
                       />
                     )}
                   </>
