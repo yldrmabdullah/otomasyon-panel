@@ -11,6 +11,73 @@ import { IkonSpinner } from './ikon.js';
 
 export type ApiYanit<T> = T | { hata: string };
 
+/* ── TEMA ───────────────────────────────────────────────────────────────────
+   Tema seçimi App.tsx içinde gömülüydü ve kontrolü YALNIZ hesap menüsündeydi →
+   giriş ekranında hiç erişilemiyordu: kullanıcı henüz girmemişken temayı
+   değiştiremiyor, OS ayarına mahkum kalıyordu. Mantık buraya alındı, kontrol
+   hem girişte hem panelde kullanılıyor. Seçim localStorage'da, oturumdan bağımsız. */
+
+export type Tema = 'sistem' | 'light' | 'dark';
+export const TEMA_AD: Record<Tema, string> = { sistem: 'Oto', light: 'Açık', dark: 'Koyu' };
+/** Ekran okuyucu için tam ad — "Oto"/"Açık" tek başına ne olduğunu söylemiyor. */
+const TEMA_TAM: Record<Tema, string> = {
+  sistem: 'Sistem ayarını kullan',
+  light: 'Açık tema',
+  dark: 'Koyu tema',
+};
+
+function temaOku(): Tema {
+  try {
+    const k = localStorage.getItem('tema');
+    return k === 'light' || k === 'dark' ? k : 'sistem';
+  } catch {
+    return 'sistem'; // localStorage kapalıysa (gizli sekme kısıtı) çökmesin
+  }
+}
+
+/** Temayı <html data-theme> özniteliğine uygular ve localStorage'a yazar. */
+export function useTema() {
+  const [tema, setTema] = useState<Tema>(temaOku);
+  useEffect(() => {
+    if (tema === 'sistem') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', tema);
+    try {
+      localStorage.setItem('tema', tema);
+    } catch {
+      /* yoksay */
+    }
+  }, [tema]);
+  return { tema, setTema };
+}
+
+/** Üç durumlu tema düğmesi (Oto / Açık / Koyu). `sinif` ile bağlama uyarlanır. */
+export function TemaSecici({
+  tema,
+  setTema,
+  sinif = 'tema-secim',
+}: {
+  tema: Tema;
+  setTema: (t: Tema) => void;
+  sinif?: string;
+}) {
+  return (
+    <div className={sinif} role="group" aria-label="Renk teması">
+      {(['sistem', 'light', 'dark'] as Tema[]).map((t) => (
+        <button
+          key={t}
+          type="button"
+          aria-pressed={tema === t}
+          onClick={() => setTema(t)}
+          title={TEMA_TAM[t]}
+        >
+          {TEMA_AD[t]}
+          <span className="sr-only"> — {TEMA_TAM[t]}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function hataMi<T>(d: ApiYanit<T>): d is { hata: string } {
   return typeof d === 'object' && d !== null && 'hata' in d;
 }

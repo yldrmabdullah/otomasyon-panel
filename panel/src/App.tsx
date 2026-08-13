@@ -8,9 +8,9 @@ import { Giris } from './Giris.js';
 import { SifreDegistir } from './SifreDegistir.js';
 import { Kullanicilar } from './Kullanicilar.js';
 import { IkonIzleme, IkonMevzuat, IkonPiyasa, IkonOperasyon, IkonSorun, IkonKullanici } from './ikon.js';
+import { TemaSecici, useTema } from './ortak.js';
 
 type Modul = 'izleme' | 'operasyon' | 'sorun' | 'mevzuat' | 'piyasa' | 'kullanicilar';
-type Tema = 'sistem' | 'light' | 'dark';
 
 interface Oturum {
   kullanici: string;
@@ -29,8 +29,6 @@ const MODULLER: { id: Modul; ad: string; Ikon: () => ReactElement; alt: string; 
   { id: 'piyasa', ad: 'Piyasa', Ikon: IkonPiyasa, alt: 'Dağıtıcı & bayi' },
   { id: 'kullanicilar', ad: 'Kullanıcılar', Ikon: IkonKullanici, alt: 'Yetki yönetimi', adminMi: true },
 ];
-
-const TEMA_AD: Record<Tema, string> = { sistem: 'Oto', light: 'Açık', dark: 'Koyu' };
 
 /** Ad-soyaddan baş harfler (ray altındaki avatar). "Ahmet Yıldırım" → "AY". */
 function basHarfler(adSoyad: string | null, kullanici: string): string {
@@ -86,17 +84,9 @@ export function App() {
     setOturum(null);
   }
 
-  // Tema seçimi bir erişilebilirlik kontrolü: CSS'te data-theme override'ları
-  // vardı ama hiçbir yer set etmiyordu → kullanıcı OS ayarına mahkumdu.
-  const [tema, setTema] = useState<Tema>(() => {
-    const k = localStorage.getItem('tema');
-    return k === 'light' || k === 'dark' ? k : 'sistem';
-  });
-  useEffect(() => {
-    if (tema === 'sistem') document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme', tema);
-    localStorage.setItem('tema', tema);
-  }, [tema]);
+  // Tema seçimi bir erişilebilirlik kontrolü. Mantık ortak.tsx'te — giriş ekranı
+  // da aynı hook'u kullanıyor (kullanıcı girmeden önce de temayı değiştirebilsin).
+  const { tema, setTema } = useTema();
 
   // Modül değişince başlığa odaklan → ekran okuyucu yeni bölümü duyurur.
   useEffect(() => {
@@ -218,13 +208,7 @@ export function App() {
                 </span>
               </div>
 
-              <div className="kul-menu-tema" role="group" aria-label="Renk teması">
-                {(['sistem', 'light', 'dark'] as Tema[]).map((t) => (
-                  <button key={t} type="button" aria-pressed={tema === t} onClick={() => setTema(t)}>
-                    {TEMA_AD[t]}
-                  </button>
-                ))}
-              </div>
+              <TemaSecici tema={tema} setTema={setTema} sinif="kul-menu-tema" />
 
               <button
                 type="button"

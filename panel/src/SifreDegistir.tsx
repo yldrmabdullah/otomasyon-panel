@@ -1,6 +1,7 @@
 // Şifre değiştirme ekranı. İlk girişte ZORUNLU (sunucu `sifreDegistir: true` der),
 // sonra Ayarlar'dan isteğe bağlı.
 import { useState } from 'react';
+import { TemaSecici, useTema } from './ortak.js';
 
 export function SifreDegistir({
   zorunlu,
@@ -16,6 +17,9 @@ export function SifreDegistir({
   const [tekrar, setTekrar] = useState('');
   const [hata, setHata] = useState<string | null>(null);
   const [bekliyor, setBekliyor] = useState(false);
+  // İlk girişte ZORUNLU olarak burası açılıyor — panele hiç ulaşılmadan.
+  // Tema kontrolü olmazsa kullanıcı bu ekranda da OS ayarına mahkum.
+  const { tema, setTema } = useTema();
 
   async function gonder(e: React.FormEvent) {
     e.preventDefault();
@@ -43,6 +47,8 @@ export function SifreDegistir({
 
   return (
     <div className="giris-sar">
+      <TemaSecici tema={tema} setTema={setTema} sinif="giris-tema" />
+
       <form className="giris-kart" onSubmit={gonder}>
         <div className="giris-marka">
           <img className="marka-logo-img logo-koyu" src="/marka/parkoil-beyaz.png" alt="Parkoil" />

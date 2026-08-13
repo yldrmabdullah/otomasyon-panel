@@ -144,6 +144,8 @@ h1[tabindex='-1']:focus { outline: none; }
 .giris-sar {
   min-height: 100dvh; display: grid; place-items: center;
   padding: var(--s-5); background: var(--bg);
+  /* .giris-tema (absolute) buna göre konumlanır — yoksa sayfaya göre hizalanır. */
+  position: relative;
 }
 @supports not (height: 100dvh) { .giris-sar { min-height: 100vh; } }
 .giris-kart {
@@ -168,6 +170,32 @@ h1[tabindex='-1']:focus { outline: none; }
 .giris-btn:disabled { opacity: .5; cursor: default; }
 .giris-not { font-size: var(--t-xs); color: var(--soluk-2); margin: 0; line-height: 1.5; }
 @media (pointer: coarse) { .giris-btn, .giris-alan .arama { min-height: 44px; } }
+
+/* Giriş/şifre ekranında tema seçici — sağ üstte, kartın DIŞINDA.
+   NEDEN: tema kontrolü yalnız hesap menüsündeydi, o da girişten SONRA açılıyor.
+   Kullanıcı henüz girmemişken temayı değiştiremiyor, OS ayarına mahkum kalıyordu
+   (düşük görme kullanıcıları için gerçek bir erişilebilirlik engeli).
+   .giris-sar bir grid place-items:center — absolute konum akışı bozmaz. */
+.giris-tema {
+  position: absolute; top: var(--s-4); right: var(--s-4);
+  display: flex; gap: 2px; z-index: 10;
+}
+.giris-tema button {
+  background: var(--panel); border: 1px solid var(--cizgi); color: var(--soluk);
+  border-radius: 5px; padding: 6px 12px; cursor: pointer;
+  font-size: var(--t-xs); font-weight: 600;
+  transition: background .13s, color .13s, border-color .13s;
+}
+.giris-tema button:hover { color: var(--metin); border-color: var(--cizgi-2); }
+.giris-tema button[aria-pressed='true'] {
+  background: var(--accent-bg); color: var(--accent-2); border-color: var(--accent-cizgi);
+}
+@media (pointer: coarse) { .giris-tema button { min-height: 44px; padding: 6px 14px; } }
+/* Dar ekranda kartla çakışmasın: üstte ortalanır, kart aşağı iner. */
+@media (max-width: 480px) {
+  .giris-sar { align-content: start; padding-top: 64px; }
+  .giris-tema { top: var(--s-3); right: auto; left: 50%; transform: translateX(-50%); }
+}
 
 /* Sidebar dibinde kullanıcı + çıkış */
 .kenar-kullanici {
