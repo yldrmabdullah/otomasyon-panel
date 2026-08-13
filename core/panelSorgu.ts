@@ -233,11 +233,14 @@ export async function durumVerisi(p: Pool) {
                  ELSE 'bilinmiyor'
                END kategori,
                e.dagitim_sirketi rakip, e.iptal_aciklama, e.iptal_tarihi,
-               -- NE ZAMAN ayrıldı/geçti? Panel "Rakibe Geçti" diyordu ama tarihi
-               -- yoktu → "geçen hafta mı, iki yıl önce mi" ayırt edilemiyordu.
-               -- transferler tablosu dağıtıcı değişimini tespit ettiği GÜNÜ tutar
-               -- (EPDK kütüğü resmî geçiş tarihi vermiyor; elimizdeki en iyi değer bu).
-               -- Aynı bayide birden fazla kayıt olabilir → en SONuncusu alınır.
+               -- NE ZAMAN geçti? İKİ kaynak var, önem sırasıyla:
+               --  1) sozlesme_baslangic — bayinin YENİ dağıtıcıyla sözleşme tarihi.
+               --     EPDK kütüğünde duruyor ve GERÇEK geçiş tarihidir.
+               --  2) transferler.tespit_gun — bizim tespit günümüz. Yalnız
+               --     29.07.2026 sonrası kayıtlar var (izleme o gün başladı).
+               -- Önce 1 kullanılır; ilk sürümde yalnız 2'ye bakılıyordu ve
+               -- "tarih yok" deniyordu — oysa veri kütükte hazırdı (2026-08-13).
+               e.sozlesme_baslangic::text gecis_sozlesme,
                t.tespit_gun::text gecis_tespit
              FROM baglanti_durum b
              LEFT JOIN istasyonlar i ON i.istasyon_kod=b.istasyon_kod

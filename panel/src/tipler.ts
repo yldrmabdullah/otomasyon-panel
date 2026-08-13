@@ -28,9 +28,11 @@ export interface Baglanti {
   rakip: string | null;
   iptal_aciklama: string | null;
   iptal_tarihi: string | null;
-  /** Dağıtıcı değişiminin TESPİT edildiği gün (transferler.tespit_gun).
-   *  EPDK kütüğü resmî geçiş tarihi vermiyor; elimizdeki en iyi yaklaşım bu.
-   *  Eski sürüm API'den gelmeyebilir → opsiyonel. */
+  /** Yeni dağıtıcıyla SÖZLEŞME başlangıcı (bayiler_epdk.sozlesme_baslangic).
+   *  Gerçek geçiş tarihi budur — önce bu kullanılır. */
+  gecis_sozlesme?: string | null;
+  /** Dağıtıcı değişiminin bizim TESPİT ettiğimiz gün (transferler.tespit_gun).
+   *  Yalnız 29.07.2026 sonrası var; sözleşme tarihi yoksa yedek olarak kullanılır. */
   gecis_tespit?: string | null;
 }
 /** Tank anlık durumu. ŞU AN /api/durum'da GÖNDERİLMİYOR: UI'da tüketicisi yoktu

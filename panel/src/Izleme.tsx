@@ -44,6 +44,25 @@ function epdkKisa(kod: string | null | undefined): string {
   return m ? m[1] : '';
 }
 
+/**
+ * Rakibe geçiş tarihi — iki kaynaktan en güvenilir olanı.
+ *
+ *  1. `gecis_sozlesme` (bayiler_epdk.sozlesme_baslangic): bayinin YENİ dağıtıcıyla
+ *     sözleşme tarihi. GERÇEK geçiş tarihi budur, EPDK kütüğünden gelir.
+ *  2. `gecis_tespit` (transferler.tespit_gun): bizim fark ettiğimiz gün. Yalnız
+ *     29.07.2026 sonrası kayıt var, o yüzden yedek.
+ *
+ * ⚠️ İlk sürüm yalnız (2)'ye bakıyor ve bulamayınca "tarih yok (izleme öncesi)"
+ * diyordu — oysa (1) kütükte hazırdı. Kullanıcı yakaladı (2026-08-13). Ders:
+ * "veri yok" demeden önce TÜM kaynaklar kontrol edilmeli; yanlış "yok" bilgisi,
+ * eksik bilgiden daha zararlı çünkü aramayı durduruyor.
+ */
+function gecisTarihi(b: Baglanti | undefined): { gun: string; etiket: string } | null {
+  if (b?.gecis_sozlesme) return { gun: b.gecis_sozlesme, etiket: 'sözleşme' };
+  if (b?.gecis_tespit) return { gun: b.gecis_tespit, etiket: 'tespit' };
+  return null;
+}
+
 type Sekme = 'hepsi' | 'online' | 'kopuk' | 'rakibe' | 'kapandi' | 'alarmli';
 
 const SEKME_AD: Record<Sekme, string> = {
@@ -182,23 +201,19 @@ export function Izleme() {
                 <span aria-hidden="true">→ </span>
                 <span className="sr-only">Geçtiği dağıtıcı: </span>
                 {b.rakip}
-                {/* NE ZAMAN geçti — "Rakibe Geçti" tek başına geçen hafta mı iki
-                    yıl önce mi ayırt ettirmiyordu. transferler.tespit_gun = bizim
-                    tespit günümüz (EPDK resmî geçiş tarihi vermiyor).
-                    ⚠️ KAPSAM: transfer izleme 29.07.2026'da başladı; ondan ÖNCE
-                    geçenlerin kaydı yok. "—" yazıp boş bırakmak "yeni geçti"
-                    izlenimi verirdi, o yüzden sebebi açıkça yazılıyor. */}
-                <div className="alt-satir soluk">
-                  {b.gecis_tespit ? (
-                    <>
-                      <time dateTime={b.gecis_tespit}>{trTarih(b.gecis_tespit)}</time> tespit
-                    </>
-                  ) : (
-                    <span title="Transfer izleme 29.07.2026'da başladı — daha önce geçenlerin tarihi kayıtlı değil.">
-                      tarih yok (izleme öncesi)
-                    </span>
-                  )}
-                </div>
+                {/* NE ZAMAN geçti — iki kaynak, sözleşme tarihi önce (gerçek geçiş),
+                    tespit günü yedek (yalnız 29.07.2026 sonrası). Etiket hangi
+                    kaynağın kullanıldığını söyler: "sözleşme" kesin, "tespit"
+                    bizim fark ettiğimiz gün. */}
+                {(() => {
+                  const t = gecisTarihi(b);
+                  if (!t) return null;
+                  return (
+                    <div className="alt-satir soluk">
+                      <time dateTime={t.gun}>{trTarih(t.gun)}</time> {t.etiket}
+                    </div>
+                  );
+                })()}
               </>
             );
           if (kat === 'kapandi')
@@ -212,11 +227,21 @@ export function Izleme() {
                 ) : (
                   <Bos />
                 )}
-                {b?.iptal_tarihi && (
-                  <div className="alt-satir soluk">
-                    <time dateTime={b.iptal_tarihi}>{trTarih(b.iptal_tarihi)}</time> iptal
-                  </div>
-                )}
+                {/* 95 "Kapandı" kaydının 50'sinde EPDK lisansı hâlâ ONAYLANDI:
+                    ASIS bizim için pasif işaretlemiş ama bayi resmen kapanmamış.
+                    Onlarda iptal tarihi OLMAMASI doğru — sebebi yazılıyor ki
+                    "veri eksik" sanılmasın. */}
+                <div className="alt-satir soluk">
+                  {b?.iptal_tarihi ? (
+                    <>
+                      <time dateTime={b.iptal_tarihi}>{trTarih(b.iptal_tarihi)}</time> iptal
+                    </>
+                  ) : (
+                    <span title="ASIS'te pasif işaretli ama EPDK lisansı hâlâ onaylı — resmî iptal kaydı yok.">
+                      ASIS'te pasif · EPDK'da açık
+                    </span>
+                  )}
+                </div>
               </>
             );
           return <Bos />;
@@ -230,13 +255,13 @@ export function Izleme() {
         id: 'ayrilma', ad: 'Ayrılma / İptal', varsayilan: false, sinif: 'sag soluk',
         sirala: (i) => {
           const b = bag(i);
-          const t = b?.gecis_tespit ?? b?.iptal_tarihi ?? null;
+          const t = gecisTarihi(b)?.gun ?? b?.iptal_tarihi ?? null;
           return t ? new Date(t).getTime() : null; // null → Tablo sona atar
         },
-        metin: (i) => bag(i)?.gecis_tespit ?? bag(i)?.iptal_tarihi ?? '',
+        metin: (i) => gecisTarihi(bag(i))?.gun ?? bag(i)?.iptal_tarihi ?? '',
         hucre: (i) => {
           const b = bag(i);
-          const t = b?.gecis_tespit ?? b?.iptal_tarihi ?? null;
+          const t = gecisTarihi(b)?.gun ?? b?.iptal_tarihi ?? null;
           if (!t) return <Bos />;
           return <time dateTime={t}>{trTarih(t)}</time>;
         },
