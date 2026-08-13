@@ -30,6 +30,20 @@ function eskilikSinif(iso: string | null, esikSaat: number): 'iyi' | 'uyari' | '
 }
 const ACILIYET_METIN: Record<string, string> = { krit: 'Kritik gecikme: ', uyari: 'Gecikmeli: ' };
 
+/**
+ * EPDK lisans no'nun GÖSTERİLECEK kısmı: "BAY/939-82/49135" → "49135".
+ * Önek 272 satırın hepsinde aynı, bilgi taşımaz ve yer yer.
+ *
+ * ⚠️ Geçersiz kayıtlar var (kanıt: iki "Tanker" satırında epdk_kod = "1").
+ * Bunlar gerçek lisans numarası DEĞİL; ham gösterirsek kullanıcı "1 numaralı
+ * bayi" sanır. Beklenen biçime uymayan değer '—' olarak gösterilir (tam değer
+ * yine title'da ve CSV'de duruyor, veri gizlenmiyor).
+ */
+function epdkKisa(kod: string | null | undefined): string {
+  const m = /^BAY\/[\d-]+\/(\d+)$/.exec(kod ?? '');
+  return m ? m[1] : '';
+}
+
 type Sekme = 'hepsi' | 'online' | 'kopuk' | 'rakibe' | 'kapandi' | 'alarmli';
 
 const SEKME_AD: Record<Sekme, string> = {
@@ -148,15 +162,13 @@ export function Izleme() {
         // Tabloda yalnız sayı kısmı gösterilir ("BAY/939-82/" öneki 269 satırda
         // aynı → yer yer, bilgi taşımaz); tam kod title'da ve CSV'de.
         id: 'epdk', ad: 'EPDK No', varsayilan: true, sinif: 'mono soluk',
-        sirala: (i) => i.epdk_kod ?? '',
+        sirala: (i) => epdkKisa(i.epdk_kod),
         ara: (i) => i.epdk_kod ?? '',
         metin: (i) => i.epdk_kod ?? '',
-        hucre: (i) =>
-          i.epdk_kod ? (
-            <span title={i.epdk_kod}>{i.epdk_kod.replace(/^BAY\/[\d-]+\//, '')}</span>
-          ) : (
-            <Bos />
-          ),
+        hucre: (i) => {
+          const k = epdkKisa(i.epdk_kod);
+          return k ? <span title={i.epdk_kod!}>{k}</span> : <Bos />;
+        },
       },
       {
         id: 'not', ad: 'Not', varsayilan: true, sinif: 'soluk not-hucre',
