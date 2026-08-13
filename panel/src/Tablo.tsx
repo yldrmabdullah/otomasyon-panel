@@ -377,9 +377,12 @@ export function Tablo<T>({
                 role={satirTikla ? 'button' : undefined}
                 onKeyDown={satirTikla ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); satirTikla(s); } } : undefined}
               >
-                {gorunur.map((k) => (
+                {gorunur.map((k, ki) => (
                   <td key={k.id} className={[k.sinif, k.hucreSinif?.(s)].filter(Boolean).join(' ') || undefined}>
-                    {k.hucre(s)}
+                    {/* İlk kolon SABİT (position:sticky). Satır yüksekliğini kısan
+                        line-clamp <td>'ye verilemez — sticky'yi bozuyor. Bu yüzden
+                        kırpma iç sarmalayıcıda (.hucre-kirp, stil.css). */}
+                    {ki === 0 ? <span className="hucre-kirp">{k.hucre(s)}</span> : k.hucre(s)}
                   </td>
                 ))}
               </tr>

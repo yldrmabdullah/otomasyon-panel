@@ -154,6 +154,66 @@ export function TazelikSerit({ liste }: { liste?: Tazelik[] }) {
   );
 }
 
+/**
+ * Özet kartı (KPI). Operasyon ve Sorun modüllerinde neredeyse birebir aynı bileşen
+ * ayrı ayrı tanımlıydı (biri `deger: ReactNode`, diğeri `deger: number`), Mutabakat
+ * ve Uzlaştırma ise kartları elle JSX yazıyordu → dört ayrı gerçek.
+ *
+ * TIKLANABİLİRLİK GÖRÜNÜR OLMALI: İzleme/Mutabakat'ta kartlar filtre butonu,
+ * Operasyon/Sorun'da salt gösterim — ama ikisi de AYNI görünüyordu. Tek fark
+ * hover'da 2px kalkmaktı ve dokunmatikte hover yok. Kullanıcı tıklayıp tepki
+ * alamayınca panel bozuk sanıyordu. Artık tıklanabilir kart <button> olur, imleç
+ * ve odak halkası alır, `aria-pressed` ile durumunu söyler; salt gösterim <div>.
+ */
+export function Kart({
+  ad,
+  deger,
+  alt,
+  acil,
+  uyari,
+  secili,
+  tikla,
+}: {
+  ad: string;
+  deger: ReactNode;
+  alt?: ReactNode;
+  /** Kritik durum — kırmızı şerit + ▲ işareti (renk tek taşıyıcı değil). */
+  acil?: boolean;
+  /** Uyarı durumu — amber şerit. `acil` verilmişse o kazanır. */
+  uyari?: boolean;
+  /** Filtre kartlarında seçili hâl (yalnız `tikla` ile anlamlı). */
+  secili?: boolean;
+  /** Verilirse kart bir filtre butonuna dönüşür. */
+  tikla?: () => void;
+}) {
+  const sinif = [
+    'kart',
+    acil ? 'krit' : uyari ? 'uyari' : '',
+    tikla ? 'tiklanir' : '',
+    secili ? 'sec' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const govde = (
+    <>
+      <div className="kart-deger">
+        {acil && <span aria-hidden="true">▲ </span>}
+        {deger}
+      </div>
+      <div className="kart-baslik">{ad}</div>
+      {alt && <div className="kart-alt-not">{alt}</div>}
+    </>
+  );
+
+  if (!tikla) return <div className={sinif}>{govde}</div>;
+  return (
+    <button type="button" className={sinif} aria-pressed={!!secili} onClick={tikla}>
+      {govde}
+    </button>
+  );
+}
+
 /** Modül üst çubuğu: açıklama + tazelik + Yenile. İki modülde birebir aynıydı. */
 export function ModulBar({
   alt,

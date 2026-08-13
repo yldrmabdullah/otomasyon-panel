@@ -95,6 +95,18 @@ ALTER TABLE panel_kullanicilar ADD COLUMN IF NOT EXISTS sifre_degistir BOOLEAN N
 ALTER TABLE panel_kullanicilar ADD COLUMN IF NOT EXISTS son_giris TIMESTAMPTZ;
 ALTER TABLE panel_kullanicilar ADD COLUMN IF NOT EXISTS olusturan TEXT;
 
+-- EKRAN YETKİSİ (2026-08-13). Hangi modülleri görebilir?
+--
+-- NEDEN AYRI KOLON (rol yetmedi): 'izleyici' rolü TÜM panel ekranlarını görüyordu.
+-- Muhasebeye yalnız Mevzuat, sahaya yalnız İzleme+Operasyon verilmek istendi.
+-- Rol modeli korunuyor (admin = kullanıcı yönetimi + her ekran), ekran listesi ona
+-- DİK bir eksen olarak ekleniyor.
+--
+-- NULL = "hepsi" (geriye dönük uyum): mevcut kullanıcılar bu kolon eklendiğinde
+-- yetkisiz kalmamalı. Boş dizi '{}' ise GERÇEKTEN hiçbir ekran demek — ikisi farklı.
+-- admin rolünde bu kolona bakılmaz (her zaman hepsi).
+ALTER TABLE panel_kullanicilar ADD COLUMN IF NOT EXISTS ekranlar TEXT[];
+
 -- Alarmlar. Açık alarm = kapandi IS NULL. Debounce son_bildirim ile.
 CREATE TABLE IF NOT EXISTS alarmlar (
   id              BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

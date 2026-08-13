@@ -1,11 +1,28 @@
 // Kullanıcı yönetimi modülü — YALNIZ admin görür (App.tsx rol kontrolü yapar).
-// Ekleme, silme, rol değiştirme, şifre sıfırlama.
+// Ekleme, silme, rol değiştirme, şifre sıfırlama, EKRAN YETKİSİ.
 //
 // Üretilen şifre BİR KEZ gösterilir (sunucu hash'ini saklar, düz halini tutmaz).
 // Bu yüzden ekranda kalıcı bir "şifre kartı" gösterilir; kapatılınca kaybolur.
-import { useCallback, useEffect, useState } from 'react';
+//
+// YETKİ MODELİ (bkz. core/ekranlar.ts): rol ve ekran yetkisi İKİ AYRI eksen.
+//  · rol      → yönetici kullanıcı açabilir/silebilir; izleyici açamaz.
+//  · ekranlar → hangi modülleri görebilir. Yönetici her zaman hepsini görür.
+// Yani "her ekranı gören ama kullanıcı yönetemeyen" kişi mümkün ve yaygın olan bu.
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Tablo, type TabloKolon } from './Tablo.js';
 import { trTarih, zamanFark } from './ortak.js';
+
+/** Ekran listesi sunucudan gelir (GET /api/kullanicilar → tumEkranlar); burada
+ *  yalnız GÖSTERİM adları var. Liste ikiye bölünmez — sunucu neyi kabul ediyorsa
+ *  kutular ondan çizilir, uydurma ekran adı gönderilemez. */
+const EKRAN_AD: Record<string, string> = {
+  izleme: 'İzleme',
+  operasyon: 'Operasyon',
+  sorun: 'Sorun Tespiti',
+  mevzuat: 'Mevzuat',
+  piyasa: 'Piyasa',
+};
+const ekranAdi = (id: string) => EKRAN_AD[id] ?? id;
 
 interface Kullanici {
   kullanici_ad: string;
@@ -15,14 +32,19 @@ interface Kullanici {
   son_giris: string | null;
   olusturan: string | null;
   olusturma: string;
+  /** null = hepsi (sınırlandırılmamış), [] = hiçbiri. */
+  ekranlar: string[] | null;
 }
 
 export function Kullanicilar({ benKim }: { benKim: string }) {
   const [liste, setListe] = useState<Kullanici[] | null>(null);
+  const [tumEkranlar, setTumEkranlar] = useState<string[]>([]);
   const [hata, setHata] = useState<string | null>(null);
   const [mesaj, setMesaj] = useState<string | null>(null);
   // Yeni üretilen şifre — bir kez gösterilir, admin kopyalayıp iletir.
   const [yeniSifre, setYeniSifre] = useState<{ ad: string; sifre: string } | null>(null);
+  // Yetki düzenlenen kullanıcı (satır menüsünden açılır).
+  const [yetkiHedef, setYetkiHedef] = useState<Kullanici | null>(null);
 
   // Ekleme formu
   const [ekleAcik, setEkleAcik] = useState(false);
@@ -30,6 +52,7 @@ export function Kullanicilar({ benKim }: { benKim: string }) {
   const [adSoyad, setAdSoyad] = useState('');
   const [rol, setRol] = useState<'admin' | 'izleyici'>('izleyici');
   const [kendiSifre, setKendiSifre] = useState(''); // boş → otomatik üret
+  const [yeniEkranlar, setYeniEkranlar] = useState<string[]>([]);
   const [bekliyor, setBekliyor] = useState(false);
 
   const yukle = useCallback(async () => {
@@ -39,6 +62,7 @@ export function Kullanicilar({ benKim }: { benKim: string }) {
       const d = await r.json();
       if (!r.ok) throw new Error(d?.hata ?? `Liste alınamadı (${r.status})`);
       setListe(d.kullanicilar);
+      if (Array.isArray(d.tumEkranlar)) setTumEkranlar(d.tumEkranlar);
       setHata(null);
     } catch (e) {
       setHata(e instanceof Error ? e.message : String(e));
@@ -47,6 +71,12 @@ export function Kullanicilar({ benKim }: { benKim: string }) {
   }, []);
 
   useEffect(() => { yukle(); }, [yukle]);
+
+  // Yeni kullanıcı formu açılınca varsayılan olarak TÜM ekranlar işaretli gelir —
+  // en yaygın durum bu; kısıtlama isteyen kutuları kaldırır.
+  useEffect(() => {
+    if (ekleAcik) setYeniEkranlar(tumEkranlar);
+  }, [ekleAcik, tumEkranlar]);
 
   async function ekle(e: React.FormEvent) {
     e.preventDefault();
@@ -62,6 +92,10 @@ export function Kullanicilar({ benKim }: { benKim: string }) {
           rol,
           adSoyad: adSoyad || undefined,
           sifre: kendiSifre || undefined, // boşsa sunucu üretir
+          // Hepsi seçiliyse null gönder ("sınırlama yok") — ileride yeni bir modül
+          // eklendiğinde bu kullanıcı onu da görür. Liste gönderilseydi yeni modül
+          // sessizce gizli kalırdı.
+          ekranlar: yeniEkranlar.length === tumEkranlar.length ? null : yeniEkranlar,
         }),
       });
       const d = await r.json();
@@ -113,6 +147,34 @@ export function Kullanicilar({ benKim }: { benKim: string }) {
     }
   }
 
+  /** Ekran yetkilerini kaydet. Hepsi seçiliyse null → "sınırlama yok". */
+  async function yetkiKaydet(k: Kullanici, secilenler: string[]) {
+    setHata(null);
+    try {
+      const r = await fetch('/api/kullanicilar', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ad: k.kullanici_ad,
+          ekranlar: secilenler.length === tumEkranlar.length ? null : secilenler,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.hata ?? 'Yetkiler kaydedilemedi.');
+      setMesaj(
+        secilenler.length === tumEkranlar.length
+          ? `${k.kullanici_ad} artık tüm ekranları görebilir.`
+          : secilenler.length === 0
+            ? `${k.kullanici_ad} hiçbir ekranı göremiyor.`
+            : `${k.kullanici_ad}: ${secilenler.map(ekranAdi).join(', ')}.`,
+      );
+      setYetkiHedef(null);
+      await yukle();
+    } catch (e) {
+      setHata(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   async function sil(k: Kullanici) {
     if (!confirm(`${k.kullanici_ad} kullanıcısı SİLİNECEK. Bu geri alınamaz — devam?`)) return;
     setHata(null);
@@ -150,6 +212,26 @@ export function Kullanicilar({ benKim }: { benKim: string }) {
       ),
     },
     {
+      // Ekran yetkisi — modülün ASIL yeni bilgisi, tabloda görünür olmalı.
+      // "Yönetici hepsini görür" bilgisi rozete yazılır: yöneticide ekran listesi
+      // tutulsa bile OKUNMAZ, kafa karıştırmasın.
+      id: 'ekranlar', ad: 'Ekranlar', varsayilan: true,
+      ara: (k) => (k.ekranlar ?? []).map(ekranAdi).join(' '),
+      sirala: (k) => (k.rol === 'admin' ? -1 : k.ekranlar === null ? tumEkranlar.length : k.ekranlar.length),
+      hucre: (k) => {
+        if (k.rol === 'admin') return <span className="rozet iyi-r">TÜMÜ · yönetici</span>;
+        if (k.ekranlar === null) return <span className="rozet iyi-r">TÜMÜ</span>;
+        if (k.ekranlar.length === 0) return <span className="rozet krit">YETKİ YOK</span>;
+        return (
+          <span className="yetki-rozetler">
+            {k.ekranlar.map((e) => (
+              <span key={e} className="tip-rozet tip-istasyon">{ekranAdi(e)}</span>
+            ))}
+          </span>
+        );
+      },
+    },
+    {
       id: 'songiris', ad: 'Son Giriş', varsayilan: true, sinif: 'soluk',
       sirala: (k) => (k.son_giris ? new Date(k.son_giris).getTime() : null),
       hucre: (k) => (k.son_giris ? zamanFark(k.son_giris) : 'hiç girmedi'),
@@ -164,21 +246,18 @@ export function Kullanicilar({ benKim }: { benKim: string }) {
       hucre: (k) => `${trTarih(k.olusturma)}${k.olusturan ? ` · ${k.olusturan}` : ''}`,
     },
     {
+      // Satır işlemleri MENÜDE (mockup 3d): üç buton yan yana satırı şişiriyor ve
+      // "Sil" yanlışlıkla tıklanacak kadar yakın duruyordu.
       id: 'islem', ad: 'İşlem', varsayilan: true, sinif: 'sag',
       hucre: (k) => (
-        <div className="satir-islem">
-          <button type="button" className="cikis-btn" onClick={() => sifreSifirla(k)}>
-            Şifre sıfırla
-          </button>
-          <button type="button" className="cikis-btn" onClick={() => rolDegistir(k)}>
-            {k.rol === 'admin' ? 'İzleyici yap' : 'Yönetici yap'}
-          </button>
-          {k.kullanici_ad !== benKim && (
-            <button type="button" className="cikis-btn tehlike" onClick={() => sil(k)}>
-              Sil
-            </button>
-          )}
-        </div>
+        <SatirMenu
+          k={k}
+          benKim={benKim}
+          yetki={() => setYetkiHedef(k)}
+          sifre={() => sifreSifirla(k)}
+          rol={() => rolDegistir(k)}
+          sil={() => sil(k)}
+        />
       ),
     },
   ];
@@ -186,7 +265,7 @@ export function Kullanicilar({ benKim }: { benKim: string }) {
   return (
     <>
       <div className="modul-bar">
-        <span className="modul-alt">Panel kullanıcıları &amp; yetkiler</span>
+        <span className="modul-alt">Panel kullanıcıları &amp; ekran yetkileri</span>
         <div className="ust-sag">
           <button className="yenile" type="button" onClick={() => setEkleAcik((a) => !a)}>
             {ekleAcik ? 'Vazgeç' : '+ Yeni kullanıcı'}
@@ -195,7 +274,7 @@ export function Kullanicilar({ benKim }: { benKim: string }) {
       </div>
 
       {hata && <div className="hata" role="alert"><span aria-hidden="true">⚠ </span>{hata}</div>}
-      {mesaj && <div className="analiz-not">{mesaj}</div>}
+      {mesaj && <div className="analiz-not" role="status">{mesaj}</div>}
 
       {/* Üretilen şifre — BİR KEZ gösterilir */}
       {yeniSifre && (
@@ -255,10 +334,31 @@ export function Kullanicilar({ benKim }: { benKim: string }) {
               />
             </label>
           </div>
+
+          {/* Ekran yetkileri — yöneticide anlamsız (hepsini görür), o yüzden gizlenir. */}
+          {rol === 'izleyici' && (
+            <EkranSecici
+              tumu={tumEkranlar}
+              secili={yeniEkranlar}
+              degistir={setYeniEkranlar}
+              baslik="Görebileceği ekranlar"
+            />
+          )}
+
           <button className="giris-btn" type="submit" disabled={bekliyor || !ad}>
             {bekliyor ? 'Ekleniyor…' : 'Kullanıcıyı ekle'}
           </button>
         </form>
+      )}
+
+      {/* Yetki düzenleme — satır menüsünden açılır */}
+      {yetkiHedef && (
+        <YetkiDuzenle
+          k={yetkiHedef}
+          tumu={tumEkranlar}
+          kapat={() => setYetkiHedef(null)}
+          kaydet={(s) => yetkiKaydet(yetkiHedef, s)}
+        />
       )}
 
       <Tablo
@@ -267,9 +367,150 @@ export function Kullanicilar({ benKim }: { benKim: string }) {
         kolonlar={KOLONLAR}
         satirlar={liste ?? []}
         satirAnahtar={(k) => k.kullanici_ad}
-        bosMesaj={liste === null ? 'Yükleniyor…' : 'Kullanıcı yok.'}
+        yukleniyor={liste === null}
+        bosMesaj="Kullanıcı yok."
         aramaEtiket="Kullanıcı ara"
+        aciklama={
+          <p className="analiz-not">
+            <b>Rol</b> kullanıcı yönetme yetkisidir; <b>Ekranlar</b> hangi modülleri
+            görebileceğidir — ikisi ayrıdır. Yönetici her ekranı görür. Ekran yetkisi
+            sunucuda da kontrol edilir: yetkisiz kullanıcı o modülün verisini
+            adresten de çekemez.
+          </p>
+        }
       />
     </>
+  );
+}
+
+/** Satır işlem menüsü — üç nokta, dışına tıkla/Escape ile kapanır. */
+function SatirMenu({
+  k, benKim, yetki, sifre, rol, sil,
+}: {
+  k: Kullanici; benKim: string;
+  yetki: () => void; sifre: () => void; rol: () => void; sil: () => void;
+}) {
+  const [acik, setAcik] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!acik) return;
+    const kapat = (e: Event) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setAcik(false);
+    };
+    const tus = (e: KeyboardEvent) => { if (e.key === 'Escape') setAcik(false); };
+    document.addEventListener('mousedown', kapat);
+    document.addEventListener('touchstart', kapat, { passive: true });
+    document.addEventListener('keydown', tus);
+    return () => {
+      document.removeEventListener('mousedown', kapat);
+      document.removeEventListener('touchstart', kapat);
+      document.removeEventListener('keydown', tus);
+    };
+  }, [acik]);
+
+  const calistir = (f: () => void) => { setAcik(false); f(); };
+
+  return (
+    <div className="satir-menu" ref={ref}>
+      <button
+        type="button"
+        className="satir-menu-btn"
+        onClick={() => setAcik((a) => !a)}
+        aria-expanded={acik}
+        aria-haspopup="true"
+        aria-label={`${k.kullanici_ad} için işlemler`}
+      >
+        <span aria-hidden="true">⋯</span>
+      </button>
+      {acik && (
+        <div className="satir-menu-liste" role="group" aria-label={`${k.kullanici_ad} işlemleri`}>
+          {/* Yöneticide ekran yetkisi okunmuyor → menüde de çıkmaz. */}
+          {k.rol !== 'admin' && (
+            <button type="button" onClick={() => calistir(yetki)}>Ekran yetkileri…</button>
+          )}
+          <button type="button" onClick={() => calistir(sifre)}>Şifre sıfırla</button>
+          <button type="button" onClick={() => calistir(rol)}>
+            {k.rol === 'admin' ? 'İzleyici yap' : 'Yönetici yap'}
+          </button>
+          {k.kullanici_ad !== benKim && (
+            <button type="button" className="tehlike" onClick={() => calistir(sil)}>Sil</button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Ekran onay kutuları — ekleme formunda ve yetki düzenlemede aynı bileşen. */
+function EkranSecici({
+  tumu, secili, degistir, baslik,
+}: {
+  tumu: string[]; secili: string[]; degistir: (s: string[]) => void; baslik: string;
+}) {
+  const cevir = (id: string) =>
+    degistir(secili.includes(id) ? secili.filter((x) => x !== id) : [...secili, id]);
+  const hepsi = secili.length === tumu.length;
+
+  return (
+    <fieldset className="ekran-secici">
+      <legend>
+        {baslik}
+        <button
+          type="button"
+          className="ekran-tumu"
+          onClick={() => degistir(hepsi ? [] : tumu)}
+        >
+          {hepsi ? 'Hiçbiri' : 'Tümü'}
+        </button>
+      </legend>
+      <div className="ekran-kutular">
+        {tumu.map((id) => (
+          <label key={id} className="ekran-kutu">
+            <input type="checkbox" checked={secili.includes(id)} onChange={() => cevir(id)} />
+            {ekranAdi(id)}
+          </label>
+        ))}
+      </div>
+      {secili.length === 0 && (
+        <p className="ekran-uyari">
+          <span aria-hidden="true">▲ </span>
+          Hiçbir ekran seçili değil — bu kullanıcı giriş yapabilir ama hiçbir modül göremez.
+        </p>
+      )}
+    </fieldset>
+  );
+}
+
+/** Yetki düzenleme kartı (satır menüsünden açılır). */
+function YetkiDuzenle({
+  k, tumu, kapat, kaydet,
+}: {
+  k: Kullanici; tumu: string[]; kapat: () => void; kaydet: (s: string[]) => void;
+}) {
+  // null = "hepsi" → kutular dolu başlar.
+  const [secili, setSecili] = useState<string[]>(k.ekranlar ?? tumu);
+
+  return (
+    <div className="ekle-form">
+      <div className="yetki-bas">
+        <div>
+          <strong>{k.ad_soyad || k.kullanici_ad}</strong> — ekran yetkileri
+          <div className="alt-satir soluk">
+            Değişiklik anında geçerli olur; kullanıcının yeniden giriş yapmasına gerek yok.
+          </div>
+        </div>
+        <button type="button" className="cikis-btn" onClick={kapat}>✕ Kapat</button>
+      </div>
+
+      <EkranSecici tumu={tumu} secili={secili} degistir={setSecili} baslik="Görebileceği ekranlar" />
+
+      <div className="yetki-islem">
+        <button type="button" className="giris-btn" onClick={() => kaydet(secili)}>
+          Yetkileri kaydet
+        </button>
+        <button type="button" className="cikis-btn" onClick={kapat}>Vazgeç</button>
+      </div>
+    </div>
   );
 }

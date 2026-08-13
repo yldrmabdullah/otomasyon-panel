@@ -1,9 +1,11 @@
 // EPDK Mevzuat modülü — "mevzuat profesörü" + A3↔Logo mutabakatı.
 // İçerik docs/bilgi/epdk-mutabakat.md bilgi tabanından. DOĞRULANMASI GEREK = Parkoil teyidi bekliyor.
+import { useState } from 'react';
 import { Sekmeler } from './Sekme.js';
 import { Mutabakat } from './Mutabakat.js';
 import { Uzlastirma } from './Uzlastirma.js';
 import { Fiyat } from './Fiyat.js';
+import { ModulBar } from './ortak.js';
 
 interface Konu {
   baslik: string;
@@ -247,18 +249,38 @@ function MevzuatBilgi() {
   );
 }
 
-// Modül girişi — iki sekme: mevzuat bilgi tabanı + A3↔Logo mutabakatı.
+// Modül girişi — dört sekme: uzlaştırma, A3↔Logo mutabakatı, fiyat, bilgi tabanı.
 // Sekmeler bileşeni Piyasa'da da kullanılıyor; localStorage ile son sekme hatırlanır.
+//
+// ⚠️ 2026-08-13: Bu modülde ModulBar YOKTU — dolayısıyla Yenile butonu da yoktu.
+// Oysa buradaki veri (A3 kıyası, uzlaştırma) ELLE çekiliyor (araclar/a3Kiyas.mts),
+// yani panelin BAYATLAMA RİSKİ EN YÜKSEK ekranları bunlar. Kullanıcı üç haftalık
+// mutabakata bakıp güncel sanabiliyordu. Diğer modüllerle aynı kabuk artık burada da:
+// açıklama + Yenile. (Tazelik bilgisini alt sekmeler kendi başlıklarında veriyor —
+// dönem seçimine bağlı olduğu için modül seviyesinde tek bir değer doğru olmaz.)
 export function Mevzuat() {
+  // Yenile: alt sekmeler kendi verilerini useVeri ile çekiyor ve her birinin ayrı
+  // sorgusu var (dönem/aralık parametreli). Tek tek referans toplamak yerine sayaç
+  // artırılıp `key` değiştirilir → aktif sekme yeniden monte olur, verisini tazeler.
+  const [tazele, setTazele] = useState(0);
+
   return (
-    <Sekmeler
-      anahtar="mevzuat"
-      tanimlar={[
-        { id: 'uzlastirma', ad: 'Tank Uzlaştırma', icerik: () => <Uzlastirma /> },
-        { id: 'mutabakat', ad: 'A3 ↔ Logo Mutabakatı', icerik: () => <Mutabakat /> },
-        { id: 'fiyat', ad: 'Fiyat Takibi', icerik: () => <Fiyat /> },
-        { id: 'bilgi', ad: 'Mevzuat Bilgisi', icerik: () => <MevzuatBilgi /> },
-      ]}
-    />
+    <>
+      <ModulBar
+        alt="EPDK bildirim · mutabakat · fiyat"
+        yukleniyor={false}
+        yenile={() => setTazele((n) => n + 1)}
+        duyuru="Mevzuat verileri yenilendi."
+      />
+      <Sekmeler
+        anahtar="mevzuat"
+        tanimlar={[
+          { id: 'uzlastirma', ad: 'Tank Uzlaştırma', icerik: () => <Uzlastirma key={tazele} /> },
+          { id: 'mutabakat', ad: 'A3 ↔ Logo Mutabakatı', icerik: () => <Mutabakat key={tazele} /> },
+          { id: 'fiyat', ad: 'Fiyat Takibi', icerik: () => <Fiyat key={tazele} /> },
+          { id: 'bilgi', ad: 'Mevzuat Bilgisi', icerik: () => <MevzuatBilgi /> },
+        ]}
+      />
+    </>
   );
 }

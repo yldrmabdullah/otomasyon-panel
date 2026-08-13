@@ -4,6 +4,7 @@ import { db, hataYanit } from './_db.js';
 import { korumali } from './_oturum.js';
 import { fiyatVerisi } from '../core/panelSorgu.js';
 
+
 export default korumali(async (req: any, res: any) => {
   try {
     const veri = await fiyatVerisi(db(), req?.query?.gun);
@@ -12,4 +13,4 @@ export default korumali(async (req: any, res: any) => {
   } catch (e) {
     hataYanit(res, e);
   }
-});
+}, { ekran: 'mevzuat' });

@@ -10,6 +10,9 @@ export interface Istasyon {
   bolge: string | null;
   aktif: boolean;
   tip: string | null;
+  /** Bayi cep telefonu (bayi_iletisim'den, EPDK no ile eşleşir). Müdahale
+   *  kuyruğundaki "Bayiyi ara" tel: bağlantısı için. Kayıt yoksa null. */
+  telefon?: string | null;
 }
 export type BaglantiKategori = 'online' | 'kopuk' | 'rakibe' | 'kapandi' | 'bilinmiyor';
 export interface Baglanti {

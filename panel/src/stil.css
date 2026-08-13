@@ -53,6 +53,9 @@
   --s-5: 20px; --s-6: 24px; --s-7: 32px; --s-8: 48px;
 
   --r: 10px; --r-sm: 7px;
+  /* İkon rayı genişliği (komuta ekranı). Eski açıklamalı sidebar 224px'di;
+     kazanılan ~150px tabloya gidiyor. */
+  --ray-en: 72px;
   --kenar-en: 224px;
   /* Mobil yatay şerit yüksekliği — sticky th offset'i.
      ⚠️ ÖLÇÜLDÜ 2026-07-30: ikon-öncelikli menüye geçince şerit 108px oldu
@@ -202,6 +205,59 @@ h1[tabindex='-1']:focus { outline: none; }
   border-radius: var(--r-sm); padding: 9px var(--s-3); cursor: pointer;
 }
 
+/* ── Ekran yetkisi (Kullanıcılar) ────────────────────────────────────────── */
+.yetki-rozetler { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+
+.ekran-secici { border: 1px solid var(--cizgi); border-radius: var(--r-sm); padding: var(--s-3) var(--s-4); margin: 0; background: var(--panel-2); }
+.ekran-secici legend {
+  display: flex; align-items: center; gap: var(--s-3); padding: 0 var(--s-2);
+  font-size: var(--t-sm); color: var(--soluk); font-weight: 600;
+}
+.ekran-tumu {
+  background: transparent; border: 1px solid var(--cizgi-2); color: var(--soluk);
+  border-radius: 5px; padding: 2px 9px; font-size: var(--t-xs); cursor: pointer;
+  transition: color .13s, border-color .13s;
+}
+.ekran-tumu:hover { color: var(--accent); border-color: var(--accent-cizgi); }
+.ekran-kutular { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-4); }
+/* Dokunma hedefi 44px (WCAG 2.5.5) — kolon seçicideki dersin aynısı. */
+.ekran-kutu {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 44px;
+  font-size: var(--t-md); color: var(--metin-2); cursor: pointer; user-select: none;
+}
+.ekran-kutu:hover { color: var(--metin); }
+.ekran-kutu input { accent-color: var(--marka); width: 18px; height: 18px; flex: none; cursor: inherit; margin: 0; }
+/* Renk tek taşıyıcı değil: ▲ işareti + kalın metin eşlik eder. */
+.ekran-uyari { margin: var(--s-2) 0 0; font-size: var(--t-sm); color: var(--uyari); font-weight: 600; }
+
+.yetki-bas { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-3); flex-wrap: wrap; }
+.yetki-islem { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; }
+.yetki-islem .giris-btn { align-self: auto; }
+
+/* ── Satır işlem menüsü (⋯) ── */
+.satir-menu { position: relative; display: inline-block; }
+.satir-menu-btn {
+  background: transparent; border: 1px solid var(--cizgi-2); color: var(--soluk);
+  border-radius: 5px; padding: 2px 10px; font-size: var(--t-lg); line-height: 1.2;
+  cursor: pointer; min-height: 30px; transition: color .13s, border-color .13s;
+}
+.satir-menu-btn:hover { color: var(--accent); border-color: var(--accent-cizgi); }
+.satir-menu-btn[aria-expanded='true'] { color: var(--accent-2); border-color: var(--accent); }
+@media (pointer: coarse) { .satir-menu-btn { min-height: 44px; min-width: 44px; } }
+.satir-menu-liste {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 40; min-width: 178px;
+  background: var(--panel); border: 1px solid var(--cizgi-2); border-radius: var(--r);
+  box-shadow: 0 8px 24px rgba(0,0,0,.35); padding: var(--s-2);
+  display: flex; flex-direction: column; gap: 1px; text-align: left;
+}
+.satir-menu-liste button {
+  background: transparent; border: none; color: var(--metin-2); text-align: left;
+  border-radius: var(--r-sm); padding: 10px var(--s-3); font-size: var(--t-md);
+  cursor: pointer; min-height: 40px; white-space: nowrap; transition: background .12s, color .12s;
+}
+.satir-menu-liste button:hover { background: var(--panel-2); color: var(--metin); }
+.satir-menu-liste button.tehlike:hover { color: var(--krit); }
+
 /* Üretilen şifre kartı — bir kez gösterilir, kaçırılmaması için belirgin */
 .sifre-karti {
   background: var(--panel-2); border: 1px solid var(--accent-cizgi); border-left: 3px solid var(--marka);
@@ -219,61 +275,97 @@ h1[tabindex='-1']:focus { outline: none; }
 }
 .sifre-not { font-size: var(--t-sm); color: var(--soluk); flex: 1 1 100%; }
 
-/* ── Kabuk: sidebar + içerik ── */
-.uygulama { display: grid; grid-template-columns: var(--kenar-en) 1fr; min-height: 100dvh; }
+/* ══ KABUK: İKON RAYI + İÇERİK (komuta ekranı dili, 2026-08-13) ══════════════
+   Eski kabuk 224px'lik açıklamalı bir sidebar'dı. Komuta ekranında gezinme
+   ARKA PLAN olmalı: ray 72px'e iner, kazanılan ~150px veriye gider. Modül adı
+   ikonun altında küçük punto ile durur (title + aria-label her koşulda tam ad).
+   ═══════════════════════════════════════════════════════════════════════════ */
+.uygulama { display: grid; grid-template-columns: var(--ray-en) 1fr; min-height: 100dvh; }
 @supports not (height: 100dvh) { .uygulama { min-height: 100vh; } }
 
-.kenar {
+.ray {
   background: var(--panel); border-right: 1px solid var(--cizgi);
-  display: flex; flex-direction: column; position: sticky; top: 0;
-  height: 100dvh; padding: var(--s-5) var(--s-4);
+  display: flex; flex-direction: column; align-items: center;
+  position: sticky; top: 0; height: 100dvh; padding: var(--s-4) var(--s-2) var(--s-3);
+  gap: var(--s-2);
 }
-@supports not (height: 100dvh) { .kenar { height: 100vh; } }
-.marka { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-1); padding: var(--s-1) var(--s-2) var(--s-6); }
-/* "parkoil" yazı logosu — geniş/kısa oranlı, genişlikten ölçeklenir */
+@supports not (height: 100dvh) { .ray { height: 100vh; } }
+
+.ray-marka { display: block; padding: 0 0 var(--s-4); flex: none; }
+.ray-logo { width: 40px; height: auto; display: block; object-fit: contain; }
+
+.ray-nav { display: flex; flex-direction: column; gap: 3px; flex: 1; width: 100%; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.ray-nav::-webkit-scrollbar { display: none; }
+
+/* Ray öğesi: ikon üstte, ad altta. 44px dokunmatik hedef korunur (WCAG 2.5.5). */
+.ray-oge {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  width: 100%; min-height: 52px; padding: var(--s-2) 4px;
+  border: none; border-radius: var(--r-sm); background: transparent; color: var(--soluk);
+  cursor: pointer; position: relative; transition: background .13s, color .13s;
+}
+.ray-oge:hover { background: var(--panel-2); color: var(--metin); }
+.ray-oge:active { background: var(--panel-3); }
+.ray-ikon { display: grid; place-items: center; }
+.ray-ikon svg { width: 20px; height: 20px; display: block; }
+/* 10px görsel olarak küçük ama bu bir ETİKET, gövde metni değil; tam ad title'da.
+   Mobilde (≤900px) tamamen gizlenir, orada ikon+aria-label taşır. */
+.ray-ad { font-size: 10px; font-weight: 600; line-height: 1.1; text-align: center; letter-spacing: -.01em; }
+/* Aktif modül: marka şeridi solda + accent metin (AA kontrast) */
+.ray-oge.akt { background: var(--accent-bg); color: var(--accent-2); }
+.ray-oge.akt::before {
+  content: ''; position: absolute; left: -8px; top: 8px; bottom: 8px; width: 3px;
+  background: var(--marka); border-radius: 0 2px 2px 0;
+}
+
+/* ── Ray dibi: avatar + hesap menüsü ── */
+.ray-dip { flex: none; position: relative; padding-top: var(--s-2); border-top: 1px solid var(--cizgi); width: 100%; display: flex; justify-content: center; }
+.ray-avatar {
+  width: 36px; height: 36px; border-radius: 50%; flex: none;
+  background: var(--panel-3); color: var(--metin-2); border: 1px solid var(--cizgi-2);
+  font-size: var(--t-sm); font-weight: 700; letter-spacing: .02em; cursor: pointer;
+  display: grid; place-items: center; transition: border-color .13s, color .13s;
+}
+.ray-avatar:hover { border-color: var(--accent); color: var(--metin); }
+.ray-avatar[aria-expanded='true'] { border-color: var(--accent); color: var(--accent-2); }
+
+.kul-menu {
+  position: absolute; left: calc(100% + 8px); bottom: 0; z-index: 50;
+  min-width: 208px; background: var(--panel); border: 1px solid var(--cizgi-2);
+  border-radius: var(--r); box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  padding: var(--s-2); display: flex; flex-direction: column; gap: 2px;
+}
+.kul-menu-bas { display: flex; flex-direction: column; padding: var(--s-2) var(--s-3) var(--s-3); border-bottom: 1px solid var(--cizgi); margin-bottom: var(--s-2); }
+.kul-menu-bas strong { font-size: var(--t-md); color: var(--metin); }
+.kul-menu-rol { font-size: var(--t-xs); color: var(--soluk); margin-top: 1px; }
+.kul-menu-tema { display: flex; gap: 2px; padding: 0 0 var(--s-2); }
+.kul-menu-tema button {
+  flex: 1; background: transparent; border: 1px solid var(--cizgi); color: var(--soluk);
+  border-radius: 5px; padding: 6px 0; cursor: pointer; font-size: var(--t-xs); font-weight: 600;
+  transition: background .13s, color .13s, border-color .13s;
+}
+.kul-menu-tema button:hover { color: var(--metin); border-color: var(--cizgi-2); }
+.kul-menu-tema button[aria-pressed='true'] { background: var(--accent-bg); color: var(--accent-2); border-color: var(--accent-cizgi); }
+.kul-menu-oge {
+  text-align: left; background: transparent; border: none; color: var(--metin-2);
+  border-radius: var(--r-sm); padding: 10px var(--s-3); cursor: pointer; font-size: var(--t-md);
+  min-height: 40px; transition: background .13s, color .13s;
+}
+.kul-menu-oge:hover { background: var(--panel-2); color: var(--metin); }
+.kul-menu-oge.tehlike:hover { color: var(--krit); }
+.kul-menu-dip { font-size: var(--t-xs); color: var(--soluk-2); padding: var(--s-2) var(--s-3) 2px; border-top: 1px solid var(--cizgi); margin-top: var(--s-2); }
+
+.baslik-sirket { font-size: var(--t-sm); color: var(--soluk-2); }
+
+/* Giriş / şifre ekranlarındaki marka bloğu (kabuk dışı — ray kendi logosunu kullanır) */
 .marka-logo-img { width: 128px; height: auto; object-fit: contain; }
-/* Tema-duyarlı logo: koyu zeminde beyaz, açık zeminde kırmızı */
+/* Tema-duyarlı logo: koyu zeminde beyaz, açık zeminde kırmızı. Hem giriş
+   ekranındaki .marka-logo-img hem raydaki .ray-logo bu kuralları paylaşır. */
 .logo-acik { display: none; }
 @media (prefers-color-scheme: light) { .logo-koyu { display: none; } .logo-acik { display: block; } }
 :root[data-theme='dark'] .logo-koyu { display: block; } :root[data-theme='dark'] .logo-acik { display: none; }
 :root[data-theme='light'] .logo-koyu { display: none; } :root[data-theme='light'] .logo-acik { display: block; }
 .marka-alt { font-size: var(--t-xs); color: var(--soluk); text-transform: uppercase; letter-spacing: 0.08em; }
-
-.kenar-nav { display: flex; flex-direction: column; gap: 3px; flex: 1; }
-.kenar-oge {
-  display: flex; align-items: center; gap: var(--s-3); padding: 10px var(--s-3);
-  border-radius: var(--r-sm); background: transparent; border: none; cursor: pointer;
-  text-align: left; color: var(--metin-2);
-  transition: background .13s, color .13s;
-}
-.kenar-oge:hover { background: var(--panel-2); color: var(--metin); }
-.kenar-oge:active { background: var(--panel-3); }
-/* Aktif modül: marka kırmızısı sol şerit + accent-2 metin (AA kontrast) */
-.kenar-oge.akt { background: var(--accent-bg); color: var(--accent-2); position: relative; }
-.kenar-oge.akt::before {
-  content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 3px;
-  background: var(--marka); border-radius: 0 2px 2px 0;
-}
-.kenar-ikon {
-  width: 20px; height: 20px; flex-shrink: 0; display: grid; place-items: center;
-  color: currentColor;
-}
-.kenar-ikon svg { width: 18px; height: 18px; display: block; }
-.kenar-metin { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
-.kenar-ad { font-weight: 600; font-size: var(--t-lg); }
-.kenar-alt { font-size: var(--t-xs); color: var(--soluk); }
-.kenar-oge.akt .kenar-alt { color: var(--accent-2); opacity: .85; }
-.kenar-dip { font-size: var(--t-xs); color: var(--soluk-2); padding: var(--s-3) 10px var(--s-1); border-top: 1px solid var(--cizgi); }
-
-/* Tema seçici — düşük görme kullanıcıları için erişilebilirlik kontrolü */
-.tema-secim { display: flex; gap: 2px; padding: var(--s-2) 6px 0; }
-.tema-secim button {
-  flex: 1; background: transparent; border: 1px solid var(--cizgi); color: var(--soluk);
-  border-radius: 5px; padding: 5px 0; cursor: pointer; font-size: var(--t-xs); font-weight: 600;
-  transition: background .13s, color .13s, border-color .13s;
-}
-.tema-secim button:hover { color: var(--metin); border-color: var(--cizgi-2); }
-.tema-secim button[aria-pressed='true'] { background: var(--accent-bg); color: var(--accent-2); border-color: var(--accent-cizgi); }
 
 .icerik { min-width: 0; }
 .icerik-ic { max-width: 1360px; margin: 0 auto; padding: var(--s-6) var(--s-7) 64px; }
@@ -320,10 +412,21 @@ h2 .sayi { text-transform: none; letter-spacing: 0; font-size: var(--t-sm); colo
 .kart.iyi::before { background: var(--iyi); }
 .kart.uyari::before { background: var(--uyari); }
 .kart.krit::before { background: var(--krit); }
+/* TIKLANABİLİR KART görsel olarak ayırt edilmeli: salt-gösterim kartla aynı
+   görünüyordu, tek fark hover'da 2px kalkmaktı — dokunmatikte hover YOK, o yüzden
+   kullanıcı Operasyon'daki kartlara basıp tepki alamayınca panel bozuk sanıyordu.
+   Artık kalıcı ipuçları var: imleç, hafif belirgin kenar ve sağ üstte küçük
+   "filtre" işareti. Renk tek taşıyıcı değil (işaret + kenar + imleç). */
 button.kart { cursor: pointer; transition: transform .12s, border-color .13s, box-shadow .13s; }
+button.kart::after {
+  content: '⌕'; position: absolute; top: 6px; right: 9px;
+  font-size: var(--t-md); line-height: 1; color: var(--soluk-2); opacity: .75;
+}
 button.kart:hover { transform: translateY(-2px); border-color: var(--cizgi-2); }
+button.kart:hover::after { color: var(--accent); opacity: 1; }
 button.kart:active { transform: translateY(0); }
 button.kart.sec { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--golge); }
+button.kart.sec::after { content: '✓'; color: var(--accent-2); opacity: 1; font-weight: 700; }
 .kart-deger { font-size: var(--t-2xl); font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
 .kart-baslik { color: var(--soluk); font-size: var(--t-sm); margin-top: var(--s-2); font-weight: 500; }
 /* Kartın altındaki ek açıklama (Operasyon: "1 günden az kalan", "+12 eşik ayarı").
@@ -546,6 +649,88 @@ td.yok { color: var(--soluk-2); font-style: italic; }
 .alarm-zaman { color: var(--soluk-2); font-size: var(--t-xs); margin-left: auto; white-space: nowrap; }
 .tank-rozetler { display: inline-flex; gap: 5px; flex-wrap: wrap; }
 .tank-rozet { font-size: var(--t-xs); font-weight: 600; background: var(--uyari-bg); color: var(--uyari); padding: 2px 7px; border-radius: 4px; font-variant-numeric: tabular-nums; }
+
+/* ══ MÜDAHALE KUYRUĞU (1c komuta ekranı) ═══════════════════════════════════
+   Solda "ne bekliyor" listesi, sağda seçilenin detayı. Eski hâl: 23 alarm kartı
+   ızgaraya yayılıyordu — göz nereye bakacağını bilmiyor, hiçbiri aksiyona
+   bağlanmıyordu. Kuyruk sıralı ve tek sütun: en acil en üstte, tıklanan sağda açılır.
+   ═════════════════════════════════════════════════════════════════════════ */
+.kuyruk-blok {
+  display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
+  gap: var(--s-4); margin: var(--s-6) 0 var(--s-7); align-items: start;
+}
+.kuyruk-sol {
+  background: var(--panel); border: 1px solid var(--cizgi); border-radius: var(--r);
+  box-shadow: var(--golge); overflow: hidden; display: flex; flex-direction: column;
+}
+.kuyruk-bas {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-3);
+  padding: var(--s-3) var(--s-4); border-bottom: 1px solid var(--cizgi); flex-wrap: wrap;
+}
+.kuyruk-baslik { margin: 0; font-size: var(--t-md); text-transform: uppercase; letter-spacing: .07em; color: var(--soluk); font-weight: 600; }
+.kuyruk-alt { display: block; font-size: var(--t-sm); color: var(--metin-2); margin-top: 2px; font-variant-numeric: tabular-nums; }
+/* Kuyruk araması dar: hangi listeyi süzdüğü KONUMUNDAN belli (başlığın içinde).
+   Eskiden tablo aramasıyla aynı görünen ikinci bir kutu vardı ve karışıyordu. */
+.kuyruk-ara { flex: 1 1 140px; min-width: 0; max-width: 190px; padding: 6px 10px; font-size: var(--t-sm); }
+
+.kuyruk-liste { display: flex; flex-direction: column; max-height: min(52dvh, 520px); overflow-y: auto; overscroll-behavior: contain; }
+@supports not (height: 1dvh) { .kuyruk-liste { max-height: 520px; } }
+.kuyruk-bos { padding: var(--s-6) var(--s-4); text-align: center; color: var(--soluk-2); font-size: var(--t-md); margin: 0; }
+
+.kuyruk-oge {
+  display: flex; gap: 0; align-items: stretch; width: 100%; text-align: left;
+  background: transparent; border: none; border-bottom: 1px solid var(--cizgi);
+  padding: 0; cursor: pointer; color: inherit; font: inherit;
+  transition: background .12s;
+}
+.kuyruk-oge:hover { background: var(--panel-2); }
+.kuyruk-oge.sec { background: var(--accent-bg); }
+.kuyruk-serit { width: 3px; flex: none; }
+.kuyruk-oge.krit .kuyruk-serit { background: var(--krit); }
+.kuyruk-oge.uyari .kuyruk-serit { background: var(--uyari); }
+.kuyruk-govde { display: flex; flex-direction: column; gap: 3px; padding: 10px var(--s-4); min-width: 0; flex: 1; }
+.kuyruk-ust { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-2); }
+.kuyruk-ad { font-weight: 600; font-size: var(--t-md); color: var(--metin); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.kuyruk-zaman { font-size: var(--t-xs); color: var(--soluk-2); white-space: nowrap; flex: none; font-variant-numeric: tabular-nums; }
+.kuyruk-mesaj { font-size: var(--t-sm); color: var(--soluk); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.kuyruk-alt-satir { font-size: var(--t-xs); color: var(--soluk-2); }
+
+/* ── Detay paneli ── */
+.kuyruk-detay {
+  background: var(--panel); border: 1px solid var(--cizgi); border-radius: var(--r);
+  box-shadow: var(--golge); padding: var(--s-4) var(--s-5); min-height: 200px;
+}
+.detay-bos { color: var(--soluk-2); font-size: var(--t-md); margin: 0; line-height: 1.6; }
+.detay-bas { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--s-3); flex-wrap: wrap; margin-bottom: var(--s-4); }
+/* Şirket unvanları çok uzun ("… LİMİTED ŞİRKETİ-UŞAK ŞUBESİ") ve başlığı üç
+   satıra çıkarıp ölçüleri aşağı itiyordu. İki satırda kes; tamamı `title`'da. */
+.detay-ad {
+  margin: 0; font-size: var(--t-lg); font-weight: 700; letter-spacing: -.01em; color: var(--metin);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.detay-alt { font-size: var(--t-sm); color: var(--soluk); }
+/* "Bayiyi ara" — tel: bağlantısı. Buton görünümlü ama <a> (telefonu açar). */
+.detay-btn {
+  display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+  background: var(--panel-2); color: var(--metin); border: 1px solid var(--cizgi-2);
+  border-radius: var(--r-sm); padding: var(--s-2) var(--s-4); font-size: var(--t-md); font-weight: 500;
+  white-space: nowrap; transition: border-color .13s, background .13s;
+}
+.detay-btn:hover { border-color: var(--accent); background: var(--panel-3); }
+@media (pointer: coarse) { .detay-btn { min-height: 44px; } }
+
+.detay-olcu { display: flex; flex-wrap: wrap; gap: var(--s-3) var(--s-6); margin: 0 0 var(--s-4); }
+.detay-olcu div { display: flex; flex-direction: column; gap: 2px; }
+.detay-olcu dt { font-size: var(--t-xs); color: var(--soluk); text-transform: uppercase; letter-spacing: .05em; }
+.detay-olcu dd { margin: 0; font-size: var(--t-lg); font-weight: 600; color: var(--metin); font-variant-numeric: tabular-nums; }
+.detay-not { font-size: var(--t-sm); color: var(--metin-2); margin: 0 0 var(--s-3); display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.detay-tanklar h4 { margin: 0 0 var(--s-2); font-size: var(--t-sm); text-transform: uppercase; letter-spacing: .05em; color: var(--soluk); font-weight: 600; }
+
+/* Dar ekran: detay kuyruğun ALTINA iner (yan yana 380+X sığmaz). */
+@media (max-width: 900px) {
+  .kuyruk-blok { grid-template-columns: minmax(0, 1fr); }
+  .kuyruk-liste { max-height: min(44dvh, 380px); }
+}
 
 /* ── Mevzuat ── */
 .mevzuat-uyari { background: var(--panel); border: 1px solid var(--cizgi); border-left: 3px solid var(--marka);
@@ -787,15 +972,16 @@ td.yok { color: var(--soluk-2); font-style: italic; }
 
 @media (max-width: 860px) {
   .uygulama { grid-template-columns: minmax(0, 1fr); }
-  .kenar {
+  /* Ray dar ekranda YATAY şeride döner (dikey ray ekranın yarısını yerdi). */
+  .ray {
     position: sticky; top: 0; height: auto; flex-direction: row; align-items: center;
-    padding: 10px var(--s-4); border-right: none; border-bottom: 1px solid var(--cizgi);
+    padding: 8px var(--s-3); border-right: none; border-bottom: 1px solid var(--cizgi);
     z-index: 30; gap: var(--s-2);
     /* ⚠️ KRİTİK (2026-07-30, gerçek tarayıcıda ölçüldü): bunlar olmadan şerit
-       İÇERİĞİ kadar genişliyordu — 430px viewport'ta .kenar 770px oluyor ve TÜM
+       İÇERİĞİ kadar genişliyordu — 430px viewport'ta şerit 770px oluyor ve TÜM
        sayfayı yatay kaydırmaya sokuyordu (kartlar/tazelik şeridi kesik görünüyor,
        sebep içerik değil MENÜ). Flex öğesinin varsayılanı min-width:auto, yani
-       içeriğinden küçülmez; nav 533px + dip 93px yan yana sığmayınca şerit büyür.
+       içeriğinden küçülmez; nav + dip yan yana sığmayınca şerit büyür.
 
        overflow-x: clip kullanilir, hidden DEGIL: hidden bir kaydirma baglami
        kurar ve position: sticky'yi bozabilir; clip sadece kirpar.
@@ -803,32 +989,31 @@ td.yok { color: var(--soluk-2); font-style: italic; }
        ve kalan metin CSS govdesine dusup build warning uretir. 2026-07-30 dersi. */
     min-width: 0; max-width: 100%; overflow-x: clip;
   }
-  .marka { padding: 0 10px 0 0; flex-direction: row; align-items: center; }
-  .marka-yazi { display: none; }
-  .marka-logo-img { width: 86px; }
-  .kenar-nav {
-    flex-direction: row; gap: var(--s-1); flex: 1 1 0;
-    /* flex-basis 0 + min-width 0: nav kendi içinde kayar, şeridi GENİŞLETMEZ.
-       `flex: 1` (basis auto) içerik genişliğini taban alıyordu → şerit taşıyordu. */
-    min-width: 0;
-    overflow-x: auto; scrollbar-width: none; scroll-snap-type: x proximity;
+  .ray-marka { padding: 0 var(--s-2) 0 0; }
+  .ray-logo { width: 34px; }
+  .ray-nav {
+    flex-direction: row; gap: var(--s-1); flex: 1 1 0; width: auto;
+    /* flex-basis 0 + min-width 0: nav kendi içinde kayar, şeridi GENİŞLETMEZ. */
+    min-width: 0; overflow-x: auto; overflow-y: hidden;
+    scroll-snap-type: x proximity;
   }
-  .kenar-nav::-webkit-scrollbar { display: none; }
-  .kenar-oge { padding: var(--s-2) var(--s-3); scroll-snap-align: start; flex-shrink: 0; }
-  .kenar-oge.akt::before { top: 0; bottom: auto; left: 0; right: 0; width: auto; height: 2px; border-radius: 0 0 2px 2px; }
-  .kenar-alt { display: none; }
-  .tema-secim { display: none; }
-  /* .kenar-dip tamamen gizlenirse ÇIKIŞ butonu erişilemez olur → şirket adını
-     gizle, kullanıcı+çıkış kalsın (sağ üstte kompakt). */
-  .kenar-dip {
-    border-top: none; padding: 0; margin-left: auto; font-size: 0; /* şirket metni gizle */
-    flex-shrink: 0;
+  .ray-oge {
+    flex-direction: row; gap: 6px; width: auto; min-width: 44px; min-height: 44px;
+    padding: var(--s-2) 10px; scroll-snap-align: start; flex-shrink: 0;
   }
-  .kenar-kullanici { margin-bottom: 0; }
-  .kenar-kul-ad { display: none; } /* dar ekranda ad yerine sadece Çıkış */
-  .cikis-btn { font-size: var(--t-xs); }
+  /* Yatay şeritte aktif göstergesi ALTA iner (sol şerit dikey rayın dili). */
+  .ray-oge.akt::before { left: 4px; right: 4px; top: auto; bottom: -8px; width: auto; height: 2px; border-radius: 2px 2px 0 0; }
+  /* Ad yalnız AKTİF modülde görünür: "neredeyim?" cevabı kalır, 6 modül şeride sığar.
+     Diğerlerinde ikon + aria-label taşır (App.tsx). */
+  .ray-oge:not(.akt) .ray-ad { display: none; }
+  .ray-oge.akt .ray-ad { font-size: var(--t-md); white-space: nowrap; }
+  .ray-dip { width: auto; padding-top: 0; border-top: none; margin-left: auto; flex-shrink: 0; }
+  .ray-avatar { width: 34px; height: 34px; }
+  /* Menü şeridin ALTINA açılır (yanına değil — ekran dışına taşardı). */
+  .kul-menu { left: auto; right: 0; bottom: auto; top: calc(100% + 10px); }
   .icerik-ic { padding: var(--s-5) var(--s-4) var(--s-8); }
   .baslik-satiri h1 { font-size: 22px; }
+  .baslik-sirket { display: none; }
 
   /* Sticky th, sticky sidebar'ın ALTINA kayıp gidiyordu → offset ver */
   th { top: var(--kenar-yuk); }
@@ -1120,14 +1305,8 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
                 (uzun şirket adları `white-space: nowrap` yüzünden hiç sarmıyordu)
      · font:    th 11px, kart-başlık 11px — telefonda okunamayacak kadar küçük  */
 @media (max-width: 760px) {
-  /* 1) SIDEBAR — alt açıklamalar ("Bağlantı & tank") mobilde yer yiyor, ad yeter.
-     Böylece 5 öğe ~114px'ten ~64px'e düşüp aynı anda 3-4'ü görünür. */
-  .kenar-alt { display: none; }
-  .kenar-ad { font-size: var(--t-md); }
-  .kenar-oge { padding: var(--s-2) 10px; gap: 6px; }
-  .kenar-ikon svg { width: 16px; height: 16px; }
-  /* Logo daralt — menüye yer aç */
-  .marka-logo-img { width: 62px; }
+  /* Ray ikonları dar ekranda biraz küçülür (şeride daha çok modül sığsın). */
+  .ray-ikon svg { width: 18px; height: 18px; }
 
   /* 2) TABLO — nowrap kaldırılır: uzun şirket adı sarar, tablo kutuya sığar.
      Yatay kaydırma yine mümkün (.tablo-sar) ama artık ZORUNLU değil. */
@@ -1140,10 +1319,22 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   /* ⚠️ SATIR YÜKSEKLİĞİ: şirket unvanları çok uzun ("... LİMİTED ŞİRKETİ") ve
      sarınca hücre 150px'e çıkıyordu → telefonda ekranda 4 satır görünüyor,
      tabloyu incelemek zorlaşıyor. İlk 3 satıra kırp + tamamı `title`'da.
-     line-clamp yalnız GÖRSEL kırpma — metin DOM'da tam, arama ve CSV etkilenmez. */
-  td:first-child, td.ad-hucre {
+     line-clamp yalnız GÖRSEL kırpma — metin DOM'da tam, arama ve CSV etkilenmez.
+     ⚠️ 2026-08-13 DÜZELTME — `display:-webkit-box` + `max-width:0` İLK KOLONA
+     VERİLMEZ: ikisi de `position:sticky`yi bozuyordu (sticky blok-seviyesi düzen
+     bekler; max-width:0 ise 860px bloğundaki `max-width:160px`i eziyordu, çünkü
+     bu blok sonra geliyor). Sonuç: yatay kaydırırken satır kimliği kayboluyordu —
+     hem de en çok gerektiği ekran boyutunda. Kırpma artık İÇ SARMALAYICIYA
+     (.hucre-kirp) uygulanıyor; <td> normal blok kalır, sticky çalışır. */
+  td:not(:first-child).ad-hucre {
     display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
-    overflow: hidden; max-width: 0;
+    overflow: hidden;
+  }
+  /* Sabit ilk kolon: kırpma iç sarmalayıcıda, hücrenin kendisi blok kalır. */
+  .tablo-sar td:first-child { max-width: 46vw; }
+  .tablo-sar td:first-child .hucre-kirp {
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 
   /* 3) FONT — 11px telefonda okunmuyor */
@@ -1170,9 +1361,16 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
   /* Uzun şirket unvanları sarsın ama satır şişmesin */
   th, td { white-space: normal; padding: 8px 10px; }
   td.sag, th.sag, td.mono, th.mono { white-space: nowrap; }
-  td:first-child, td.ad-hucre {
+  /* ⚠️ İlk kolona display:-webkit-box / max-width:0 VERİLMEZ — sticky'yi bozar
+     (gerekçe 760px bloğunda). Kırpma iç sarmalayıcıda. */
+  td:not(:first-child).ad-hucre {
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-    overflow: hidden; max-width: 0; overflow-wrap: anywhere;
+    overflow: hidden; overflow-wrap: anywhere;
+  }
+  .tablo-sar td:first-child { max-width: 280px; overflow-wrap: anywhere; }
+  .tablo-sar td:first-child .hucre-kirp {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
   }
   /* 424px satır: not/açıklama hücreleri de kırpılmalı */
   td.not-hucre { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

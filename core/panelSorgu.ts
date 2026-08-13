@@ -208,7 +208,15 @@ export async function durumVerisi(p: Pool) {
   const [ist, bag, alarm, alarmSayi, tazelik] = await Promise.all([
     // tip = ASIS IstasyonTip (İstasyonlu / Köy pompası / Köy tankeri) — hepsi gerçek
     // satış noktası, farklı iş modelleri. Panelde kolon + filtre olarak kullanılır.
-    p.query('SELECT istasyon_kod,ad,epdk_kod,sehir,bolge,aktif,tip FROM istasyonlar ORDER BY ad'),
+    //
+    // telefon: müdahale kuyruğundaki "Bayiyi ara" bağlantısı için (tel: linki).
+    // bayi_iletisim EPDK NO ile eşleşir (istasyon_kod ile değil) — bkz. schema.sql.
+    // Yoksa NULL döner ve panel butonu hiç çizmez.
+    p.query(`SELECT i.istasyon_kod, i.ad, i.epdk_kod, i.sehir, i.bolge, i.aktif, i.tip,
+                    bi.telefon
+             FROM istasyonlar i
+             LEFT JOIN bayi_iletisim bi ON bi.epdk_no = i.epdk_no
+             ORDER BY i.ad`),
     // Offline istasyonu 3 anlamlı kategoriye ayırır (kopuk / kapandi / rakibe).
     // kategori + rakip + iptal_aciklama alanları UI'da ZORUNLU — eksikse tablo çöker.
     //

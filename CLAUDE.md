@@ -44,10 +44,29 @@ Neden bu model: POL internete açık (Logo/DB gibi VPN arkasında değil) → GH
 erişebilir, kalıcı sunucu şart değil, ücretsiz. Durum stateless runner'da tutulamaz →
 Postgres'te.
 
+## Yetki modeli (2026-08-13)
+
+**İki DİK eksen** — karıştırma:
+
+| | Ne belirler | Nerede tutulur |
+|---|---|---|
+| `rol` | Kullanıcı yönetebilir mi (`admin` / `izleyici`) | `panel_kullanicilar.rol` |
+| `ekranlar` | Hangi modülleri görebilir | `panel_kullanicilar.ekranlar TEXT[]` |
+
+- Tek kaynak: **`core/ekranlar.ts`** (liste + `gorebilir()` + `gorunurEkranlar()`).
+  Modül listesi başka yere kopyalanmaz — kopya = sessiz yetki kayması.
+- `ekranlar` **NULL = hepsi** (henüz sınırlandırılmamış), **`{}` = hiçbiri**. İkisi farklı;
+  NULL geriye dönük uyum içindir (kolon sonradan eklendi, mevcut kullanıcılar yetkisiz kalmasın).
+- `admin` rolünde `ekranlar` **okunmaz** — yönetici her ekranı görür.
+- ⚠️ **Menüden gizlemek yetki DEĞİLDİR.** Kapı sunucuda: `korumali(handler, { ekran: 'piyasa' })`
+  (`api/_oturum.ts`). Yetkisiz kullanıcı `/api/piyasa`'yı curl ile de çekemez → 403.
+  Local sunucu (`araclar/panelSunucu.ts`) AYNI kapıyı uygular; ikisi ayrı kod, birlikte güncellenir.
+- Menü `/api/giris` yanıtındaki `ekranlar` listesinden çizilir; panel kendi yetki hesabı yapmaz.
+
 ## Klasörler
 
 - `core/` — ortak mantık: `asisClient.ts` (SOAP), `kurallar.ts` (alarm mantığı),
-  `db.ts` (Postgres), `bildirim/` (mail + SMS), `tipler.ts`.
+  `db.ts` (Postgres), `bildirim/` (mail + SMS), `tipler.ts`, `ekranlar.ts` (yetki).
 - `job/` — GH Actions entry noktası (`index.ts`): tek seferlik çek→değerlendir→bildir→yaz.
 - `panel/` — React + Vite izleme paneli (Vercel).
 - `docs/bilgi/` — ⭐ AI'ın biriktirdiği iş/mevzuat bilgisi.

@@ -9,6 +9,7 @@
 
 import { randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
 import type { Pool } from 'pg';
+import { ekranlariTemizle, type Ekran } from './ekranlar.js';
 
 const N = 16384; // CPU/bellek maliyeti
 const ANAHTAR_UZUNLUK = 64;
@@ -30,7 +31,14 @@ export interface Kullanici {
   son_giris: string | null;
   olusturan: string | null;
   olusturma: string;
+  /** Görebildiği ekranlar. NULL = hepsi (henüz sınırlandırılmamış), [] = hiçbiri.
+   *  admin rolünde bu alana bakılmaz. Bkz. core/ekranlar.ts */
+  ekranlar: Ekran[] | null;
 }
+
+/** SELECT listesi — şifre hash'i ASLA dahil değil. Tek yerde tutulur ki yeni bir
+ *  kolon eklendiğinde beş ayrı sorguda unutulmasın. */
+const ALANLAR = `kullanici_ad, rol, ad_soyad, sifre_degistir, son_giris, olusturan, olusturma, ekranlar`;
 
 /** Kullanıcı adını normalize et (büyük/küçük harf ve boşluk farkı sorun olmasın). */
 export function adNormal(ad: string): string {
@@ -84,8 +92,7 @@ export function sifreGecerliMi(s: string): { tamam: boolean; sebep?: string } {
 export async function girisDogrula(p: Pool, ad: string, sifre: string): Promise<Kullanici | null> {
   const k = adNormal(ad);
   const r = await p.query(
-    `SELECT kullanici_ad, sifre_hash, rol, ad_soyad, sifre_degistir, son_giris, olusturan, olusturma
-     FROM panel_kullanicilar WHERE kullanici_ad = $1`,
+    `SELECT ${ALANLAR}, sifre_hash FROM panel_kullanicilar WHERE kullanici_ad = $1`,
     [k],
   );
   const satir = r.rows[0];
@@ -102,8 +109,7 @@ export async function girisDogrula(p: Pool, ad: string, sifre: string): Promise<
 /** Kullanıcı listesi (şifre hash'i ASLA dönmez). */
 export async function kullaniciListesi(p: Pool): Promise<Kullanici[]> {
   const r = await p.query(
-    `SELECT kullanici_ad, rol, ad_soyad, sifre_degistir, son_giris, olusturan, olusturma
-     FROM panel_kullanicilar ORDER BY kullanici_ad`,
+    `SELECT ${ALANLAR} FROM panel_kullanicilar ORDER BY kullanici_ad`,
   );
   return r.rows as Kullanici[];
 }
@@ -111,8 +117,7 @@ export async function kullaniciListesi(p: Pool): Promise<Kullanici[]> {
 /** Tek kullanıcı (oturum doğrulamada rol/şifre-değiştir durumu için). */
 export async function kullaniciBul(p: Pool, ad: string): Promise<Kullanici | null> {
   const r = await p.query(
-    `SELECT kullanici_ad, rol, ad_soyad, sifre_degistir, son_giris, olusturan, olusturma
-     FROM panel_kullanicilar WHERE kullanici_ad = $1`,
+    `SELECT ${ALANLAR} FROM panel_kullanicilar WHERE kullanici_ad = $1`,
     [adNormal(ad)],
   );
   return (r.rows[0] as Kullanici) ?? null;
@@ -121,7 +126,12 @@ export async function kullaniciBul(p: Pool, ad: string): Promise<Kullanici | nul
 /** Yeni kullanıcı ekle. Yalnız admin çağırmalı (kontrol endpoint'te). */
 export async function kullaniciEkle(
   p: Pool,
-  opts: { ad: string; sifre: string; rol?: Rol; adSoyad?: string; olusturan: string; sifreDegistir?: boolean },
+  opts: {
+    ad: string; sifre: string; rol?: Rol; adSoyad?: string; olusturan: string;
+    sifreDegistir?: boolean;
+    /** Görebileceği ekranlar. undefined/null → hepsi. Bkz. core/ekranlar.ts */
+    ekranlar?: unknown;
+  },
 ): Promise<Kullanici> {
   const k = adNormal(opts.ad);
   if (!/^[a-z0-9._-]{3,32}$/.test(k))
@@ -132,10 +142,13 @@ export async function kullaniciEkle(
   const hash = await sifreHash(opts.sifre);
   try {
     const r = await p.query(
-      `INSERT INTO panel_kullanicilar (kullanici_ad, sifre_hash, rol, ad_soyad, olusturan, sifre_degistir)
-       VALUES ($1,$2,$3,$4,$5,$6)
-       RETURNING kullanici_ad, rol, ad_soyad, sifre_degistir, son_giris, olusturan, olusturma`,
-      [k, hash, opts.rol ?? 'izleyici', opts.adSoyad ?? null, adNormal(opts.olusturan), opts.sifreDegistir ?? true],
+      `INSERT INTO panel_kullanicilar (kullanici_ad, sifre_hash, rol, ad_soyad, olusturan, sifre_degistir, ekranlar)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       RETURNING ${ALANLAR}`,
+      [
+        k, hash, opts.rol ?? 'izleyici', opts.adSoyad ?? null, adNormal(opts.olusturan),
+        opts.sifreDegistir ?? true, ekranlariTemizle(opts.ekranlar),
+      ],
     );
     return r.rows[0] as Kullanici;
   } catch (e: unknown) {
@@ -193,6 +206,23 @@ export async function rolDegistir(p: Pool, ad: string, rol: Rol): Promise<void> 
     }
   }
   await p.query(`UPDATE panel_kullanicilar SET rol=$2, guncelleme=now() WHERE kullanici_ad=$1`, [k, rol]);
+}
+
+/**
+ * Ekran yetkilerini güncelle.
+ *
+ * `ekranlar` null → "hepsi" (sınırlama kaldırılır). Boş dizi → hiçbir ekran; bu
+ * geçerli bir durum: kullanıcı giriş yapabilir ama hiçbir modül göremez (askıya
+ * alma gibi). admin rolündeki kullanıcıda bu alan yazılır ama OKUNMAZ — admin her
+ * ekranı görür; rolü izleyiciye düşerse kayıtlı liste yürürlüğe girer.
+ */
+export async function ekranlariGuncelle(p: Pool, ad: string, ekranlar: unknown): Promise<void> {
+  const k = adNormal(ad);
+  const r = await p.query(
+    `UPDATE panel_kullanicilar SET ekranlar=$2, guncelleme=now() WHERE kullanici_ad=$1`,
+    [k, ekranlariTemizle(ekranlar)],
+  );
+  if (r.rowCount === 0) throw new Error('Kullanıcı bulunamadı.');
 }
 
 /** Hiç kullanıcı var mı (ilk kurulum kontrolü). */

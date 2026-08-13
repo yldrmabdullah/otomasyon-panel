@@ -7,6 +7,7 @@ import { db, hataYanit } from './_db.js';
 import { korumali } from './_oturum.js';
 import { operasyonVerisi } from '../core/panelSorgu.js';
 
+
 // korumali(): oturum yoksa 401 → DB'ye sorgu bile gitmez.
 // Cache PRIVATE: korumalı veri, Vercel edge'i paylaşımlı önbelleğe almamalı.
 export default korumali(async (_req: unknown, res: any) => {
@@ -17,4 +18,4 @@ export default korumali(async (_req: unknown, res: any) => {
   } catch (e) {
     hataYanit(res, e);
   }
-});
+}, { ekran: 'operasyon' });
