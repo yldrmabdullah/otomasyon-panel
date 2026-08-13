@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { Durum, Alarm, Istasyon, Baglanti } from './tipler.js';
 import { Tablo, type TabloKolon } from './Tablo.js';
-import { Bos, Kart, ModulBar, TazelikSerit, useVeri, veriYok, zamanFark } from './ortak.js';
+import { Bos, Kart, ModulBar, TazelikSerit, trTarih, useVeri, veriYok, zamanFark } from './ortak.js';
 import { YiginSerit } from './Grafik.js';
 
 // ASIS IstasyonTip — üç satış noktası modeli. Kısa etiket + rozet sınıfı.
@@ -94,13 +94,19 @@ export function Izleme() {
     const bag = (i: Istasyon) => baglantiByKod.get(i.istasyon_kod);
     return [
       {
+        // İstasyon KODU adın altında (Operasyon/Sorun modüllerindeki desenin aynısı).
+        // Uzun bayi unvanları tabloda kırpıldığı için satırlar birbirine benziyordu;
+        // kod satırı tekilleştirir ve POL/ASIS'te aramak için gereken değer odur.
+        // Arama hem koda hem EPDK'ya bakar.
         id: 'istasyon', ad: 'İstasyon', varsayilan: true, sabit: true, sinif: 'ad-hucre',
         sirala: (i) => i.ad,
-        ara: (i) => `${i.ad} ${i.epdk_kod ?? ''}`,
+        ara: (i) => `${i.ad} ${i.istasyon_kod} ${i.epdk_kod ?? ''}`,
+        metin: (i) => `${i.ad} (${i.istasyon_kod})`,
         hucre: (i) => (
           <>
             {i.ad}
             {alarmliKodlar.has(i.istasyon_kod) && <span className="mini-rozet">alarm</span>}
+            <div className="alt-satir soluk mono">{i.istasyon_kod}</div>
           </>
         ),
       },
@@ -137,9 +143,20 @@ export function Izleme() {
         hucre: (i) => i.bolge ?? <Bos />,
       },
       {
-        id: 'epdk', ad: 'EPDK', varsayilan: false, sinif: 'mono soluk',
+        // EPDK lisans no — bayiyle yazışmada/EPDK sorgusunda kullanılan resmî kimlik.
+        // Varsayılan AÇIK: kolon vardı ama kapalıydı, kullanıcı varlığını bilmiyordu.
+        // Tabloda yalnız sayı kısmı gösterilir ("BAY/939-82/" öneki 269 satırda
+        // aynı → yer yer, bilgi taşımaz); tam kod title'da ve CSV'de.
+        id: 'epdk', ad: 'EPDK No', varsayilan: true, sinif: 'mono soluk',
         sirala: (i) => i.epdk_kod ?? '',
-        hucre: (i) => i.epdk_kod ?? <Bos />,
+        ara: (i) => i.epdk_kod ?? '',
+        metin: (i) => i.epdk_kod ?? '',
+        hucre: (i) =>
+          i.epdk_kod ? (
+            <span title={i.epdk_kod}>{i.epdk_kod.replace(/^BAY\/[\d-]+\//, '')}</span>
+          ) : (
+            <Bos />
+          ),
       },
       {
         id: 'not', ad: 'Not', varsayilan: true, sinif: 'soluk not-hucre',
@@ -153,11 +170,63 @@ export function Izleme() {
                 <span aria-hidden="true">→ </span>
                 <span className="sr-only">Geçtiği dağıtıcı: </span>
                 {b.rakip}
+                {/* NE ZAMAN geçti — "Rakibe Geçti" tek başına geçen hafta mı iki
+                    yıl önce mi ayırt ettirmiyordu. transferler.tespit_gun = bizim
+                    tespit günümüz (EPDK resmî geçiş tarihi vermiyor).
+                    ⚠️ KAPSAM: transfer izleme 29.07.2026'da başladı; ondan ÖNCE
+                    geçenlerin kaydı yok. "—" yazıp boş bırakmak "yeni geçti"
+                    izlenimi verirdi, o yüzden sebebi açıkça yazılıyor. */}
+                <div className="alt-satir soluk">
+                  {b.gecis_tespit ? (
+                    <>
+                      <time dateTime={b.gecis_tespit}>{trTarih(b.gecis_tespit)}</time> tespit
+                    </>
+                  ) : (
+                    <span title="Transfer izleme 29.07.2026'da başladı — daha önce geçenlerin tarihi kayıtlı değil.">
+                      tarih yok (izleme öncesi)
+                    </span>
+                  )}
+                </div>
               </>
             );
-          if (kat === 'kapandi' && b?.iptal_aciklama)
-            return <span title={b.iptal_aciklama}>{b.iptal_aciklama}</span>;
+          if (kat === 'kapandi')
+            return (
+              <>
+                {/* Açıklama KENDİ İÇİNDE kırpılır: dıştaki .not-hucre line-clamp'i
+                    alt satırı da kapsıyordu ve tarih metnin üstüne biniyordu
+                    (canlıda görüldü 2026-08-13). Tam metin title'da. */}
+                {b?.iptal_aciklama ? (
+                  <span className="metin-kirp" title={b.iptal_aciklama}>{b.iptal_aciklama}</span>
+                ) : (
+                  <Bos />
+                )}
+                {b?.iptal_tarihi && (
+                  <div className="alt-satir soluk">
+                    <time dateTime={b.iptal_tarihi}>{trTarih(b.iptal_tarihi)}</time> iptal
+                  </div>
+                )}
+              </>
+            );
           return <Bos />;
+        },
+      },
+      {
+        // Ayrı SIRALANABİLİR tarih kolonu: "en son kim ayrıldı/kapandı" sorusu
+        // Not hücresindeki metinle cevaplanamıyordu (metin alfabetik sıralanır).
+        // Varsayılan kapalı — yalnız rakibe/kapandı satırlarında dolu, herkes için
+        // gerekli değil; ilgilenen Kolonlar menüsünden açar.
+        id: 'ayrilma', ad: 'Ayrılma / İptal', varsayilan: false, sinif: 'sag soluk',
+        sirala: (i) => {
+          const b = bag(i);
+          const t = b?.gecis_tespit ?? b?.iptal_tarihi ?? null;
+          return t ? new Date(t).getTime() : null; // null → Tablo sona atar
+        },
+        metin: (i) => bag(i)?.gecis_tespit ?? bag(i)?.iptal_tarihi ?? '',
+        hucre: (i) => {
+          const b = bag(i);
+          const t = b?.gecis_tespit ?? b?.iptal_tarihi ?? null;
+          if (!t) return <Bos />;
+          return <time dateTime={t}>{trTarih(t)}</time>;
         },
       },
       {

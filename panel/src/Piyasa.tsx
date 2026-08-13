@@ -520,14 +520,17 @@ export function Piyasa() {
       hucre: (t) => t.il ?? <Bos />,
     },
     {
-      id: 'eski', ad: 'Eski', varsayilan: true, sinif: 'soluk',
+      // Eski/Yeni DAĞITICI UNVANI taşıyor ("… AKARYAKIT DAĞITIM ANONİM ŞİRKETİ").
+      // Sınıfsızken tek satırda 632px sürüyordu ve tabloyu 1874px'e çıkarıyordu
+      // (ölçüldü 2026-08-13). ad-hucre tavan + ellipsis verir; tam ad title'da.
+      id: 'eski', ad: 'Eski', varsayilan: true, sinif: 'soluk ad-hucre',
       sirala: (t) => t.eski_deger ?? '', ara: (t) => t.eski_deger ?? '',
-      hucre: (t) => t.eski_deger ?? <Bos />,
+      hucre: (t) => (t.eski_deger ? <span title={t.eski_deger}>{t.eski_deger}</span> : <Bos />),
     },
     {
-      id: 'yeni', ad: 'Yeni', varsayilan: true,
+      id: 'yeni', ad: 'Yeni', varsayilan: true, sinif: 'ad-hucre',
       sirala: (t) => t.yeni_deger ?? '', ara: (t) => t.yeni_deger ?? '',
-      hucre: (t) => t.yeni_deger ?? <Bos />,
+      hucre: (t) => (t.yeni_deger ? <span title={t.yeni_deger}>{t.yeni_deger}</span> : <Bos />),
     },
     {
       id: 'tarih', ad: 'Tarih', varsayilan: true, sinif: 'sag soluk',

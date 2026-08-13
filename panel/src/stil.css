@@ -573,6 +573,26 @@ th.sag, td.sag { text-align: right; }
 .tablo-sar td:first-child { position: sticky; left: 0; z-index: 1; background: var(--panel); }
 /* Sabit kolon içeriği (fatura no / isim) kesilmesin — okunur bir taban genişlik. */
 .tablo-sar th:first-child, .tablo-sar td:first-child { min-width: 148px; }
+
+/* ⚠️ İLK KOLON TAVANI — TÜM TABLOLAR (2026-08-13, canlıda görüldü).
+   Ölçüm: Operasyon "İrsaliyesiz dolum" ilk kolonu 1348px, kutu 1294px → tablo
+   1671px oldu ve DİĞER KOLONLAR (Eksik %, İrsaliyesiz, Toplam dolum) ekranın
+   dışına itildi; kullanıcı boş bir tablo görüyordu.
+
+   Sebep: kısıtlama yalnız `.ad-hucre` sınıfına ve `.iki-sutun` bağlamına
+   veriliyordu. Ama Operasyon/Sorun tablolarındaki <IstasyonHucre> o sınıfı
+   KULLANMIYOR (kendi <strong> + alt satır yapısı var) → hiçbir tavan
+   uygulanmıyordu ve `white-space: nowrap` ile unvan ne kadar uzunsa kolon o
+   kadar genişliyordu.
+
+   Doğru yer: sınıfa değil KONUMA bağla — ilk kolon her tabloda satır kimliğidir
+   ve hiçbir tabloda ekranı yutmamalı. Kırpma .hucre-kirp sarmalayıcısında
+   (Tablo.tsx), çünkü <td> sticky ve line-clamp onu bozar. Tam ad title'da + CSV'de. */
+.tablo-sar td:first-child { max-width: 320px; }
+.tablo-sar td:first-child .hucre-kirp {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; overflow-wrap: anywhere;
+}
 /* İlk kolon 'ad-hucre' ise (uzun isim) TEK satır + ellipsis — sabit sütunu şişirmesin
    ve satır yüksekliği sabit kalsın (tam ad detay/CSV'de var). */
 .tablo-sar td:first-child.ad-hucre { max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -603,7 +623,19 @@ tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover td { background: var(--panel-2); }
 td.soluk { color: var(--soluk); }
 .ad-hucre { font-weight: 500; max-width: min(280px, 32vw); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.not-hucre { max-width: min(320px, 40vw); white-space: normal; font-size: var(--t-sm); line-height: 1.4; }
+/* Serbest metin hücresi (not / istasyon listesi). Sararak genişliği sınırlar.
+   ⚠️ Kırpma HÜCREYE değil, içindeki .metin-kirp sarmalayıcısına verilir: hücreye
+   verilince altındaki tarih satırı da clamp kutusuna giriyor ve metnin ÜSTÜNE
+   biniyordu (canlıda görüldü 2026-08-13). */
+.not-hucre {
+  max-width: min(320px, 40vw); white-space: normal; font-size: var(--t-sm); line-height: 1.4;
+}
+/* 3 satırda kes — bir irsaliye 5 tesise bölünmüşse hücre 10 satıra çıkıyordu.
+   Tam metin title'da ve CSV'de. */
+.metin-kirp {
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden; overflow-wrap: anywhere;
+}
 .bos { text-align: center; color: var(--soluk-2); padding: var(--s-7); }
 
 /* Vurgulu satır — "biz" MARKA vurgusu (zemin YOK, sol şerit + kırmızı ad).
@@ -694,16 +726,9 @@ td.yok { color: var(--soluk-2); font-style: italic; }
   gap: var(--s-4); align-items: start; margin-bottom: var(--s-5);
 }
 .iki-sutun > * { min-width: 0; }
-/* İki sütun düzeninde tabloya kalan genişlik ~950px'e iner (tek başınayken 1360px).
-   Uzun şirket unvanları ad kolonunu 280px'e kadar şişirip tabloyu 1600px'e
-   çıkarıyordu → gereksiz yatay kaydırma. Dar bağlamda ad kolonu kısıtlanır;
-   tam ad `title`'da ve CSV'de duruyor. */
+/* İki sütunda tabloya kalan genişlik daha da azalır → ad kolonu biraz daha dar. */
 .iki-sutun .tablo-sar td:first-child,
 .iki-sutun .tablo-sar th:first-child { max-width: 200px; }
-.iki-sutun .tablo-sar td:first-child .hucre-kirp {
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  overflow: hidden; overflow-wrap: anywhere;
-}
 /* Yan panelde birden fazla blok varsa aralarında nefes olsun. */
 .yan-panel { display: flex; flex-direction: column; gap: var(--s-4); }
 /* Dar ekranda yan panel ALTA iner — 330px + tablo yan yana sığmaz. */
@@ -1436,7 +1461,8 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
     overflow: hidden;
   }
   /* 424px satır: not/açıklama hücreleri de kırpılmalı */
-  td.not-hucre { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  /* Kırpma hücreye DEĞİL iç sarmalayıcıya (alt satır clamp kutusuna girmesin). */
+  td.not-hucre .metin-kirp { -webkit-line-clamp: 2; }
   .alt-satir, .soluk, .rozet, .durum-etiket, .tip-rozet { font-size: var(--t-sm); }
   /* `th` genel kuralı --t-xs (11px) — tablette de okunmuyor. th.sirali içindeki
      buton da miras alıyor, ikisi birlikte verilir. */

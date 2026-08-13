@@ -35,8 +35,17 @@ export function Fiyat() {
 
   const kolonlar: TabloKolon<Satir>[] = useMemo(() => [
     {
+      // EPDK no adın altında — aramaya dahildi ama görünmüyordu (bkz. Uzlastirma).
       id: 'bayi', ad: 'Bayi', varsayilan: true, sabit: true, sinif: 'ad-hucre',
-      hucre: (r) => r.istasyon || r.epdk, ara: (r) => `${r.istasyon ?? ''} ${r.epdk}`, sirala: (r) => r.istasyon ?? '',
+      hucre: (r) => (
+        <>
+          {r.istasyon || r.epdk}
+          {r.istasyon && <div className="alt-satir soluk mono">{r.epdk}</div>}
+        </>
+      ),
+      ara: (r) => `${r.istasyon ?? ''} ${r.epdk}`,
+      metin: (r) => `${r.istasyon ?? ''} (${r.epdk})`,
+      sirala: (r) => r.istasyon ?? '',
     },
     { id: 'il', ad: 'İl', varsayilan: true, hucre: (r) => r.il || <Bos />, ara: (r) => r.il ?? '', sirala: (r) => r.il ?? '' },
     { id: 'bolge', ad: 'Bölge', varsayilan: false, sinif: 'soluk', hucre: (r) => r.bolge || <Bos />, ara: (r) => r.bolge ?? '' },

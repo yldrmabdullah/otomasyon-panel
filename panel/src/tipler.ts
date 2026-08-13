@@ -28,6 +28,10 @@ export interface Baglanti {
   rakip: string | null;
   iptal_aciklama: string | null;
   iptal_tarihi: string | null;
+  /** Dağıtıcı değişiminin TESPİT edildiği gün (transferler.tespit_gun).
+   *  EPDK kütüğü resmî geçiş tarihi vermiyor; elimizdeki en iyi yaklaşım bu.
+   *  Eski sürüm API'den gelmeyebilir → opsiyonel. */
+  gecis_tespit?: string | null;
 }
 /** Tank anlık durumu. ŞU AN /api/durum'da GÖNDERİLMİYOR: UI'da tüketicisi yoktu
  *  ama yanıtın %41'iydi (114 KB) ve 60 sn'de bir çekiliyordu. Mutabakat hesabı

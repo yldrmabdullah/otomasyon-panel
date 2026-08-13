@@ -232,10 +232,21 @@ export async function durumVerisi(p: Pool) {
                  WHEN e.dagitim_sirketi IS NOT NULL AND e.dagitim_sirketi NOT ILIKE '%TURGUT%' THEN 'rakibe'
                  ELSE 'bilinmiyor'
                END kategori,
-               e.dagitim_sirketi rakip, e.iptal_aciklama, e.iptal_tarihi
+               e.dagitim_sirketi rakip, e.iptal_aciklama, e.iptal_tarihi,
+               -- NE ZAMAN ayrıldı/geçti? Panel "Rakibe Geçti" diyordu ama tarihi
+               -- yoktu → "geçen hafta mı, iki yıl önce mi" ayırt edilemiyordu.
+               -- transferler tablosu dağıtıcı değişimini tespit ettiği GÜNÜ tutar
+               -- (EPDK kütüğü resmî geçiş tarihi vermiyor; elimizdeki en iyi değer bu).
+               -- Aynı bayide birden fazla kayıt olabilir → en SONuncusu alınır.
+               t.tespit_gun::text gecis_tespit
              FROM baglanti_durum b
              LEFT JOIN istasyonlar i ON i.istasyon_kod=b.istasyon_kod
-             LEFT JOIN bayiler_epdk e ON e.bayi_lisans_no=i.epdk_kod`),
+             LEFT JOIN bayiler_epdk e ON e.bayi_lisans_no=i.epdk_kod
+             LEFT JOIN LATERAL (
+               SELECT tespit_gun FROM transferler tr
+               WHERE tr.bayi_lisans_no = i.epdk_kod
+               ORDER BY tr.tespit_gun DESC, tr.id DESC LIMIT 1
+             ) t ON TRUE`),
     // ⚠️ AÇIK ALARMLAR + SON 200 KAPALI (2026-08-04, ölçülerek daraltıldı).
     //
     // Önce LIMIT 300 idi ve 2.223 alarmın %86'sı sessizce kırpılıyordu. İlk

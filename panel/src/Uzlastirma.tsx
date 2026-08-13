@@ -54,8 +54,19 @@ export function Uzlastirma() {
 
   const bayiKolon: TabloKolon<Bayi>[] = useMemo(() => [
     {
+      // EPDK no adın ALTINDA: aramaya zaten dahildi ama hiçbir yerde GÖRÜNMÜYORDU
+      // → kullanıcı arayabildiğini bilmiyordu. Uzun unvanlar kırpıldığı için
+      // satırları ayırt eden değer de bu.
       id: 'bayi', ad: 'Bayi', varsayilan: true, sabit: true, sinif: 'ad-hucre',
-      hucre: (b) => b.istasyon || b.epdk, ara: (b) => `${b.istasyon ?? ''} ${b.epdk}`, sirala: (b) => b.istasyon ?? '',
+      hucre: (b) => (
+        <>
+          {b.istasyon || b.epdk}
+          {b.istasyon && <div className="alt-satir soluk mono">{b.epdk}</div>}
+        </>
+      ),
+      ara: (b) => `${b.istasyon ?? ''} ${b.epdk}`,
+      metin: (b) => `${b.istasyon ?? ''} (${b.epdk})`,
+      sirala: (b) => b.istasyon ?? '',
     },
     { id: 'bolge', ad: 'Bölge', varsayilan: true, sinif: 'soluk', hucre: (b) => b.bolge || <Bos />, ara: (b) => b.bolge ?? '', sirala: (b) => b.bolge ?? '' },
     { id: 'mintika', ad: 'Mıntıka', varsayilan: false, sinif: 'soluk', hucre: (b) => b.mintika || <Bos />, ara: (b) => b.mintika ?? '' },
