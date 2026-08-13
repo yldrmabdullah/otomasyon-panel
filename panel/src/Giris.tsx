@@ -1,12 +1,16 @@
 // Giriş ekranı. Şifre asla localStorage'a yazılmaz — sunucu HttpOnly çerez kurar,
 // JS onu okuyamaz (XSS'te oturum çalınamaz). Oturum durumu /api/giris'ten sorulur.
 import { useState } from 'react';
+import { TemaSecici, useTema } from './ortak.js';
 
 export function Giris({ girisOldu }: { girisOldu: (kullanici: string) => void }) {
   const [kullanici, setKullanici] = useState('');
   const [sifre, setSifre] = useState('');
   const [hata, setHata] = useState<string | null>(null);
   const [bekliyor, setBekliyor] = useState(false);
+  // Tema kontrolü giriş ekranında da olmalı: kullanıcı henüz girmemişken
+  // (ve hesap menüsüne erişemezken) OS ayarına mahkum kalmasın.
+  const { tema, setTema } = useTema();
 
   async function gonder(e: React.FormEvent) {
     e.preventDefault();
@@ -31,6 +35,9 @@ export function Giris({ girisOldu }: { girisOldu: (kullanici: string) => void })
 
   return (
     <div className="giris-sar">
+      {/* Sağ üstte, formun dışında: giriş akışını bölmez ama erişilebilir. */}
+      <TemaSecici tema={tema} setTema={setTema} sinif="giris-tema" />
+
       <form className="giris-kart" onSubmit={gonder}>
         <div className="giris-marka">
           <img className="marka-logo-img logo-koyu" src="/marka/parkoil-beyaz.png" alt="Parkoil" />

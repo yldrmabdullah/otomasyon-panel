@@ -17,7 +17,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pool, kapat } from '../core/db.js';
 
-const BASE = (process.env.POL_URL ?? 'https://pol.parkoil.tr/POL/').replace(/\/$/, '') + '/';
+/** Ortam değişkeni oku — BOŞ STRING de "yok" sayılır. `??` yalnız undefined/null'da
+ *  devreye girer; workflow tanımsız bir variable geçirirse '' gelir ve varsayılan
+ *  ATLANIR (fiyatKiyas.mts bu yüzden çökmüştü, 2026-08-13). */
+const cevre = (ad: string, varsayilan: string): string => {
+  const v = process.env[ad];
+  return v && v.trim() ? v.trim() : varsayilan;
+};
+const BASE = cevre('POL_URL', 'https://pol.parkoil.tr/POL/').replace(/\/$/, '') + '/';
 const POL_KADI = process.env.POL_KULLANICI ?? '';
 const POL_SIFRE = process.env.POL_SIFRE ?? '';
 const IND_DIR = join(tmpdir(), 'uzlas-indir');

@@ -7,6 +7,7 @@ import { db, hataYanit } from './_db.js';
 import { korumali } from './_oturum.js';
 import { piyasaVerisi } from '../core/panelSorgu.js';
 
+
 // Bu endpoint en hassas veriyi taşıyor: kaybedilen bayiler, rakip hedef listesi,
 // pazar payı. korumali() + private cache ZORUNLU (paylaşımlı edge cache'e girmesin).
 export default korumali(async (_req: unknown, res: any) => {
@@ -17,4 +18,4 @@ export default korumali(async (_req: unknown, res: any) => {
   } catch (e) {
     hataYanit(res, e);
   }
-});
+}, { ekran: 'piyasa' });

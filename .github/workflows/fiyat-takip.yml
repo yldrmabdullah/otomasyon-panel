@@ -59,5 +59,9 @@ jobs:
           POL_KULLANICI: ${{ secrets.POL_KULLANICI }}
           POL_SIFRE: ${{ secrets.POL_SIFRE }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          # Referans fiyat kaynağı (public). Değişirse secret/variable ile override edilebilir.
-          FIYAT_REF_URL: ${{ vars.FIYAT_REF_URL }}
+          # Referans fiyat kaynağı (public). Değişirse variable ile override edilebilir.
+          # ⚠️ `|| ''` YOK, açık varsayılan VAR: tanımsız variable boş string geçirir,
+          # kodda `??` bunu yakalamaz (yalnız undefined'da çalışır) → fetch('') →
+          # "Failed to parse URL from" ile job çökmüştü (2026-08-13). Kod tarafı da
+          # düzeltildi (araclar/fiyatKiyas.mts cevre()), bu ikinci katman.
+          FIYAT_REF_URL: ${{ vars.FIYAT_REF_URL || 'https://parkoil.com.tr/data/fiyatlar-guncel.json' }}

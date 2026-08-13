@@ -5,6 +5,7 @@ import { db, hataYanit } from './_db.js';
 import { korumali } from './_oturum.js';
 import { a3LogoVerisi } from '../core/panelSorgu.js';
 
+
 export default korumali(async (req: any, res: any) => {
   try {
     const donem = req?.query?.donem as string | undefined;
@@ -14,4 +15,4 @@ export default korumali(async (req: any, res: any) => {
   } catch (e) {
     hataYanit(res, e);
   }
-});
+}, { ekran: 'mevzuat' });

@@ -8,15 +8,17 @@ import { Giris } from './Giris.js';
 import { SifreDegistir } from './SifreDegistir.js';
 import { Kullanicilar } from './Kullanicilar.js';
 import { IkonIzleme, IkonMevzuat, IkonPiyasa, IkonOperasyon, IkonSorun, IkonKullanici } from './ikon.js';
+import { TemaSecici, useTema } from './ortak.js';
 
 type Modul = 'izleme' | 'operasyon' | 'sorun' | 'mevzuat' | 'piyasa' | 'kullanicilar';
-type Tema = 'sistem' | 'light' | 'dark';
 
 interface Oturum {
   kullanici: string;
   rol: 'admin' | 'izleyici';
   adSoyad: string | null;
   sifreDegistir: boolean;
+  /** Sunucunun çözdüğü görünür ekran listesi. Panel kendi yetki hesabı YAPMAZ. */
+  ekranlar: string[];
 }
 
 const MODULLER: { id: Modul; ad: string; Ikon: () => ReactElement; alt: string; adminMi?: boolean }[] = [
@@ -28,12 +30,22 @@ const MODULLER: { id: Modul; ad: string; Ikon: () => ReactElement; alt: string; 
   { id: 'kullanicilar', ad: 'Kullanıcılar', Ikon: IkonKullanici, alt: 'Yetki yönetimi', adminMi: true },
 ];
 
-const TEMA_AD: Record<Tema, string> = { sistem: 'Oto', light: 'Açık', dark: 'Koyu' };
+/** Ad-soyaddan baş harfler (ray altındaki avatar). "Ahmet Yıldırım" → "AY". */
+function basHarfler(adSoyad: string | null, kullanici: string): string {
+  const kaynak = (adSoyad ?? kullanici).trim();
+  const p = kaynak.split(/\s+/).filter(Boolean);
+  if (!p.length) return '?';
+  const h = p.length === 1 ? p[0].slice(0, 2) : p[0][0] + p[p.length - 1][0];
+  return h.toLocaleUpperCase('tr');
+}
 
 export function App() {
   const [modul, setModul] = useState<Modul>('izleme');
   const basRef = useRef<HTMLHeadingElement>(null);
   const ilkRef = useRef(true);
+  // Kullanıcı menüsü (avatara tıkla → çıkış / şifre değiştir).
+  const [kulMenu, setKulMenu] = useState(false);
+  const kulRef = useRef<HTMLDivElement>(null);
 
   // Oturum: undefined = henüz sorulmadı, null = giriş yok, nesne = girişli.
   // Şifre/jeton JS'te TUTULMAZ — sunucu HttpOnly çerez kuruyor.
@@ -47,7 +59,17 @@ export function App() {
       const d = r.ok ? await r.json() : { girisli: false };
       setOturum(
         d?.girisli
-          ? { kullanici: d.kullanici, rol: d.rol ?? 'izleyici', adSoyad: d.adSoyad ?? null, sifreDegistir: !!d.sifreDegistir }
+          ? {
+              kullanici: d.kullanici,
+              rol: d.rol ?? 'izleyici',
+              adSoyad: d.adSoyad ?? null,
+              sifreDegistir: !!d.sifreDegistir,
+              // Eski sunucu sürümü bu alanı göndermezse (deploy sırası) hiçbir modül
+              // kaybolmasın → boş dizi değil, "hepsi" varsayılır.
+              ekranlar: Array.isArray(d.ekranlar)
+                ? d.ekranlar
+                : MODULLER.filter((m) => !m.adminMi).map((m) => m.id),
+            }
           : null,
       );
     } catch {
@@ -62,23 +84,32 @@ export function App() {
     setOturum(null);
   }
 
-  // Tema seçimi bir erişilebilirlik kontrolü: CSS'te data-theme override'ları
-  // vardı ama hiçbir yer set etmiyordu → kullanıcı OS ayarına mahkumdu.
-  const [tema, setTema] = useState<Tema>(() => {
-    const k = localStorage.getItem('tema');
-    return k === 'light' || k === 'dark' ? k : 'sistem';
-  });
-  useEffect(() => {
-    if (tema === 'sistem') document.documentElement.removeAttribute('data-theme');
-    else document.documentElement.setAttribute('data-theme', tema);
-    localStorage.setItem('tema', tema);
-  }, [tema]);
+  // Tema seçimi bir erişilebilirlik kontrolü. Mantık ortak.tsx'te — giriş ekranı
+  // da aynı hook'u kullanıyor (kullanıcı girmeden önce de temayı değiştirebilsin).
+  const { tema, setTema } = useTema();
 
   // Modül değişince başlığa odaklan → ekran okuyucu yeni bölümü duyurur.
   useEffect(() => {
     if (ilkRef.current) { ilkRef.current = false; return; }
     basRef.current?.focus();
   }, [modul]);
+
+  // Kullanıcı menüsü: dışına tıkla/Escape ile kapan (KolonSecici ile aynı desen).
+  useEffect(() => {
+    if (!kulMenu) return;
+    const kapat = (e: Event) => {
+      if (kulRef.current && !kulRef.current.contains(e.target as Node)) setKulMenu(false);
+    };
+    const tus = (e: KeyboardEvent) => { if (e.key === 'Escape') setKulMenu(false); };
+    document.addEventListener('mousedown', kapat);
+    document.addEventListener('touchstart', kapat, { passive: true });
+    document.addEventListener('keydown', tus);
+    return () => {
+      document.removeEventListener('mousedown', kapat);
+      document.removeEventListener('touchstart', kapat);
+      document.removeEventListener('keydown', tus);
+    };
+  }, [kulMenu]);
 
   // Oturum sorgusu bitmeden panel çizilmez (korumalı veriye istek gitmesin).
   if (oturum === undefined) return <div className="giris-sar" aria-busy="true" />;
@@ -96,72 +127,113 @@ export function App() {
     );
 
   // Yetkisi olmayan modüller menüde görünmez; adres/state ile de açılamaz.
-  const gorunurModuller = MODULLER.filter((m) => !m.adminMi || oturum.rol === 'admin');
+  // Kullanıcılar modülü role bağlı, diğerleri ekran yetkisine.
+  const gorunurModuller = MODULLER.filter((m) =>
+    m.adminMi ? oturum.rol === 'admin' : oturum.ekranlar.includes(m.id),
+  );
   const aktif = gorunurModuller.find((m) => m.id === modul) ?? gorunurModuller[0];
+
+  // Hiç ekran yetkisi yoksa panel boş kalır — sessiz beyaz ekran yerine açıklama.
+  if (!aktif)
+    return (
+      <div className="giris-sar">
+        <div className="giris-kart">
+          <div className="giris-marka">
+            <img className="marka-logo-img logo-koyu" src="/marka/parkoil-beyaz.png" alt="Parkoil" />
+            <img className="marka-logo-img logo-acik" src="/marka/parkoil-kirmizi.png" alt="Parkoil" />
+            <div className="marka-alt">Otomasyon Paneli</div>
+          </div>
+          <h1 className="giris-baslik">Yetki yok</h1>
+          <p className="giris-not">
+            <b>{oturum.adSoyad || oturum.kullanici}</b> hesabına henüz hiçbir ekran yetkisi
+            tanımlanmamış. Yöneticinizden yetki isteyin.
+          </p>
+          <button type="button" className="giris-btn" onClick={cikis}>Çıkış yap</button>
+        </div>
+      </div>
+    );
 
   return (
     <div className="uygulama">
       <a href="#ana-icerik" className="atla">Ana içeriğe geç</a>
-      <aside className="kenar" aria-label="Modül gezinme">
-        <div className="marka">
-          <img className="marka-logo-img logo-koyu" src="/marka/parkoil-beyaz.png" alt="Parkoil" />
-          <img className="marka-logo-img logo-acik" src="/marka/parkoil-kirmizi.png" alt="Parkoil" />
-          <div className="marka-yazi">
-            <div className="marka-alt">Otomasyon Paneli</div>
-          </div>
+
+      {/* ── İKON RAYI ───────────────────────────────────────────────────────
+          Komuta ekranı dili: modül gezinme dar bir raya iner, ekranın tamamı
+          veriye kalır. Ad `title` + `aria-label`'da; ray daralınca bilgi kaybı yok. */}
+      <nav className="ray" aria-label="Modüller">
+        <div className="ray-marka" title="Parkoil Otomasyon Paneli">
+          <img className="ray-logo logo-koyu" src="/marka/parkoil-beyaz.png" alt="Parkoil" />
+          <img className="ray-logo logo-acik" src="/marka/parkoil-kirmizi.png" alt="Parkoil" />
         </div>
-        <nav className="kenar-nav" aria-label="Modüller">
+
+        <div className="ray-nav">
           {gorunurModuller.map((m) => (
             <button
               key={m.id}
               type="button"
-              className={`kenar-oge ${aktif.id === m.id ? 'akt' : ''}`}
+              className={`ray-oge ${aktif.id === m.id ? 'akt' : ''}`}
               onClick={() => setModul(m.id)}
-              aria-current={aktif.id === m.id ? 'true' : undefined}
-              // Mobilde (≤560px) modül ADI gizlenip yalnız ikon kalıyor (5 modül
-              // 390px şeride sığmıyordu). aria-label olmadan ekran okuyucu butonu
-              // adlandıramaz → ad her koşulda erişilebilir kalsın.
+              aria-current={aktif.id === m.id ? 'page' : undefined}
               aria-label={`${m.ad} — ${m.alt}`}
-              title={m.ad}
+              title={`${m.ad} · ${m.alt}`}
             >
-              <span className="kenar-ikon"><m.Ikon /></span>
-              <span className="kenar-metin">
-                <span className="kenar-ad">{m.ad}</span>
-                <span className="kenar-alt">{m.alt}</span>
-              </span>
-            </button>
-          ))}
-        </nav>
-        <div className="tema-secim" role="group" aria-label="Renk teması">
-          {(['sistem', 'light', 'dark'] as Tema[]).map((t) => (
-            <button key={t} type="button" aria-pressed={tema === t} onClick={() => setTema(t)}>
-              {TEMA_AD[t]}
+              <span className="ray-ikon"><m.Ikon /></span>
+              <span className="ray-ad">{m.ad}</span>
             </button>
           ))}
         </div>
-        <div className="kenar-dip">
-          <div className="kenar-kullanici">
-            <span className="kenar-kul-ad" title={`${oturum.kullanici}${oturum.rol === 'admin' ? ' (yönetici)' : ''}`}>
-              {oturum.adSoyad || oturum.kullanici}
+
+        {/* Kullanıcı: avatar + menü (tema, şifre, çıkış). Ray dibinde sabit. */}
+        <div className="ray-dip" ref={kulRef}>
+          <button
+            type="button"
+            className="ray-avatar"
+            onClick={() => setKulMenu((a) => !a)}
+            aria-expanded={kulMenu}
+            aria-haspopup="true"
+            title={`${oturum.adSoyad || oturum.kullanici}${oturum.rol === 'admin' ? ' (yönetici)' : ''}`}
+          >
+            {basHarfler(oturum.adSoyad, oturum.kullanici)}
+            <span className="sr-only">
+              {oturum.adSoyad || oturum.kullanici} — hesap menüsü
             </span>
-            {/* Mobilde metin CSS ile gizlenip ikona iniyor (şeride yer açmak için) →
-                aria-label olmadan buton isimsiz kalır. */}
-            <button type="button" className="cikis-btn" onClick={cikis} aria-label="Çıkış yap" title="Çıkış yap">
-              Çıkış
-            </button>
-          </div>
-          <button type="button" className="cikis-btn tam-genis" onClick={() => setSifreEkrani(true)}>
-            Şifremi değiştir
           </button>
-          <span className="kenar-sirket">Turgut Dağıtım Enerji A.Ş.</span>
+
+          {kulMenu && (
+            <div className="kul-menu" role="group" aria-label="Hesap">
+              <div className="kul-menu-bas">
+                <strong>{oturum.adSoyad || oturum.kullanici}</strong>
+                <span className="kul-menu-rol">
+                  {oturum.rol === 'admin' ? 'Yönetici' : 'İzleyici'}
+                </span>
+              </div>
+
+              <TemaSecici tema={tema} setTema={setTema} sinif="kul-menu-tema" />
+
+              <button
+                type="button"
+                className="kul-menu-oge"
+                onClick={() => { setKulMenu(false); setSifreEkrani(true); }}
+              >
+                Şifremi değiştir
+              </button>
+              <button type="button" className="kul-menu-oge tehlike" onClick={cikis}>
+                Çıkış yap
+              </button>
+              <span className="kul-menu-dip">Turgut Dağıtım Enerji A.Ş.</span>
+            </div>
+          )}
         </div>
-      </aside>
+      </nav>
 
       <main className="icerik" id="ana-icerik">
         <div className="icerik-ic">
+          {/* Başlık şeridi: modül adı + şirket. Modül kendi ModulBar'ını altına koyar. */}
           <div className="baslik-satiri">
             <h1 ref={basRef} tabIndex={-1}>{aktif.ad}</h1>
+            <span className="baslik-sirket">Turgut Dağıtım Enerji A.Ş.</span>
           </div>
+
           {aktif.id === 'izleme' ? <Izleme />
             : aktif.id === 'operasyon' ? <Operasyon />
             : aktif.id === 'sorun' ? <Sorun />

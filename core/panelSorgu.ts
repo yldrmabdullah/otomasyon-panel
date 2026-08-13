@@ -208,7 +208,15 @@ export async function durumVerisi(p: Pool) {
   const [ist, bag, alarm, alarmSayi, tazelik] = await Promise.all([
     // tip = ASIS IstasyonTip (İstasyonlu / Köy pompası / Köy tankeri) — hepsi gerçek
     // satış noktası, farklı iş modelleri. Panelde kolon + filtre olarak kullanılır.
-    p.query('SELECT istasyon_kod,ad,epdk_kod,sehir,bolge,aktif,tip FROM istasyonlar ORDER BY ad'),
+    //
+    // telefon: müdahale kuyruğundaki "Bayiyi ara" bağlantısı için (tel: linki).
+    // bayi_iletisim EPDK NO ile eşleşir (istasyon_kod ile değil) — bkz. schema.sql.
+    // Yoksa NULL döner ve panel butonu hiç çizmez.
+    p.query(`SELECT i.istasyon_kod, i.ad, i.epdk_kod, i.sehir, i.bolge, i.aktif, i.tip,
+                    bi.telefon
+             FROM istasyonlar i
+             LEFT JOIN bayi_iletisim bi ON bi.epdk_no = i.epdk_no
+             ORDER BY i.ad`),
     // Offline istasyonu 3 anlamlı kategoriye ayırır (kopuk / kapandi / rakibe).
     // kategori + rakip + iptal_aciklama alanları UI'da ZORUNLU — eksikse tablo çöker.
     //
@@ -224,10 +232,24 @@ export async function durumVerisi(p: Pool) {
                  WHEN e.dagitim_sirketi IS NOT NULL AND e.dagitim_sirketi NOT ILIKE '%TURGUT%' THEN 'rakibe'
                  ELSE 'bilinmiyor'
                END kategori,
-               e.dagitim_sirketi rakip, e.iptal_aciklama, e.iptal_tarihi
+               e.dagitim_sirketi rakip, e.iptal_aciklama, e.iptal_tarihi,
+               -- NE ZAMAN geçti? İKİ kaynak var, önem sırasıyla:
+               --  1) sozlesme_baslangic — bayinin YENİ dağıtıcıyla sözleşme tarihi.
+               --     EPDK kütüğünde duruyor ve GERÇEK geçiş tarihidir.
+               --  2) transferler.tespit_gun — bizim tespit günümüz. Yalnız
+               --     29.07.2026 sonrası kayıtlar var (izleme o gün başladı).
+               -- Önce 1 kullanılır; ilk sürümde yalnız 2'ye bakılıyordu ve
+               -- "tarih yok" deniyordu — oysa veri kütükte hazırdı (2026-08-13).
+               e.sozlesme_baslangic::text gecis_sozlesme,
+               t.tespit_gun::text gecis_tespit
              FROM baglanti_durum b
              LEFT JOIN istasyonlar i ON i.istasyon_kod=b.istasyon_kod
-             LEFT JOIN bayiler_epdk e ON e.bayi_lisans_no=i.epdk_kod`),
+             LEFT JOIN bayiler_epdk e ON e.bayi_lisans_no=i.epdk_kod
+             LEFT JOIN LATERAL (
+               SELECT tespit_gun FROM transferler tr
+               WHERE tr.bayi_lisans_no = i.epdk_kod
+               ORDER BY tr.tespit_gun DESC, tr.id DESC LIMIT 1
+             ) t ON TRUE`),
     // ⚠️ AÇIK ALARMLAR + SON 200 KAPALI (2026-08-04, ölçülerek daraltıldı).
     //
     // Önce LIMIT 300 idi ve 2.223 alarmın %86'sı sessizce kırpılıyordu. İlk
@@ -1190,15 +1212,34 @@ export async function uzlastirmaVerisi(p: Pool, bas?: string, bit?: string, epdk
  * `gun` verilmezse en güncel gün.
  */
 export async function fiyatVerisi(p: Pool, gun?: string) {
+  // ⚠️ SON 60 TAKVİM GÜNÜ — yalnız kayıt OLAN günler değil (2026-08-13, kullanıcı).
+  // Önceki sürüm `FROM bayi_fiyat GROUP BY gun` yapıyordu: çekim yapılmamış gün
+  // listede HİÇ görünmüyordu, dolayısıyla BUGÜN seçilemiyordu ve kullanıcı
+  // "bugünün fiyatı nerede?" sorusunun cevabını alamıyordu.
+  // Şimdi takvim üretilip LEFT JOIN ediliyor → boş günler de seçilebilir ve
+  // panel "bu gün için çekim yapılmamış" diyebilir (sessiz boşluk yerine).
   const gunler = await p.query(
-    `SELECT gun, count(*)::int kayit,
-            count(*) filter (where durum='pahali')::int pahali,
-            max(ref_guncelleme) ref_guncelleme, max(guncelleme) cekim
-     FROM bayi_fiyat GROUP BY gun ORDER BY gun DESC LIMIT 60`,
+    `SELECT d.gun::date gun,
+            coalesce(f.kayit, 0)  kayit,
+            coalesce(f.pahali, 0) pahali,
+            f.ref_guncelleme, f.cekim
+     FROM generate_series(current_date - 59, current_date, interval '1 day') d(gun)
+     LEFT JOIN (
+       SELECT gun, count(*)::int kayit,
+              count(*) filter (where durum='pahali')::int pahali,
+              max(ref_guncelleme) ref_guncelleme, max(guncelleme) cekim
+       FROM bayi_fiyat GROUP BY gun
+     ) f ON f.gun = d.gun::date
+     ORDER BY d.gun DESC`,
   );
-  if (gunler.rows.length === 0) return { gunler: [], secili: null, ozet: null, satirlar: [] };
   const g = (v: unknown): string => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
-  const secili = gunler.rows.find((r) => g(r.gun) === gun) ?? gunler.rows[0];
+  // İstenen gün varsa o, yoksa VERİSİ OLAN en yeni gün (boş güne düşüp "kayıt yok"
+  // göstermek ilk açılışta yanıltıcı olurdu).
+  const secili =
+    gunler.rows.find((r) => g(r.gun) === gun) ??
+    gunler.rows.find((r) => Number(r.kayit) > 0) ??
+    gunler.rows[0];
+  if (!secili) return { gunler: [], secili: null, ozet: null, satirlar: [] };
   const sG = g(secili.gun);
 
   const satirlar = await p.query(

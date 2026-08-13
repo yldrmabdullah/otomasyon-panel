@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { Durum, Alarm, Istasyon, Baglanti } from './tipler.js';
 import { Tablo, type TabloKolon } from './Tablo.js';
-import { Bos, ModulBar, TazelikSerit, useVeri, veriYok, zamanFark } from './ortak.js';
+import { Bos, Kart, ModulBar, TazelikSerit, trTarih, useVeri, veriYok, zamanFark } from './ortak.js';
 import { YiginSerit } from './Grafik.js';
 
 // ASIS IstasyonTip — üç satış noktası modeli. Kısa etiket + rozet sınıfı.
@@ -29,6 +29,39 @@ function eskilikSinif(iso: string | null, esikSaat: number): 'iyi' | 'uyari' | '
   return 'iyi';
 }
 const ACILIYET_METIN: Record<string, string> = { krit: 'Kritik gecikme: ', uyari: 'Gecikmeli: ' };
+
+/**
+ * EPDK lisans no'nun GÖSTERİLECEK kısmı: "BAY/939-82/49135" → "49135".
+ * Önek 272 satırın hepsinde aynı, bilgi taşımaz ve yer yer.
+ *
+ * ⚠️ Geçersiz kayıtlar var (kanıt: iki "Tanker" satırında epdk_kod = "1").
+ * Bunlar gerçek lisans numarası DEĞİL; ham gösterirsek kullanıcı "1 numaralı
+ * bayi" sanır. Beklenen biçime uymayan değer '—' olarak gösterilir (tam değer
+ * yine title'da ve CSV'de duruyor, veri gizlenmiyor).
+ */
+function epdkKisa(kod: string | null | undefined): string {
+  const m = /^BAY\/[\d-]+\/(\d+)$/.exec(kod ?? '');
+  return m ? m[1] : '';
+}
+
+/**
+ * Rakibe geçiş tarihi — iki kaynaktan en güvenilir olanı.
+ *
+ *  1. `gecis_sozlesme` (bayiler_epdk.sozlesme_baslangic): bayinin YENİ dağıtıcıyla
+ *     sözleşme tarihi. GERÇEK geçiş tarihi budur, EPDK kütüğünden gelir.
+ *  2. `gecis_tespit` (transferler.tespit_gun): bizim fark ettiğimiz gün. Yalnız
+ *     29.07.2026 sonrası kayıt var, o yüzden yedek.
+ *
+ * ⚠️ İlk sürüm yalnız (2)'ye bakıyor ve bulamayınca "tarih yok (izleme öncesi)"
+ * diyordu — oysa (1) kütükte hazırdı. Kullanıcı yakaladı (2026-08-13). Ders:
+ * "veri yok" demeden önce TÜM kaynaklar kontrol edilmeli; yanlış "yok" bilgisi,
+ * eksik bilgiden daha zararlı çünkü aramayı durduruyor.
+ */
+function gecisTarihi(b: Baglanti | undefined): { gun: string; etiket: string } | null {
+  if (b?.gecis_sozlesme) return { gun: b.gecis_sozlesme, etiket: 'sözleşme' };
+  if (b?.gecis_tespit) return { gun: b.gecis_tespit, etiket: 'tespit' };
+  return null;
+}
 
 type Sekme = 'hepsi' | 'online' | 'kopuk' | 'rakibe' | 'kapandi' | 'alarmli';
 
@@ -63,6 +96,8 @@ export function Izleme() {
   const [arama, setArama] = useState('');
   const [sekme, setSekme] = useState<Sekme>('hepsi');
   const [tipFiltre, setTipFiltre] = useState('');
+  /** Müdahale kuyruğunda seçili istasyon kodu (sağdaki detay panelini besler). */
+  const [secili, setSecili] = useState<string | null>(null);
 
   // Mevcut tipler + sayıları (dropdown'da "Köy pompası (2)" göstermek için).
   const tipler = useMemo(() => {
@@ -92,13 +127,19 @@ export function Izleme() {
     const bag = (i: Istasyon) => baglantiByKod.get(i.istasyon_kod);
     return [
       {
+        // İstasyon KODU adın altında (Operasyon/Sorun modüllerindeki desenin aynısı).
+        // Uzun bayi unvanları tabloda kırpıldığı için satırlar birbirine benziyordu;
+        // kod satırı tekilleştirir ve POL/ASIS'te aramak için gereken değer odur.
+        // Arama hem koda hem EPDK'ya bakar.
         id: 'istasyon', ad: 'İstasyon', varsayilan: true, sabit: true, sinif: 'ad-hucre',
         sirala: (i) => i.ad,
-        ara: (i) => `${i.ad} ${i.epdk_kod ?? ''}`,
+        ara: (i) => `${i.ad} ${i.istasyon_kod} ${i.epdk_kod ?? ''}`,
+        metin: (i) => `${i.ad} (${i.istasyon_kod})`,
         hucre: (i) => (
           <>
             {i.ad}
             {alarmliKodlar.has(i.istasyon_kod) && <span className="mini-rozet">alarm</span>}
+            <div className="alt-satir soluk mono">{i.istasyon_kod}</div>
           </>
         ),
       },
@@ -135,9 +176,18 @@ export function Izleme() {
         hucre: (i) => i.bolge ?? <Bos />,
       },
       {
-        id: 'epdk', ad: 'EPDK', varsayilan: false, sinif: 'mono soluk',
-        sirala: (i) => i.epdk_kod ?? '',
-        hucre: (i) => i.epdk_kod ?? <Bos />,
+        // EPDK lisans no — bayiyle yazışmada/EPDK sorgusunda kullanılan resmî kimlik.
+        // Varsayılan AÇIK: kolon vardı ama kapalıydı, kullanıcı varlığını bilmiyordu.
+        // Tabloda yalnız sayı kısmı gösterilir ("BAY/939-82/" öneki 269 satırda
+        // aynı → yer yer, bilgi taşımaz); tam kod title'da ve CSV'de.
+        id: 'epdk', ad: 'EPDK No', varsayilan: true, sinif: 'mono soluk',
+        sirala: (i) => epdkKisa(i.epdk_kod),
+        ara: (i) => i.epdk_kod ?? '',
+        metin: (i) => i.epdk_kod ?? '',
+        hucre: (i) => {
+          const k = epdkKisa(i.epdk_kod);
+          return k ? <span title={i.epdk_kod!}>{k}</span> : <Bos />;
+        },
       },
       {
         id: 'not', ad: 'Not', varsayilan: true, sinif: 'soluk not-hucre',
@@ -151,11 +201,69 @@ export function Izleme() {
                 <span aria-hidden="true">→ </span>
                 <span className="sr-only">Geçtiği dağıtıcı: </span>
                 {b.rakip}
+                {/* NE ZAMAN geçti — iki kaynak, sözleşme tarihi önce (gerçek geçiş),
+                    tespit günü yedek (yalnız 29.07.2026 sonrası). Etiket hangi
+                    kaynağın kullanıldığını söyler: "sözleşme" kesin, "tespit"
+                    bizim fark ettiğimiz gün. */}
+                {(() => {
+                  const t = gecisTarihi(b);
+                  if (!t) return null;
+                  return (
+                    <div className="alt-satir soluk">
+                      <time dateTime={t.gun}>{trTarih(t.gun)}</time> {t.etiket}
+                    </div>
+                  );
+                })()}
               </>
             );
-          if (kat === 'kapandi' && b?.iptal_aciklama)
-            return <span title={b.iptal_aciklama}>{b.iptal_aciklama}</span>;
+          if (kat === 'kapandi')
+            return (
+              <>
+                {/* Açıklama KENDİ İÇİNDE kırpılır: dıştaki .not-hucre line-clamp'i
+                    alt satırı da kapsıyordu ve tarih metnin üstüne biniyordu
+                    (canlıda görüldü 2026-08-13). Tam metin title'da. */}
+                {b?.iptal_aciklama ? (
+                  <span className="metin-kirp" title={b.iptal_aciklama}>{b.iptal_aciklama}</span>
+                ) : (
+                  <Bos />
+                )}
+                {/* 95 "Kapandı" kaydının 50'sinde EPDK lisansı hâlâ ONAYLANDI:
+                    ASIS bizim için pasif işaretlemiş ama bayi resmen kapanmamış.
+                    Onlarda iptal tarihi OLMAMASI doğru — sebebi yazılıyor ki
+                    "veri eksik" sanılmasın. */}
+                <div className="alt-satir soluk">
+                  {b?.iptal_tarihi ? (
+                    <>
+                      <time dateTime={b.iptal_tarihi}>{trTarih(b.iptal_tarihi)}</time> iptal
+                    </>
+                  ) : (
+                    <span title="ASIS'te pasif işaretli ama EPDK lisansı hâlâ onaylı — resmî iptal kaydı yok.">
+                      ASIS'te pasif · EPDK'da açık
+                    </span>
+                  )}
+                </div>
+              </>
+            );
           return <Bos />;
+        },
+      },
+      {
+        // Ayrı SIRALANABİLİR tarih kolonu: "en son kim ayrıldı/kapandı" sorusu
+        // Not hücresindeki metinle cevaplanamıyordu (metin alfabetik sıralanır).
+        // Varsayılan kapalı — yalnız rakibe/kapandı satırlarında dolu, herkes için
+        // gerekli değil; ilgilenen Kolonlar menüsünden açar.
+        id: 'ayrilma', ad: 'Ayrılma / İptal', varsayilan: false, sinif: 'sag soluk',
+        sirala: (i) => {
+          const b = bag(i);
+          const t = gecisTarihi(b)?.gun ?? b?.iptal_tarihi ?? null;
+          return t ? new Date(t).getTime() : null; // null → Tablo sona atar
+        },
+        metin: (i) => gecisTarihi(bag(i))?.gun ?? bag(i)?.iptal_tarihi ?? '',
+        hucre: (i) => {
+          const b = bag(i);
+          const t = gecisTarihi(b)?.gun ?? b?.iptal_tarihi ?? null;
+          if (!t) return <Bos />;
+          return <time dateTime={t}>{trTarih(t)}</time>;
         },
       },
       {
@@ -199,18 +307,39 @@ export function Izleme() {
     };
   }, [durum, alarmliKodlar]);
 
-  // Açık alarmları İSTASYON bazında grupla (ÖZON'un 8 tankı tek kart).
+  // Açık alarmları İSTASYON bazında grupla (ÖZON'un 8 tankı tek kuyruk satırı).
+  // İstasyon kütüğünden şehir + telefon da eklenir (detay panelinde gerekiyor).
   const alarmGruplari = useMemo(() => {
     if (!durum) return [];
+    const istByKod = new Map(durum.istasyonlar.map((i) => [i.istasyon_kod, i]));
     const acik = durum.alarmlar.filter((a) => !a.kapandi);
-    const grup = new Map<string, { ad: string; kod: string; epdk: string | null; kopuk?: Alarm; tanklar: Alarm[] }>();
+    const grup = new Map<
+      string,
+      {
+        ad: string; kod: string; epdk: string | null; sehir: string | null;
+        telefon: string | null; kopuk?: Alarm; tanklar: Alarm[]; enEski: string;
+      }
+    >();
     for (const a of acik) {
       const key = a.istasyon_kod;
-      if (!grup.has(key))
-        grup.set(key, { ad: a.istasyon_ad ?? a.istasyon_kod, kod: a.istasyon_kod, epdk: a.epdk_no, tanklar: [] });
+      if (!grup.has(key)) {
+        const ist = istByKod.get(key);
+        grup.set(key, {
+          ad: a.istasyon_ad ?? ist?.ad ?? a.istasyon_kod,
+          kod: a.istasyon_kod,
+          epdk: a.epdk_no,
+          sehir: ist?.sehir ?? null,
+          telefon: ist?.telefon ?? null,
+          tanklar: [],
+          enEski: a.acildi,
+        });
+      }
       const g = grup.get(key)!;
       if (a.tip === 'baglanti_kopuk') g.kopuk = a;
       else g.tanklar.push(a);
+      // Kuyrukta gösterilen süre EN ESKİ açık alarmın süresi — "ne zamandır
+      // bekliyor" sorusunun cevabı odur, en yenisi değil.
+      if (a.acildi < g.enEski) g.enEski = a.acildi;
     }
     // Tank sıralaması BURADA yapılır — render içinde .sort() memo'lanmış diziyi
     // yerinde mutasyona uğratıyordu.
@@ -223,10 +352,29 @@ export function Izleme() {
     });
   }, [durum]);
 
+  /** Kuyruk başlığındaki toplam açık alarm sayısı (istasyon değil, alarm adedi). */
+  const acikAlarmSayisi = useMemo(
+    () => alarmGruplari.reduce((n, g) => n + (g.kopuk ? 1 : 0) + g.tanklar.length, 0),
+    [alarmGruplari],
+  );
+
   const aramaLower = arama.trim().toLocaleLowerCase('tr');
   const filtreliAlarmlar = useMemo(
-    () => alarmGruplari.filter((g) => !aramaLower || g.ad.toLocaleLowerCase('tr').includes(aramaLower)),
+    () =>
+      alarmGruplari.filter(
+        (g) =>
+          !aramaLower ||
+          g.ad.toLocaleLowerCase('tr').includes(aramaLower) ||
+          (g.sehir ?? '').toLocaleLowerCase('tr').includes(aramaLower),
+      ),
     [alarmGruplari, aramaLower],
+  );
+
+  // Kuyrukta seçili istasyon (detay panelini besler). Alarm kapanıp kuyruktan
+  // düşerse seçim de geçersizleşir → find null döner, panel "seçin" haline geçer.
+  const seciliGrup = useMemo(
+    () => (secili ? alarmGruplari.find((g) => g.kod === secili) ?? null : null),
+    [secili, alarmGruplari],
   );
 
   // Tabloya giden liste: kart/segment seçimi + tip filtresi.
@@ -270,60 +418,30 @@ export function Izleme() {
 
       {ozet && (
         <section className="kartlar" aria-label="Özet — tabloyu filtrelemek için tıklayın">
-          <button
-            type="button"
-            className={`kart ${sekme === 'hepsi' ? 'sec' : ''}`}
-            aria-pressed={sekme === 'hepsi'}
-            onClick={() => setSekme('hepsi')}
-          >
-            <div className="kart-deger">{ozet.toplam}</div>
-            <div className="kart-baslik">Toplam İstasyon</div>
-          </button>
-          <button
-            type="button"
-            className={`kart iyi ${sekme === 'online' ? 'sec' : ''}`}
-            aria-pressed={sekme === 'online'}
-            onClick={() => setSekme('online')}
-          >
-            <div className="kart-deger">{ozet.online}</div>
-            <div className="kart-baslik">Online</div>
-          </button>
-          <button
-            type="button"
-            className={`kart ${ozet.kopuk ? 'krit' : ''} ${sekme === 'kopuk' ? 'sec' : ''}`}
-            aria-pressed={sekme === 'kopuk'}
-            onClick={() => setSekme('kopuk')}
-          >
-            <div className="kart-deger">{ozet.kopuk}</div>
-            <div className="kart-baslik">Kopuk (bizde, sessiz)</div>
-          </button>
-          <button
-            type="button"
-            className={`kart ${ozet.alarmliIstasyon ? 'uyari' : ''} ${sekme === 'alarmli' ? 'sec' : ''}`}
-            aria-pressed={sekme === 'alarmli'}
-            onClick={() => setSekme('alarmli')}
-          >
-            <div className="kart-deger">{ozet.alarmliIstasyon}</div>
-            <div className="kart-baslik">Alarmlı İstasyon</div>
-          </button>
-          <button
-            type="button"
-            className={`kart uyari ${sekme === 'rakibe' ? 'sec' : ''}`}
-            aria-pressed={sekme === 'rakibe'}
-            onClick={() => setSekme('rakibe')}
-          >
-            <div className="kart-deger">{ozet.rakibe}</div>
-            <div className="kart-baslik">Rakibe Geçti</div>
-          </button>
-          <button
-            type="button"
-            className={`kart ${sekme === 'kapandi' ? 'sec' : ''}`}
-            aria-pressed={sekme === 'kapandi'}
-            onClick={() => setSekme('kapandi')}
-          >
-            <div className="kart-deger">{ozet.kapandi}</div>
-            <div className="kart-baslik">Kapandı</div>
-          </button>
+          <Kart
+            ad="Toplam İstasyon" deger={ozet.toplam}
+            secili={sekme === 'hepsi'} tikla={() => setSekme('hepsi')}
+          />
+          <Kart
+            ad="Online" deger={ozet.online}
+            secili={sekme === 'online'} tikla={() => setSekme('online')}
+          />
+          <Kart
+            ad="Kopuk (bizde, sessiz)" deger={ozet.kopuk} acil={ozet.kopuk > 0}
+            secili={sekme === 'kopuk'} tikla={() => setSekme('kopuk')}
+          />
+          <Kart
+            ad="Alarmlı İstasyon" deger={ozet.alarmliIstasyon} uyari={ozet.alarmliIstasyon > 0}
+            secili={sekme === 'alarmli'} tikla={() => setSekme('alarmli')}
+          />
+          <Kart
+            ad="Rakibe Geçti" deger={ozet.rakibe} uyari
+            secili={sekme === 'rakibe'} tikla={() => setSekme('rakibe')}
+          />
+          <Kart
+            ad="Kapandı" deger={ozet.kapandi}
+            secili={sekme === 'kapandi'} tikla={() => setSekme('kapandi')}
+          />
         </section>
       )}
 
@@ -342,16 +460,13 @@ export function Izleme() {
         />
       )}
 
+      {/* ⚠️ 2026-08-13: Buradaki "Açık alarmlarda ara" kutusu KALDIRILDI.
+          Tablonun kendi araması ile birebir aynı görünüyordu (aynı .arama sınıfı,
+          aynı boy, üst üste) ama kapsamı farklıydı: bu yalnız alarm KARTLARINI,
+          diğeri tüm tabloyu süzüyordu. Kullanıcı üste yazıp tablonun süzülmediğini
+          görünce "arama bozuk" sanıyordu. Alarm araması artık kendi bölümünün
+          başlığında (aşağıda), yani hangi listeyi süzdüğü konumundan belli. */}
       <div className="filtre-cubugu">
-        {/* Bu arama ALARM KARTLARINI süzer. Tablonun kendi araması ayrı
-            (tüm kolonlarda tarar) — kapsamlar bilinçli olarak farklı. */}
-        <input
-          className="arama"
-          aria-label="Açık alarmlarda istasyon ara"
-          placeholder="Açık alarmlarda ara…"
-          value={arama}
-          onChange={(e) => setArama(e.target.value)}
-        />
         {/* Satış noktası tipi — köy pompası/köy tankeri normal istasyondan ayrı
             iş modelleri; otomasyon ekibi bunları ayrı takip etmek istiyor. */}
         <select aria-label="Satış noktası tipi filtresi" value={tipFiltre} onChange={(e) => setTipFiltre(e.target.value)}>
@@ -380,52 +495,134 @@ export function Izleme() {
         </div>
       </div>
 
-      {/* AÇIK ALARMLAR — istasyon bazında gruplu, aksiyon odaklı */}
-      {filtreliAlarmlar.length > 0 && (
-        <section>
-          <h2>
-            Açık Alarmlar{' '}
-            <span className="sayi" role="status" aria-live="polite">
-              {filtreliAlarmlar.length} istasyon
-            </span>
-          </h2>
-          <div className="alarm-liste">
-            {filtreliAlarmlar.map((g) => (
-              <div key={g.kod} className={`alarm-kart ${g.kopuk ? 'krit' : 'uyari'}`}>
-                <div className="alarm-stripe" />
-                <div className="alarm-govde">
-                  <div className="alarm-ust">
-                    <span className="alarm-ad">{g.ad}</span>
-                    <span className="alarm-epdk">{g.epdk ? `EPDK ${g.epdk}` : g.kod}</span>
+      {/* ── MÜDAHALE KUYRUĞU ────────────────────────────────────────────────
+          1c komuta ekranı dili: solda kuyruk, sağda seçili istasyonun detayı.
+          Kuyruk = açık alarmlar, istasyon bazında gruplu (ÖZON'un 8 tankı tek satır).
+          Alarm araması artık BURADA — hangi listeyi süzdüğü konumundan belli. */}
+      {alarmGruplari.length > 0 && (
+        <section className="kuyruk-blok">
+          <div className="kuyruk-sol">
+            <div className="kuyruk-bas">
+              <div>
+                <h2 className="kuyruk-baslik">Müdahale kuyruğu</h2>
+                <span className="kuyruk-alt" role="status" aria-live="polite">
+                  {filtreliAlarmlar.length} istasyon · {acikAlarmSayisi} alarm
+                </span>
+              </div>
+              <input
+                className="arama kuyruk-ara"
+                aria-label="Müdahale kuyruğunda istasyon ara"
+                placeholder="Kuyrukta ara…"
+                value={arama}
+                onChange={(e) => setArama(e.target.value)}
+              />
+            </div>
+
+            <div className="kuyruk-liste">
+              {filtreliAlarmlar.length === 0 && (
+                <p className="kuyruk-bos">"{arama}" ile eşleşen açık alarm yok.</p>
+              )}
+              {filtreliAlarmlar.map((g) => (
+                <button
+                  key={g.kod}
+                  type="button"
+                  className={`kuyruk-oge ${g.kopuk ? 'krit' : 'uyari'} ${secili === g.kod ? 'sec' : ''}`}
+                  aria-pressed={secili === g.kod}
+                  onClick={() => setSecili(secili === g.kod ? null : g.kod)}
+                >
+                  <span className="kuyruk-serit" aria-hidden="true" />
+                  <span className="kuyruk-govde">
+                    <span className="kuyruk-ust">
+                      <span className="kuyruk-ad">{g.ad}</span>
+                      <span className="kuyruk-zaman">
+                        <time dateTime={g.enEski}>{zamanFark(g.enEski)}</time>
+                      </span>
+                    </span>
+                    <span className="kuyruk-mesaj">
+                      {g.kopuk ? (
+                        <>
+                          <span className="rozet krit">BAĞLANTI KOPUK</span>{' '}
+                          {g.tanklar.length > 0 && `+ ${g.tanklar.length} tank`}
+                        </>
+                      ) : (
+                        <>
+                          <span className="rozet uyari">VERİ YOK</span> {g.tanklar.length} tank
+                        </>
+                      )}
+                    </span>
+                    <span className="kuyruk-alt-satir">
+                      {g.sehir ?? (g.epdk ? `EPDK ${g.epdk}` : g.kod)}
+                    </span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Detay paneli — seçili istasyon. Seçim yoksa ne yapılacağını söyler. */}
+          <div className="kuyruk-detay">
+            {!seciliGrup ? (
+              <p className="detay-bos">
+                Soldaki kuyruktan bir istasyon seçin — tank listesi ve iletişim bilgisi burada açılır.
+              </p>
+            ) : (
+              <>
+                <div className="detay-bas">
+                  <div>
+                    <h3 className="detay-ad" title={seciliGrup.ad}>{seciliGrup.ad}</h3>
+                    <span className="detay-alt">
+                      {[seciliGrup.sehir, seciliGrup.epdk ? `EPDK ${seciliGrup.epdk}` : seciliGrup.kod]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
                   </div>
-                  {g.kopuk && (
-                    <div className="alarm-satir">
-                      <span className="rozet krit">BAĞLANTI KOPUK</span>
-                      <span className="alarm-mesaj">{g.kopuk.mesaj}</span>
-                      <span className="alarm-zaman">
-                        <time dateTime={g.kopuk.acildi}>{zamanFark(g.kopuk.acildi)}</time>
-                      </span>
-                    </div>
-                  )}
-                  {g.tanklar.length > 0 && (
-                    <div className="alarm-satir">
-                      <span className="rozet uyari">VERİ YOK</span>
-                      <span className="tank-rozetler">
-                        {g.tanklar.map((t) => (
-                          <span key={t.id} className="tank-rozet" title={t.mesaj ?? ''}>
-                            T{t.tank_no}
-                          </span>
-                        ))}
-                      </span>
-                      <span className="alarm-zaman">
-                        {g.tanklar.length} tank ·{' '}
-                        <time dateTime={g.tanklar[0].acildi}>{zamanFark(g.tanklar[0].acildi)}</time>
-                      </span>
-                    </div>
+                  {/* "Bayiyi ara": tel: bağlantısı — telefonu açar, YAZMA işlemi yok
+                      (panel salt-okuma). Telefon yoksa buton hiç çizilmez; devre dışı
+                      bir buton "neden çalışmıyor?" sorusu doğuruyor. */}
+                  {seciliGrup.telefon && (
+                    <a className="detay-btn" href={`tel:${seciliGrup.telefon.replace(/\s/g, '')}`}>
+                      <span aria-hidden="true">☎ </span>Bayiyi ara
+                    </a>
                   )}
                 </div>
-              </div>
-            ))}
+
+                <dl className="detay-olcu">
+                  <div>
+                    <dt>Durum</dt>
+                    <dd>
+                      {KATEGORI_ETIKET[baglantiByKod.get(seciliGrup.kod)?.kategori ?? 'bilinmiyor']?.ad ?? '—'}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Son veri</dt>
+                    <dd>{zamanFark(baglantiByKod.get(seciliGrup.kod)?.son_veri_zamani ?? null)}</dd>
+                  </div>
+                  <div>
+                    <dt>Açık alarm</dt>
+                    <dd>{(seciliGrup.kopuk ? 1 : 0) + seciliGrup.tanklar.length}</dd>
+                  </div>
+                </dl>
+
+                {seciliGrup.kopuk && (
+                  <p className="detay-not krit-not">
+                    <span className="rozet krit">BAĞLANTI KOPUK</span> {seciliGrup.kopuk.mesaj}
+                  </p>
+                )}
+
+                {seciliGrup.tanklar.length > 0 && (
+                  <div className="detay-tanklar">
+                    <h4>Veri göndermeyen tanklar</h4>
+                    <div className="tank-rozetler">
+                      {seciliGrup.tanklar.map((t) => (
+                        <span key={t.id} className="tank-rozet" title={t.mesaj ?? ''}>
+                          T{t.tank_no}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </section>
       )}

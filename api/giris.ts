@@ -6,6 +6,7 @@
 import { db, hataYanit } from './_db.js';
 import { jetonUret, cerezKur, cerezSil, oturumKullanici } from './_oturum.js';
 import { girisDogrula, sifreDegistir } from '../core/kullanicilar.js';
+import { gorunurEkranlar } from '../core/ekranlar.js';
 
 /** Kaba brute-force yavaşlatma. Serverless'ta kalıcı sayaç yok (her çağrı izole),
  *  o yüzden IP kilidi YERİNE her başarısız denemeye sabit gecikme uygulanır.
@@ -24,7 +25,16 @@ export default async function handler(req: any, res: any) {
       res.setHeader('Cache-Control', 'private, no-store');
       res.status(200).json(
         k
-          ? { girisli: true, kullanici: k.kullanici_ad, rol: k.rol, adSoyad: k.ad_soyad, sifreDegistir: k.sifre_degistir }
+          ? {
+              girisli: true,
+              kullanici: k.kullanici_ad,
+              rol: k.rol,
+              adSoyad: k.ad_soyad,
+              sifreDegistir: k.sifre_degistir,
+              // Menü BU listeden çizilir. Sunucu "hangi ekranları görebilir"i çözer;
+              // panel kendi başına yetki hesaplamaz (iki yerde mantık = kayma riski).
+              ekranlar: gorunurEkranlar(k),
+            }
           : { girisli: false },
       );
       return;
@@ -75,6 +85,7 @@ export default async function handler(req: any, res: any) {
       rol: k.rol,
       adSoyad: k.ad_soyad,
       sifreDegistir: k.sifre_degistir,
+      ekranlar: gorunurEkranlar(k),
     });
   } catch (e) {
     hataYanit(res, e);

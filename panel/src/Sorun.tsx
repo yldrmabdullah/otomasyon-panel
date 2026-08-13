@@ -7,7 +7,7 @@
 import { useMemo } from 'react';
 import { Tablo, type TabloKolon } from './Tablo.js';
 import { Sekmeler, type SekmeTanim } from './Sekme.js';
-import { Bos, ModulBar, TazelikSerit, useVeri, zamanFark } from './ortak.js';
+import { Bos, Kart, ModulBar, TazelikSerit, useVeri, zamanFark } from './ortak.js';
 import type { Tazelik } from './tipler.js';
 
 interface UydurmaSatir {
@@ -93,8 +93,17 @@ export function Sorun() {
       hucre: (r) => String(r.satir), sirala: (r) => r.satir,
     },
     {
-      id: 'nerede', ad: 'İstasyonlar', varsayilan: true, sinif: 'soluk',
-      hucre: (r) => r.istasyonlar ?? <Bos />,
+      // ⚠️ Bu hücre virgülle ayrılmış İSTASYON LİSTESİ — bir irsaliye 5 tesise
+      // bölünmüşse 5 uzun unvan yan yana geliyor. `not-hucre` olmadan tek satırda
+      // 2822px sürüyordu ve tabloyu 3279px'e çıkarıp diğer kolonları ekran dışına
+      // itiyordu (ölçüldü 2026-08-13). not-hucre sarmalı + genişlik tavanı verir.
+      id: 'nerede', ad: 'İstasyonlar', varsayilan: true, sinif: 'soluk not-hucre',
+      hucre: (r) =>
+        r.istasyonlar ? (
+          <span className="metin-kirp" title={r.istasyonlar}>{r.istasyonlar}</span>
+        ) : (
+          <Bos />
+        ),
       ara: (r) => r.istasyonlar ?? '',
     },
     {
@@ -377,15 +386,4 @@ export function Sorun() {
   );
 }
 
-function Kart({ ad, deger, alt, acil }: { ad: string; deger: number; alt: string; acil?: boolean }) {
-  return (
-    <div className={acil ? 'kart krit' : 'kart'}>
-      <div className="kart-deger">
-        {acil && <span aria-hidden="true">▲ </span>}
-        {deger}
-      </div>
-      <div className="kart-baslik">{ad}</div>
-      <div className="kart-alt-not">{alt}</div>
-    </div>
-  );
-}
+// Kart bileşeni ortak.tsx'e taşındı (Operasyon modülünde de birebir aynısı vardı).

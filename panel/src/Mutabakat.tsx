@@ -6,7 +6,7 @@
 // Plaka/dorse KIYASA GİRMEZ (Logo'da tutulmuyor). Uyuşmayan satır sarı, iptal kırmızımsı.
 import { useMemo, useState } from 'react';
 import { Tablo, type TabloKolon } from './Tablo.js';
-import { Bos, useVeri } from './ortak.js';
+import { Bos, Kart, useVeri } from './ortak.js';
 import { csvIndir, xlsIndir } from './disaAktar.js';
 
 interface DonemOzet {
@@ -59,7 +59,7 @@ const litreTam = (v: number) => v.toLocaleString('tr-TR', { maximumFractionDigit
 export function Mutabakat() {
   const [donem, setDonem] = useState<string | null>(null);
   const url = donem ? `/api/mutabakat?donem=${encodeURIComponent(donem)}` : '/api/mutabakat';
-  const { veri, yukleniyor, hata } = useVeri<Veri>(url);
+  const { veri, yukleniyor, hata } = useVeri<Veri>(url, undefined, 600_000);
   // Sadece sorunluları göster filtresi.
   const [yalnizSorun, setYalnizSorun] = useState(false);
 
@@ -204,40 +204,35 @@ export function Mutabakat() {
       {/* Özet kartlar — tıklanınca tabloyu filtreler */}
       {ozet && (
         <section className="kartlar" aria-label="Mutabakat özeti">
-          <button
-            type="button"
-            className={`kart ${!yalnizSorun ? 'sec' : ''}`}
-            aria-pressed={!yalnizSorun}
-            onClick={() => setYalnizSorun(false)}
-          >
-            <div className="kart-deger">{ozet.faturaSayisi.toLocaleString('tr-TR')}</div>
-            <div className="kart-baslik">Toplam Fatura</div>
-          </button>
-          <button
-            type="button"
-            className={`kart ${ozet.sorunluSayisi ? 'uyari' : 'iyi'} ${yalnizSorun ? 'sec' : ''}`}
-            aria-pressed={yalnizSorun}
-            onClick={() => setYalnizSorun(true)}
-          >
-            <div className="kart-deger">{ozet.sorunluSayisi.toLocaleString('tr-TR')}</div>
-            <div className="kart-baslik">Uyuşmayan</div>
-          </button>
-          <div className="kart">
-            <div className="kart-deger">
-              %{(ozet.faturaSayisi ? (ozet.tamSayisi / ozet.faturaSayisi) * 100 : 0).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}
-            </div>
-            <div className="kart-baslik">Uyum Oranı</div>
-          </div>
-          <div className={`kart ${ozet.epdkLimitAsim ? 'krit' : ''}`}>
-            <div className="kart-deger">
-              {ozet.farkLitre > 0 ? '+' : ''}{ozet.farkLitre.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}
-              <span className="kart-birim"> lt</span>
-            </div>
-            <div className="kart-baslik">
-              Toplam Fark · %{ozet.farkYuzde.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}
-              {ozet.epdkLimitAsim && <span className="kart-alt-not krit-metin"> EPDK ±%3 aşıldı</span>}
-            </div>
-          </div>
+          <Kart
+            ad="Toplam Fatura"
+            deger={ozet.faturaSayisi.toLocaleString('tr-TR')}
+            secili={!yalnizSorun}
+            tikla={() => setYalnizSorun(false)}
+          />
+          <Kart
+            ad="Uyuşmayan"
+            deger={ozet.sorunluSayisi.toLocaleString('tr-TR')}
+            uyari={ozet.sorunluSayisi > 0}
+            secili={yalnizSorun}
+            tikla={() => setYalnizSorun(true)}
+          />
+          <Kart
+            ad="Uyum Oranı"
+            deger={`%${(ozet.faturaSayisi ? (ozet.tamSayisi / ozet.faturaSayisi) * 100 : 0).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}`}
+          />
+          <Kart
+            ad={`Toplam Fark · %${ozet.farkYuzde.toLocaleString('tr-TR', { maximumFractionDigits: 2 })}`}
+            acil={ozet.epdkLimitAsim}
+            deger={
+              <>
+                {ozet.farkLitre > 0 ? '+' : ''}
+                {ozet.farkLitre.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}
+                <span className="kart-birim"> lt</span>
+              </>
+            }
+            alt={ozet.epdkLimitAsim ? <span className="krit-metin">EPDK ±%3 aşıldı</span> : undefined}
+          />
         </section>
       )}
 
@@ -274,9 +269,12 @@ export function Mutabakat() {
         }
       />
 
-      {/* Ürün grubu kırılımında toplam — tablonun altında (footer yerine ayrı blok) */}
+      {/* Ürün grubu toplamları — mockup 2b: "toplamlar sabit altlıkta".
+          Uzun fatura listesinde toplamı görmek için sayfanın en altına kaydırmak
+          gerekiyordu; oysa mutabakatta asıl sorulan soru "genel fark ne kadar".
+          Sticky altlık: tablo kaydırılırken toplam ekranda kalır. */}
       {ozet && urunToplam.satir.length > 0 && (
-        <section className="urun-toplam" aria-label="Ürün grubu toplamları">
+        <section className="urun-toplam yapisik-alt" aria-label="Ürün grubu toplamları">
           <h3 className="urun-toplam-baslik">Ürün Grubu Toplamları · {ozet.ad}</h3>
           <table className="urun-toplam-tablo">
             <thead>

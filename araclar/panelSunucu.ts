@@ -13,8 +13,9 @@ import { pool, kapat } from '../core/db.js';
 import { piyasaVerisi, durumVerisi, operasyonVerisi, sorunTespiti, bayiVerisi, bayiSecenekleri, a3LogoVerisi, uzlastirmaVerisi, fiyatVerisi } from '../core/panelSorgu.js';
 import {
   girisDogrula, kullaniciBul, kullaniciListesi, kullaniciEkle, kullaniciSil,
-  rolDegistir, sifreDegistir, sifreUret, adNormal,
+  rolDegistir, sifreDegistir, ekranlariGuncelle, sifreUret, adNormal,
 } from '../core/kullanicilar.js';
+import { EKRANLAR, EKRAN_AD, gorebilir, gorunurEkranlar, type Ekran } from '../core/ekranlar.js';
 
 const PORT = Number(process.env.PANEL_API_PORT ?? 5178);
 const SIR = process.env.PANEL_OTURUM_SIRRI ?? 'local-gelistirme-sirri-en-az-32-karakter-olmali';
@@ -72,7 +73,7 @@ const sunucu = createServer(async (istek, yanit) => {
         const ad = cerezOku(istek);
         const k = ad ? await kullaniciBul(p, ad) : null;
         return json(200, k
-          ? { girisli: true, kullanici: k.kullanici_ad, rol: k.rol, adSoyad: k.ad_soyad, sifreDegistir: k.sifre_degistir }
+          ? { girisli: true, kullanici: k.kullanici_ad, rol: k.rol, adSoyad: k.ad_soyad, sifreDegistir: k.sifre_degistir, ekranlar: gorunurEkranlar(k) }
           : { girisli: false });
       }
       if (istek.method === 'DELETE') {
@@ -93,7 +94,7 @@ const sunucu = createServer(async (istek, yanit) => {
       }
       // Local'de Secure yok (http) — prod'da var.
       return json(200,
-        { girisli: true, kullanici: k.kullanici_ad, rol: k.rol, adSoyad: k.ad_soyad, sifreDegistir: k.sifre_degistir },
+        { girisli: true, kullanici: k.kullanici_ad, rol: k.rol, adSoyad: k.ad_soyad, sifreDegistir: k.sifre_degistir, ekranlar: gorunurEkranlar(k) },
         `${COOKIE}=${jetonUret(k.kullanici_ad)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${OMUR}`);
     }
 
@@ -107,7 +108,7 @@ const sunucu = createServer(async (istek, yanit) => {
       if (benKim.rol !== 'admin') return json(403, { hata: 'Bu işlem için yönetici yetkisi gerekli.' });
       try {
         if (istek.method === 'GET')
-          return json(200, { kullanicilar: await kullaniciListesi(p), benKim: benKim.kullanici_ad });
+          return json(200, { kullanicilar: await kullaniciListesi(p), benKim: benKim.kullanici_ad, tumEkranlar: EKRANLAR });
         if (istek.method === 'POST') {
           const g = await govdeOku(istek);
           const uretildi = !g.sifre;
@@ -117,6 +118,7 @@ const sunucu = createServer(async (istek, yanit) => {
             rol: g.rol === 'admin' ? 'admin' : 'izleyici',
             adSoyad: g.adSoyad ? String(g.adSoyad) : undefined,
             olusturan: benKim.kullanici_ad, sifreDegistir: true,
+            ekranlar: 'ekranlar' in g ? g.ekranlar : undefined,
           });
           return json(201, { kullanici: k, sifre, uretildi });
         }
@@ -134,6 +136,7 @@ const sunucu = createServer(async (istek, yanit) => {
               throw new Error('Kendi yönetici rolünü düşüremezsin.');
             await rolDegistir(p, hedef, g.rol);
           }
+          if ('ekranlar' in g) await ekranlariGuncelle(p, hedef, g.ekranlar);
           return json(200, { tamam: true, sifre: yeniSifre });
         }
         if (istek.method === 'DELETE') {
@@ -150,14 +153,45 @@ const sunucu = createServer(async (istek, yanit) => {
     }
 
     // ---- Veri uçları ----
-    if (url.pathname === '/api/durum') return json(200, await durumVerisi(p));
-    if (url.pathname === '/api/piyasa') return json(200, await piyasaVerisi(p));
-    if (url.pathname === '/api/operasyon') return json(200, await operasyonVerisi(p));
-    if (url.pathname === '/api/sorun') return json(200, await sorunTespiti(p));
-    if (url.pathname === '/api/mutabakat') return json(200, await a3LogoVerisi(p, q.get('donem') ?? undefined));
-    if (url.pathname === '/api/uzlastirma') return json(200, await uzlastirmaVerisi(p, q.get('bas') ?? undefined, q.get('bit') ?? undefined, q.get('epdk') ?? undefined));
-    if (url.pathname === '/api/fiyat') return json(200, await fiyatVerisi(p, q.get('gun') ?? undefined));
+    // Ekran yetkisi: prod'da korumali({ekran}) yapıyor (api/_oturum.ts). Local
+    // sunucu prod ile AYNI SÖZLEŞMEYİ sunmalı — yoksa yetki hatası yalnız canlıda
+    // ortaya çıkar. Menüden gizlemek yetki değildir; kapı sunucuda.
+    /** Yetkisizse 403 yazıp `false` döner → çağıran yeri hemen terk eder. */
+    const ekranKapi = (e: Ekran): boolean => {
+      if (gorebilir(benKim, e)) return true;
+      json(403, { hata: `"${EKRAN_AD[e]}" ekranı için yetkiniz yok. Yöneticinize başvurun.` });
+      return false;
+    };
+    if (url.pathname === '/api/durum') {
+      if (!ekranKapi('izleme')) return;
+      return json(200, await durumVerisi(p));
+    }
+    if (url.pathname === '/api/piyasa') {
+      if (!ekranKapi('piyasa')) return;
+      return json(200, await piyasaVerisi(p));
+    }
+    if (url.pathname === '/api/operasyon') {
+      if (!ekranKapi('operasyon')) return;
+      return json(200, await operasyonVerisi(p));
+    }
+    if (url.pathname === '/api/sorun') {
+      if (!ekranKapi('sorun')) return;
+      return json(200, await sorunTespiti(p));
+    }
+    if (url.pathname === '/api/mutabakat') {
+      if (!ekranKapi('mevzuat')) return;
+      return json(200, await a3LogoVerisi(p, q.get('donem') ?? undefined));
+    }
+    if (url.pathname === '/api/uzlastirma') {
+      if (!ekranKapi('mevzuat')) return;
+      return json(200, await uzlastirmaVerisi(p, q.get('bas') ?? undefined, q.get('bit') ?? undefined, q.get('epdk') ?? undefined));
+    }
+    if (url.pathname === '/api/fiyat') {
+      if (!ekranKapi('mevzuat')) return;
+      return json(200, await fiyatVerisi(p, q.get('gun') ?? undefined));
+    }
     if (url.pathname === '/api/bayiler') {
+      if (!ekranKapi('piyasa')) return;
       if (q.get('secenekler')) return json(200, await bayiSecenekleri(p));
       return json(200, await bayiVerisi(p, {
         q: q.get('q') ?? undefined,

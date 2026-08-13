@@ -246,7 +246,7 @@ function piyasaDogrula(d: unknown): PiyasaVeri {
 }
 
 export function Piyasa() {
-  const { veri, hata, yukleniyor, yenile } = useVeri<PiyasaVeri>('/api/piyasa', piyasaDogrula);
+  const { veri, hata, yukleniyor, yenile } = useVeri<PiyasaVeri>('/api/piyasa', piyasaDogrula, 600_000);
 
 
   // Bayi tablosu — SUNUCU TARAFLI sayfalama.
@@ -520,14 +520,17 @@ export function Piyasa() {
       hucre: (t) => t.il ?? <Bos />,
     },
     {
-      id: 'eski', ad: 'Eski', varsayilan: true, sinif: 'soluk',
+      // Eski/Yeni DAĞITICI UNVANI taşıyor ("… AKARYAKIT DAĞITIM ANONİM ŞİRKETİ").
+      // Sınıfsızken tek satırda 632px sürüyordu ve tabloyu 1874px'e çıkarıyordu
+      // (ölçüldü 2026-08-13). ad-hucre tavan + ellipsis verir; tam ad title'da.
+      id: 'eski', ad: 'Eski', varsayilan: true, sinif: 'soluk ad-hucre',
       sirala: (t) => t.eski_deger ?? '', ara: (t) => t.eski_deger ?? '',
-      hucre: (t) => t.eski_deger ?? <Bos />,
+      hucre: (t) => (t.eski_deger ? <span title={t.eski_deger}>{t.eski_deger}</span> : <Bos />),
     },
     {
-      id: 'yeni', ad: 'Yeni', varsayilan: true,
+      id: 'yeni', ad: 'Yeni', varsayilan: true, sinif: 'ad-hucre',
       sirala: (t) => t.yeni_deger ?? '', ara: (t) => t.yeni_deger ?? '',
-      hucre: (t) => t.yeni_deger ?? <Bos />,
+      hucre: (t) => (t.yeni_deger ? <span title={t.yeni_deger}>{t.yeni_deger}</span> : <Bos />),
     },
     {
       id: 'tarih', ad: 'Tarih', varsayilan: true, sinif: 'sag soluk',
@@ -668,8 +671,43 @@ export function Piyasa() {
               {
                 id: 'konum',
                 ad: 'Rekabet Konumu',
+                // Mockup 3a: "harita ile tablo yan yana". Dört grafik alt alta
+                // dizilince sayfa 4 ekran boyu oluyordu ve harita ile yanındaki
+                // il listesi ASLA aynı anda görünmüyordu — oysa ikisi aynı soruyu
+                // cevaplıyor ("nerede güçlüyüz"). Harita solda, il yoğunluğu sağda.
                 icerik: () => (
                   <>
+                    <div className="iki-sutun">
+                      {(veri.haritaIl ?? veri.bolgesel).length > 0 && (
+                        <Harita
+                          veri={(veri.haritaIl ?? veri.bolgesel).map((b) => ({
+                            il: b.il,
+                            bizim: Number(b.bizim),
+                            toplam: Number(b.toplam),
+                          }))}
+                          olcu="bizim"
+                          baslik="Bayi Dağılımı — Harita"
+                          altBaslik="Koyu renk = çok bayimiz · bir il üzerine gelin ya da Tab ile gezin"
+                        />
+                      )}
+
+                      {/* Piyasa yoğunluğu ADET, aşağıdaki pazar payı YÜZDE. Aynı rampayı
+                          paylaşıyorlar; ayrımı çubuk formu taşıyor (ısı ızgarası değil)
+                          → "koyu kırmızı" iki farklı anlamda görünmüyor. */}
+                      {veri.ilDagilim.length > 0 && (
+                        <div className="yan-panel">
+                          <CubukYatay
+                            veri={veri.ilDagilim}
+                            ad={(x) => x.il}
+                            deger={(x) => Number(x.n)}
+                            baslik="Piyasa Yoğunluğu"
+                            altBaslik="En yoğun 12 il · tüm dağıtıcılar"
+                            limit={12}
+                          />
+                        </div>
+                      )}
+                    </div>
+
                     <CubukYatay
                       veri={veri.dagiticiBayiDagilim}
                       ad={(d) => (d.dagitim_sirketi === BIZ ? 'Turgut Dağıtım' : d.dagitim_sirketi)}
@@ -680,21 +718,6 @@ export function Piyasa() {
                       limit={12}
                     />
 
-                    {/* Coğrafi bakış — "hangi bölgede bayimiz var" sorusunun
-                        doğrudan cevabı. Gerçek il sınırları (haritaYollari.ts), dış bağımlılık yok. */}
-                    {(veri.haritaIl ?? veri.bolgesel).length > 0 && (
-                      <Harita
-                        veri={(veri.haritaIl ?? veri.bolgesel).map((b) => ({
-                          il: b.il,
-                          bizim: Number(b.bizim),
-                          toplam: Number(b.toplam),
-                        }))}
-                        olcu="bizim"
-                        baslik="Bayi Dağılımı — Harita"
-                        altBaslik="Koyu renk = çok bayimiz · bir il üzerine gelin ya da Tab ile gezin"
-                      />
-                    )}
-
                     {veri.bolgesel.length > 0 && (
                       <IsiIzgara
                         veri={veri.bolgesel}
@@ -704,20 +727,6 @@ export function Piyasa() {
                         baslik="Parkoil'in İl Bazında Pazar Payı"
                         altBaslik={`Bayimizin bulunduğu ${veri.bolgesel.length} il · koyu = yüksek pay`}
                         birim="%"
-                      />
-                    )}
-
-                    {/* Piyasa yoğunluğu ADET, üstteki pazar payı YÜZDE. Aynı rampayı
-                        paylaşıyorlar; ayrımı çubuk formu taşıyor (ısı ızgarası değil)
-                        → "koyu kırmızı" iki farklı anlamda görünmüyor. */}
-                    {veri.ilDagilim.length > 0 && (
-                      <CubukYatay
-                        veri={veri.ilDagilim}
-                        ad={(x) => x.il}
-                        deger={(x) => Number(x.n)}
-                        baslik="Piyasa Yoğunluğu — İl Bazında Toplam Bayi"
-                        altBaslik="En yoğun 20 il (tüm dağıtıcılar, tüm markalar)"
-                        limit={20}
                       />
                     )}
                   </>

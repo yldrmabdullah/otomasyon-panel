@@ -11,6 +11,7 @@ import { db, hataYanit } from './_db.js';
 import { korumali } from './_oturum.js';
 import { bayiVerisi, bayiSecenekleri } from '../core/panelSorgu.js';
 
+
 const tekil = (v: unknown): string | undefined => {
   const s = Array.isArray(v) ? v[0] : v;
   return typeof s === 'string' && s.trim() ? s.trim() : undefined;
@@ -43,4 +44,4 @@ export default korumali(async (req: any, res: any) => {
   } catch (e) {
     hataYanit(res, e);
   }
-});
+}, { ekran: 'piyasa' });

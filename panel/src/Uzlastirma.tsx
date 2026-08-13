@@ -6,7 +6,7 @@
 // tıkla → o bayinin TANK DETAYI açılır (hangi tankta ne sapma, kalibrasyon durumu).
 import { useMemo, useState } from 'react';
 import { Tablo, type TabloKolon } from './Tablo.js';
-import { Bos, useVeri } from './ortak.js';
+import { Bos, Kart, useVeri } from './ortak.js';
 import { csvIndir, xlsIndir } from './disaAktar.js';
 
 interface Aralik { bas: string; bit: string; ad: string | null; bayiSayisi: number; sorunluBayi: number; }
@@ -50,12 +50,23 @@ export function Uzlastirma() {
   const qs = new URLSearchParams();
   if (aralik) { qs.set('bas', aralik.bas); qs.set('bit', aralik.bit); }
   if (acikBayi) qs.set('epdk', acikBayi);
-  const { veri, yukleniyor, hata } = useVeri<Veri>(`/api/uzlastirma${qs.toString() ? '?' + qs : ''}`);
+  const { veri, yukleniyor, hata } = useVeri<Veri>(`/api/uzlastirma${qs.toString() ? '?' + qs : ''}`, undefined, 600_000);
 
   const bayiKolon: TabloKolon<Bayi>[] = useMemo(() => [
     {
+      // EPDK no adın ALTINDA: aramaya zaten dahildi ama hiçbir yerde GÖRÜNMÜYORDU
+      // → kullanıcı arayabildiğini bilmiyordu. Uzun unvanlar kırpıldığı için
+      // satırları ayırt eden değer de bu.
       id: 'bayi', ad: 'Bayi', varsayilan: true, sabit: true, sinif: 'ad-hucre',
-      hucre: (b) => b.istasyon || b.epdk, ara: (b) => `${b.istasyon ?? ''} ${b.epdk}`, sirala: (b) => b.istasyon ?? '',
+      hucre: (b) => (
+        <>
+          {b.istasyon || b.epdk}
+          {b.istasyon && <div className="alt-satir soluk mono">{b.epdk}</div>}
+        </>
+      ),
+      ara: (b) => `${b.istasyon ?? ''} ${b.epdk}`,
+      metin: (b) => `${b.istasyon ?? ''} (${b.epdk})`,
+      sirala: (b) => b.istasyon ?? '',
     },
     { id: 'bolge', ad: 'Bölge', varsayilan: true, sinif: 'soluk', hucre: (b) => b.bolge || <Bos />, ara: (b) => b.bolge ?? '', sirala: (b) => b.bolge ?? '' },
     { id: 'mintika', ad: 'Mıntıka', varsayilan: false, sinif: 'soluk', hucre: (b) => b.mintika || <Bos />, ara: (b) => b.mintika ?? '' },
@@ -84,6 +95,45 @@ export function Uzlastirma() {
         return <span className={`durum-rozet ${d.sinif}`}>{b.asimTank > 0 ? `${b.asimTank} tank · ` : ''}{d.ad}</span>;
       },
       ara: (b) => DURUM[b.durum]?.ad ?? b.durum,
+    },
+  ], []);
+
+  // Tank detay kolonları — bayi satırına tıklayınca açılan alt tablo.
+  const tankKolon: TabloKolon<TankSatir>[] = useMemo(() => [
+    {
+      id: 'istasyon', ad: 'İstasyon', varsayilan: true, sabit: true, sinif: 'ad-hucre soluk',
+      hucre: (t) => t.istasyon || <Bos />, ara: (t) => t.istasyon ?? '', sirala: (t) => t.istasyon ?? '',
+    },
+    { id: 'urun', ad: 'Ürün', varsayilan: true, hucre: (t) => t.urun, ara: (t) => t.urun, sirala: (t) => t.urun },
+    { id: 'tank', ad: 'Tank', varsayilan: true, sinif: 'mono', hucre: (t) => t.tankNo, sirala: (t) => Number(t.tankNo) },
+    { id: 'basi', ad: 'Başı Stok', varsayilan: true, sinif: 'sag mono', hucre: (t) => lt(t.aBasi), sirala: (t) => t.aBasi },
+    { id: 'dolum', ad: 'Dolum', varsayilan: true, sinif: 'sag mono', hucre: (t) => lt(t.bDolum), sirala: (t) => t.bDolum },
+    { id: 'satis', ad: 'Satış', varsayilan: true, sinif: 'sag mono', hucre: (t) => lt(t.cSatis), sirala: (t) => t.cSatis },
+    { id: 'sonu', ad: 'Sonu Stok', varsayilan: true, sinif: 'sag mono', hucre: (t) => lt(t.dSonu), sirala: (t) => t.dSonu },
+    {
+      id: 'fark', ad: 'Fark', varsayilan: true, sinif: 'sag mono', sirala: (t) => Math.abs(t.eFark),
+      hucre: (t) => `${t.eFark > 0 ? '+' : ''}${t.eFark.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`,
+      hucreSinif: (t) => (t.durum === 'oran_asim' ? 'krit' : undefined),
+    },
+    {
+      id: 'oran', ad: 'Oran', varsayilan: true, sinif: 'sag mono', sirala: (t) => Math.abs(t.fOran ?? 0),
+      hucre: (t) => pct(t.fOran, t.cSatis),
+      hucreSinif: (t) => (t.durum === 'oran_asim' ? 'krit' : undefined),
+    },
+    {
+      id: 'kalib', ad: 'Kalib.', varsayilan: true, sinif: 'sag mono',
+      hucre: (t) => (t.kalibIlk == null ? <Bos /> : `${t.kalibIlk}→${t.kalibSon}`),
+      // Kalibrasyon DEĞİŞTİYSE vurgula — uzlaştırma sapmasının yaygın sebebi.
+      hucreSinif: (t) =>
+        t.kalibIlk != null && t.kalibSon != null && t.kalibIlk !== t.kalibSon ? 'uyari' : 'soluk',
+    },
+    {
+      id: 'durum', ad: 'Durum', varsayilan: true, sirala: (t) => (t.durum === 'oran_asim' ? 0 : 1),
+      ara: (t) => DURUM[t.durum]?.ad ?? t.durum,
+      hucre: (t) => {
+        const d = DURUM[t.durum] ?? { ad: t.durum, sinif: '' };
+        return <span className={`durum-rozet ${d.sinif}`}>{d.ad}</span>;
+      },
     },
   ], []);
 
@@ -141,12 +191,10 @@ export function Uzlastirma() {
       {/* Özet kartlar */}
       {ozet && (
         <section className="kartlar" aria-label="Uzlaştırma özeti">
-          <div className="kart"><div className="kart-deger">{ozet.bayiSayisi}</div><div className="kart-baslik">Bayi</div></div>
-          <div className={`kart ${ozet.sorunluBayi ? 'krit' : 'iyi'}`}>
-            <div className="kart-deger">{ozet.sorunluBayi}</div><div className="kart-baslik">±%3 Aşan Bayi</div>
-          </div>
-          <div className="kart"><div className="kart-deger">{lt(ozet.toplamDolum)}</div><div className="kart-baslik">Toplam Dolum (aldığı)</div></div>
-          <div className="kart"><div className="kart-deger">{lt(ozet.toplamSatis)}</div><div className="kart-baslik">Toplam Satış</div></div>
+          <Kart ad="Bayi" deger={ozet.bayiSayisi} />
+          <Kart ad="±%3 Aşan Bayi" deger={ozet.sorunluBayi} acil={ozet.sorunluBayi > 0} />
+          <Kart ad="Toplam Dolum (aldığı)" deger={lt(ozet.toplamDolum)} />
+          <Kart ad="Toplam Satış" deger={lt(ozet.toplamSatis)} />
         </section>
       )}
 
@@ -182,43 +230,19 @@ export function Uzlastirma() {
             <h3>Tank Detayı · {acikBayiAd}</h3>
             <button type="button" className="temizle" onClick={() => setAcikBayi(null)}>✕ Kapat</button>
           </div>
-          {detaySatir.length === 0 ? (
-            <div className="bos">{yukleniyor ? 'Yükleniyor…' : 'Tank kaydı yok.'}</div>
-          ) : (
-            <div className="tablo-sar">
-              <table>
-                <thead>
-                  <tr>
-                    <th>İstasyon</th><th>Ürün</th><th>Tank</th>
-                    <th className="sag">Başı Stok</th><th className="sag">Dolum</th><th className="sag">Satış</th>
-                    <th className="sag">Sonu Stok</th><th className="sag">Fark</th><th className="sag">Oran</th>
-                    <th className="sag">Kalib.</th><th>Durum</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {detaySatir.map((t, i) => {
-                    const d = DURUM[t.durum] ?? { ad: t.durum, sinif: '' };
-                    const kalibDeg = t.kalibIlk != null && t.kalibSon != null && t.kalibIlk !== t.kalibSon;
-                    return (
-                      <tr key={`${t.istKod}-${t.urun}-${t.tankNo}-${i}`} className={t.durum === 'oran_asim' ? 'satir-krit' : undefined}>
-                        <td className="soluk">{(t.istasyon ?? '').slice(0, 30) || <Bos />}</td>
-                        <td>{t.urun}</td>
-                        <td className="mono">{t.tankNo}</td>
-                        <td className="sag mono">{lt(t.aBasi)}</td>
-                        <td className="sag mono">{lt(t.bDolum)}</td>
-                        <td className="sag mono">{lt(t.cSatis)}</td>
-                        <td className="sag mono">{lt(t.dSonu)}</td>
-                        <td className={`sag mono ${t.durum === 'oran_asim' ? 'krit' : ''}`}>{t.eFark > 0 ? '+' : ''}{t.eFark.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}</td>
-                        <td className={`sag mono ${t.durum === 'oran_asim' ? 'krit' : ''}`}>{pct(t.fOran, t.cSatis)}</td>
-                        <td className={`sag mono ${kalibDeg ? 'uyari' : 'soluk'}`}>{t.kalibIlk == null ? '—' : `${t.kalibIlk}→${t.kalibSon}`}</td>
-                        <td><span className={`durum-rozet ${d.sinif}`}>{d.ad}</span></td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
+          {/* Elle <table> yerine ortak Tablo: panelin geri kalanında standart olan
+              sıralama, arama, kolon seçici, CSV ve sticky başlık burada YOKTU. */}
+          <Tablo<TankSatir>
+            anahtar="uzlastirma-tank"
+            baslik="Tanklar"
+            kolonlar={tankKolon}
+            satirlar={detaySatir}
+            satirAnahtar={(t, i) => `${t.istKod}-${t.urun}-${t.tankNo}-${i}`}
+            satirSinif={(t) => (t.durum === 'oran_asim' ? 'satir-krit' : undefined)}
+            yukleniyor={yukleniyor && !detaySatir.length}
+            kaydirmaEsigi={12}
+            bosMesaj={yukleniyor ? 'Yükleniyor…' : 'Tank kaydı yok.'}
+          />
         </section>
       )}
     </div>

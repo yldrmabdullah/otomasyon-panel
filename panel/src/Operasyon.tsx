@@ -2,11 +2,11 @@
 //
 // Üç ana iş, üç sekme: Stok (yakıt kaç gün yeter) · Alarm geçmişi · Veri kalitesi.
 // Hepsi MEVCUT veriden hesaplanır, yeni ASIS çağrısı yok.
-import { useMemo, type ReactNode } from 'react';
+import { useMemo } from 'react';
 import { Tablo, type TabloKolon } from './Tablo.js';
 import { Sekmeler, type SekmeTanim } from './Sekme.js';
 import { CubukYatay } from './Grafik.js';
-import { Bos, ModulBar, TazelikSerit, useVeri, zamanFark } from './ortak.js';
+import { Bos, Kart, ModulBar, TazelikSerit, useVeri, zamanFark } from './ortak.js';
 import type { Tazelik } from './tipler.js';
 
 interface StokSatir {
@@ -275,8 +275,15 @@ export function Operasyon() {
         ad: 'Stok durumu',
         sayi: o.stokAcil + o.stokUyari,
         acil: o.stokAcil > 0,
+        // Mockup 2a: "tablo + yanında grafik". Grafik tablonun ALTINDAYKEN
+        // ekranın dışında kalıyordu — oysa "hangi istasyon" (tablo) ile "ne kadar
+        // kötü" (grafik) birlikte okunuyor. Yan yana konunca ikisi tek bakışta.
         icerik: () => (
-          <>
+          <div className="iki-sutun" style={{ ['--yan-en' as string]: '320px' }}>
+            {/* ⚠️ Tablo bir Fragment döndürüyor (başlık + arama + tablo kardeş
+                öğeler). Doğrudan grid çocuğu yapılırsa her parçası AYRI hücreye
+                düşer ve düzen dağılır — sarmalayıcı şart. */}
+            <div>
             <Tablo
               anahtar="op-stok"
               kolonlar={stokKolon}
@@ -297,18 +304,21 @@ export function Operasyon() {
               }
               bosMesaj="7 günden az stoğu olan istasyon yok."
             />
+            </div>
             {veri.stok.length > 0 && (
-              <CubukYatay
-                veri={veri.stok.slice(0, 12)}
-                ad={(s) => `${(s.istasyon_ad ?? s.istasyon_kod).slice(0, 22)} · ${s.urun}`}
-                deger={(s) => Number(s.kalan_gun)}
-                vurgu={(s) => Number(s.kalan_gun) < esik.acilGun}
-                baslik="En az günü kalanlar"
-                altBaslik={`Kırmızı: ${esik.acilGun} günden az`}
-                birim=" gün"
-              />
+              <div className="yan-panel">
+                <CubukYatay
+                  veri={veri.stok.slice(0, 12)}
+                  ad={(s) => `${(s.istasyon_ad ?? s.istasyon_kod).slice(0, 22)} · ${s.urun}`}
+                  deger={(s) => Number(s.kalan_gun)}
+                  vurgu={(s) => Number(s.kalan_gun) < esik.acilGun}
+                  baslik="En az günü kalanlar"
+                  altBaslik={`Kırmızı: ${esik.acilGun} günden az`}
+                  birim=" gün"
+                />
+              </div>
             )}
-          </>
+          </div>
         ),
       },
       {
@@ -476,17 +486,4 @@ export function Operasyon() {
   );
 }
 
-/** Özet kartı. Mevcut .kart/.kart-deger/.kart-baslik sınıflarını kullanır;
- *  aciliyet şeridi .kart.krit / .kart.uyari üzerinden gelir (stil.css'te tanımlı). */
-function Kart({ ad, deger, alt, acil }: { ad: string; deger: ReactNode; alt: string; acil?: boolean }) {
-  return (
-    <div className={acil ? 'kart krit' : 'kart'}>
-      <div className="kart-deger">
-        {acil && <span aria-hidden="true">▲ </span>}
-        {deger}
-      </div>
-      <div className="kart-baslik">{ad}</div>
-      <div className="kart-alt-not">{alt}</div>
-    </div>
-  );
-}
+// Kart bileşeni ortak.tsx'e taşındı (Sorun modülünde de birebir aynısı vardı).

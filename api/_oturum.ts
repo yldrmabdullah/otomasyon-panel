@@ -12,6 +12,7 @@
 import { createHmac, timingSafeEqual, randomBytes } from 'node:crypto';
 import { db } from './_db.js';
 import { kullaniciBul, type Kullanici } from '../core/kullanicilar.js';
+import { gorebilir, EKRAN_AD, type Ekran } from '../core/ekranlar.js';
 
 const COOKIE_AD = 'parkoil_oturum';
 const OMUR_SN = 12 * 60 * 60; // 12 saat
@@ -87,11 +88,18 @@ export async function oturumKullanici(req: any): Promise<Kullanici | null> {
 
 /**
  * Korumalı endpoint sarmalayıcısı. Oturum yoksa 401 → handler HİÇ çalışmaz
- * (DB'ye veri sorgusu bile gitmez). `rol: 'admin'` verilirse yetki de kontrol edilir.
+ * (DB'ye veri sorgusu bile gitmez).
+ *
+ *  · `rol: 'admin'`  → yalnız yönetici (kullanıcı yönetimi endpoint'leri).
+ *  · `ekran: '...'`  → o modülü görme yetkisi olmayan kullanıcıya 403.
+ *
+ * ⚠️ EKRAN YETKİSİ NEDEN BURADA: menüden gizlemek yetki DEĞİLDİR. Yetkisiz kullanıcı
+ * /api/piyasa'yı doğrudan çağırabilir (curl, devtools). Veri kapısı sunucuda olmalı;
+ * paneldeki gizleme yalnız görgü kuralı.
  */
 export function korumali(
   handler: (req: any, res: any, kullanici: Kullanici) => Promise<void>,
-  opts: { rol?: 'admin' } = {},
+  opts: { rol?: 'admin'; ekran?: Ekran } = {},
 ): (req: any, res: any) => Promise<void> {
   return async (req, res) => {
     let k: Kullanici | null;
@@ -107,6 +115,12 @@ export function korumali(
     }
     if (opts.rol === 'admin' && k.rol !== 'admin') {
       res.status(403).json({ hata: 'Bu işlem için yönetici yetkisi gerekli.' });
+      return;
+    }
+    if (opts.ekran && !gorebilir(k, opts.ekran)) {
+      res.status(403).json({
+        hata: `"${EKRAN_AD[opts.ekran]}" ekranı için yetkiniz yok. Yöneticinize başvurun.`,
+      });
       return;
     }
     await handler(req, res, k);

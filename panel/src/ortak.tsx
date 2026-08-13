@@ -11,6 +11,73 @@ import { IkonSpinner } from './ikon.js';
 
 export type ApiYanit<T> = T | { hata: string };
 
+/* ── TEMA ───────────────────────────────────────────────────────────────────
+   Tema seçimi App.tsx içinde gömülüydü ve kontrolü YALNIZ hesap menüsündeydi →
+   giriş ekranında hiç erişilemiyordu: kullanıcı henüz girmemişken temayı
+   değiştiremiyor, OS ayarına mahkum kalıyordu. Mantık buraya alındı, kontrol
+   hem girişte hem panelde kullanılıyor. Seçim localStorage'da, oturumdan bağımsız. */
+
+export type Tema = 'sistem' | 'light' | 'dark';
+export const TEMA_AD: Record<Tema, string> = { sistem: 'Oto', light: 'Açık', dark: 'Koyu' };
+/** Ekran okuyucu için tam ad — "Oto"/"Açık" tek başına ne olduğunu söylemiyor. */
+const TEMA_TAM: Record<Tema, string> = {
+  sistem: 'Sistem ayarını kullan',
+  light: 'Açık tema',
+  dark: 'Koyu tema',
+};
+
+function temaOku(): Tema {
+  try {
+    const k = localStorage.getItem('tema');
+    return k === 'light' || k === 'dark' ? k : 'sistem';
+  } catch {
+    return 'sistem'; // localStorage kapalıysa (gizli sekme kısıtı) çökmesin
+  }
+}
+
+/** Temayı <html data-theme> özniteliğine uygular ve localStorage'a yazar. */
+export function useTema() {
+  const [tema, setTema] = useState<Tema>(temaOku);
+  useEffect(() => {
+    if (tema === 'sistem') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', tema);
+    try {
+      localStorage.setItem('tema', tema);
+    } catch {
+      /* yoksay */
+    }
+  }, [tema]);
+  return { tema, setTema };
+}
+
+/** Üç durumlu tema düğmesi (Oto / Açık / Koyu). `sinif` ile bağlama uyarlanır. */
+export function TemaSecici({
+  tema,
+  setTema,
+  sinif = 'tema-secim',
+}: {
+  tema: Tema;
+  setTema: (t: Tema) => void;
+  sinif?: string;
+}) {
+  return (
+    <div className={sinif} role="group" aria-label="Renk teması">
+      {(['sistem', 'light', 'dark'] as Tema[]).map((t) => (
+        <button
+          key={t}
+          type="button"
+          aria-pressed={tema === t}
+          onClick={() => setTema(t)}
+          title={TEMA_TAM[t]}
+        >
+          {TEMA_AD[t]}
+          <span className="sr-only"> — {TEMA_TAM[t]}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function hataMi<T>(d: ApiYanit<T>): d is { hata: string } {
   return typeof d === 'object' && d !== null && 'hata' in d;
 }
@@ -21,6 +88,8 @@ export function useVeri<T>(url: string, dogrula?: (d: unknown) => T, aralikMs?: 
   const [yukleniyor, setYukleniyor] = useState(true);
   // Yarış koşulu koruması: yalnız EN SON isteğin sonucu state'e yazılır.
   const sonRef = useRef(0);
+  /** Son başarılı çekim anı — sekmeye dönünce "bayat mı" kararı buna bakar. */
+  const sonYukleme = useRef(0);
 
   const yukle = useCallback(
     async (sinyal?: AbortSignal) => {
@@ -41,6 +110,7 @@ export function useVeri<T>(url: string, dogrula?: (d: unknown) => T, aralikMs?: 
         if (benim !== sonRef.current) return; // bayat yanıt — yut
         setVeri(temiz);
         setHata(null);
+        sonYukleme.current = Date.now();
       } catch (e) {
         if ((e as Error)?.name === 'AbortError') return;
         if (benim !== sonRef.current) return;
@@ -55,7 +125,26 @@ export function useVeri<T>(url: string, dogrula?: (d: unknown) => T, aralikMs?: 
   useEffect(() => {
     const ac = new AbortController();
     yukle(ac.signal);
-    if (!aralikMs) return () => ac.abort();
+
+    // ── SEKMEYE GERİ DÖNÜNCE TAZELE ────────────────────────────────────────
+    // Panel gün boyu açık bir sekmede duruyor. Polling'i olan modüller kendi
+    // aralığında yenileniyordu ama polling'i OLMAYANLAR (Piyasa, Fiyat,
+    // Mutabakat, Uzlaştırma) ilk yüklemede kalıyordu: kullanıcı öğleden sonra
+    // sekmeye dönüp sabahki veriye bakıyor ve güncel sanıyordu.
+    // Arka plandayken ağ yorulmaz; yalnız GÖRÜNÜR olunca ve veri bayatsa çekilir.
+    const BAYAT_MS = 60_000;
+    const gorunurlukDegisti = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - sonYukleme.current >= BAYAT_MS) yukle();
+    };
+    document.addEventListener('visibilitychange', gorunurlukDegisti);
+
+    if (!aralikMs) {
+      return () => {
+        ac.abort();
+        document.removeEventListener('visibilitychange', gorunurlukDegisti);
+      };
+    }
     const t = setInterval(() => {
       // Sekme arka plandaysa ağı yorma (günde ~164 MB gereksiz trafik).
       if (document.visibilityState === 'visible') yukle();
@@ -63,6 +152,7 @@ export function useVeri<T>(url: string, dogrula?: (d: unknown) => T, aralikMs?: 
     return () => {
       ac.abort();
       clearInterval(t);
+      document.removeEventListener('visibilitychange', gorunurlukDegisti);
     };
   }, [yukle, aralikMs]);
 
@@ -151,6 +241,66 @@ export function TazelikSerit({ liste }: { liste?: Tazelik[] }) {
         ))}
       </dl>
     </div>
+  );
+}
+
+/**
+ * Özet kartı (KPI). Operasyon ve Sorun modüllerinde neredeyse birebir aynı bileşen
+ * ayrı ayrı tanımlıydı (biri `deger: ReactNode`, diğeri `deger: number`), Mutabakat
+ * ve Uzlaştırma ise kartları elle JSX yazıyordu → dört ayrı gerçek.
+ *
+ * TIKLANABİLİRLİK GÖRÜNÜR OLMALI: İzleme/Mutabakat'ta kartlar filtre butonu,
+ * Operasyon/Sorun'da salt gösterim — ama ikisi de AYNI görünüyordu. Tek fark
+ * hover'da 2px kalkmaktı ve dokunmatikte hover yok. Kullanıcı tıklayıp tepki
+ * alamayınca panel bozuk sanıyordu. Artık tıklanabilir kart <button> olur, imleç
+ * ve odak halkası alır, `aria-pressed` ile durumunu söyler; salt gösterim <div>.
+ */
+export function Kart({
+  ad,
+  deger,
+  alt,
+  acil,
+  uyari,
+  secili,
+  tikla,
+}: {
+  ad: string;
+  deger: ReactNode;
+  alt?: ReactNode;
+  /** Kritik durum — kırmızı şerit + ▲ işareti (renk tek taşıyıcı değil). */
+  acil?: boolean;
+  /** Uyarı durumu — amber şerit. `acil` verilmişse o kazanır. */
+  uyari?: boolean;
+  /** Filtre kartlarında seçili hâl (yalnız `tikla` ile anlamlı). */
+  secili?: boolean;
+  /** Verilirse kart bir filtre butonuna dönüşür. */
+  tikla?: () => void;
+}) {
+  const sinif = [
+    'kart',
+    acil ? 'krit' : uyari ? 'uyari' : '',
+    tikla ? 'tiklanir' : '',
+    secili ? 'sec' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const govde = (
+    <>
+      <div className="kart-deger">
+        {acil && <span aria-hidden="true">▲ </span>}
+        {deger}
+      </div>
+      <div className="kart-baslik">{ad}</div>
+      {alt && <div className="kart-alt-not">{alt}</div>}
+    </>
+  );
+
+  if (!tikla) return <div className={sinif}>{govde}</div>;
+  return (
+    <button type="button" className={sinif} aria-pressed={!!secili} onClick={tikla}>
+      {govde}
+    </button>
   );
 }
 

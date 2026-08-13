@@ -1,9 +1,11 @@
 // EPDK Mevzuat modülü — "mevzuat profesörü" + A3↔Logo mutabakatı.
 // İçerik docs/bilgi/epdk-mutabakat.md bilgi tabanından. DOĞRULANMASI GEREK = Parkoil teyidi bekliyor.
+import { useState } from 'react';
 import { Sekmeler } from './Sekme.js';
 import { Mutabakat } from './Mutabakat.js';
 import { Uzlastirma } from './Uzlastirma.js';
 import { Fiyat } from './Fiyat.js';
+import { ModulBar } from './ortak.js';
 
 interface Konu {
   baslik: string;
@@ -121,38 +123,61 @@ function MevzuatBilgi() {
         <span className="taze">Kaynak: docs/bilgi/epdk-mutabakat.md</span>
       </div>
 
-      {/* MUTABAKAT TAKVİMİ — geri sayımlı, en öne */}
+      {/* MUTABAKAT TAKVİMİ + KRİTİK LİMİTLER — mockup 3c: yan yana.
+          Takvim "ne zamana kadar", limitler "neye göre" sorusunu cevaplıyor;
+          ikisi birlikte okunur. Alt alta dizilince limitler ekran dışında kalıyordu. */}
       <section>
         <h2>Mutabakat Takvimi</h2>
-        <div className={`takvim-odak ${odak.gecti ? 'krit' : odak.kalanGun <= 5 ? 'uyari' : 'iyi'}`}>
-          <div className="takvim-stripe" />
-          <div className="takvim-govde">
-            <div className="takvim-donem">{odak.donemAd} mutabakatı</div>
-            <div className="takvim-durum">
-              {odak.gecti ? (
-                <span className="krit-metin" role="alert">
-                  <span aria-hidden="true">⚠ </span>SÜRESİ GEÇTİ — son tarih {odak.sonTarihAd} idi
-                </span>
-              ) : (
-                <>
-                  Son tarih <b>{odak.sonTarihAd}</b> ·{' '}
-                  <span className={odak.kalanGun <= 5 ? 'krit-metin' : ''}>{odak.kalanGun} gün kaldı</span>
-                </>
-              )}
+        <div className="iki-sutun" style={{ ['--yan-en' as string]: '380px' }}>
+          <div>
+            <div className={`takvim-odak ${odak.gecti ? 'krit' : odak.kalanGun <= 5 ? 'uyari' : 'iyi'}`}>
+              <div className="takvim-stripe" />
+              <div className="takvim-govde">
+                <div className="takvim-donem">{odak.donemAd} mutabakatı</div>
+                <div className="takvim-durum">
+                  {odak.gecti ? (
+                    <span className="krit-metin" role="alert">
+                      <span aria-hidden="true">⚠ </span>SÜRESİ GEÇTİ — son tarih {odak.sonTarihAd} idi
+                    </span>
+                  ) : (
+                    <>
+                      Son tarih <b>{odak.sonTarihAd}</b> ·{' '}
+                      <span className={odak.kalanGun <= 5 ? 'krit-metin' : ''}>{odak.kalanGun} gün kaldı</span>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="takvim-sayac mono">{odak.gecti ? '!' : odak.kalanGun}</div>
+            </div>
+            <div className="takvim-kural">Her ayın mutabakatı, takip eden ayın <b>20'sine</b> kadar tamamlanmalı.</div>
+            <div className="takvim-mini">
+              {takvim.slice(1).map((d) => (
+                <div key={d.donemAd} className="takvim-mini-kart">
+                  <span className="mini-donem">{d.donemAd}</span>
+                  <span className={`mini-durum ${d.gecti ? 'iyi' : 'uyari'}`}>
+                    {d.gecti ? 'tamamlanmış olmalı' : `${d.kalanGun} gün`}
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
-          <div className="takvim-sayac mono">{odak.gecti ? '!' : odak.kalanGun}</div>
-        </div>
-        <div className="takvim-kural">Her ayın mutabakatı, takip eden ayın <b>20'sine</b> kadar tamamlanmalı.</div>
-        <div className="takvim-mini">
-          {takvim.slice(1).map((d) => (
-            <div key={d.donemAd} className="takvim-mini-kart">
-              <span className="mini-donem">{d.donemAd}</span>
-              <span className={`mini-durum ${d.gecti ? 'iyi' : 'uyari'}`}>
-                {d.gecti ? 'tamamlanmış olmalı' : `${d.kalanGun} gün`}
-              </span>
+
+          {/* EPDK limitleri — takvimin yanında sabit referans */}
+          <div className="yan-panel">
+            <div className="kural-grid tek-sutun">
+              <div className="kural-kart">
+                <div className="kural-deger mono">≤ 288 <span>lt/gün</span></div>
+                <div className="kural-aciklama">Tank belirsizlik limiti (açılış+dolum−satış vs kapanış)</div>
+              </div>
+              <div className="kural-kart">
+                <div className="kural-deger mono">± %3</div>
+                <div className="kural-aciklama">
+                  Oran limiti — Fark ÷ Satış. Aylık satış/dolum sapması aşarsa
+                  açıklama zorunlu.
+                </div>
+              </div>
             </div>
-          ))}
+          </div>
         </div>
       </section>
 
@@ -162,18 +187,11 @@ function MevzuatBilgi() {
         sorumlusunca doğrulanmalı. Doğrulandıkça bilgi tabanı güncellenir.
       </div>
 
-      {/* Mutabakat kuralı — en somut operasyonel gerçek, öne çıkar */}
+      {/* 288 lt ve ±%3 kartları YUKARI (takvimin yanına) taşındı — burada
+          tekrarlanıyorlardı. Kalanlar takvimle ilgisi olmayan diğer süreler. */}
       <section>
-        <h2>Kritik Mutabakat Kuralları</h2>
+        <h2>Diğer Kritik Süreler</h2>
         <div className="kural-grid">
-          <div className="kural-kart">
-            <div className="kural-deger mono">≤ 288 <span>lt/gün</span></div>
-            <div className="kural-aciklama">Tank belirsizlik limiti (açılış+dolum−satış vs kapanış)</div>
-          </div>
-          <div className="kural-kart">
-            <div className="kural-deger mono">≤ %3</div>
-            <div className="kural-aciklama">Aylık satış / dolum sapması — aşılırsa açıklama zorunlu</div>
-          </div>
           <div className="kural-kart">
             <div className="kural-deger mono">24 <span>saat</span></div>
             <div className="kural-aciklama">Kalibrasyon değişimi sonrası yedekleme süresi</div>
@@ -247,18 +265,38 @@ function MevzuatBilgi() {
   );
 }
 
-// Modül girişi — iki sekme: mevzuat bilgi tabanı + A3↔Logo mutabakatı.
+// Modül girişi — dört sekme: uzlaştırma, A3↔Logo mutabakatı, fiyat, bilgi tabanı.
 // Sekmeler bileşeni Piyasa'da da kullanılıyor; localStorage ile son sekme hatırlanır.
+//
+// ⚠️ 2026-08-13: Bu modülde ModulBar YOKTU — dolayısıyla Yenile butonu da yoktu.
+// Oysa buradaki veri (A3 kıyası, uzlaştırma) ELLE çekiliyor (araclar/a3Kiyas.mts),
+// yani panelin BAYATLAMA RİSKİ EN YÜKSEK ekranları bunlar. Kullanıcı üç haftalık
+// mutabakata bakıp güncel sanabiliyordu. Diğer modüllerle aynı kabuk artık burada da:
+// açıklama + Yenile. (Tazelik bilgisini alt sekmeler kendi başlıklarında veriyor —
+// dönem seçimine bağlı olduğu için modül seviyesinde tek bir değer doğru olmaz.)
 export function Mevzuat() {
+  // Yenile: alt sekmeler kendi verilerini useVeri ile çekiyor ve her birinin ayrı
+  // sorgusu var (dönem/aralık parametreli). Tek tek referans toplamak yerine sayaç
+  // artırılıp `key` değiştirilir → aktif sekme yeniden monte olur, verisini tazeler.
+  const [tazele, setTazele] = useState(0);
+
   return (
-    <Sekmeler
-      anahtar="mevzuat"
-      tanimlar={[
-        { id: 'uzlastirma', ad: 'Tank Uzlaştırma', icerik: () => <Uzlastirma /> },
-        { id: 'mutabakat', ad: 'A3 ↔ Logo Mutabakatı', icerik: () => <Mutabakat /> },
-        { id: 'fiyat', ad: 'Fiyat Takibi', icerik: () => <Fiyat /> },
-        { id: 'bilgi', ad: 'Mevzuat Bilgisi', icerik: () => <MevzuatBilgi /> },
-      ]}
-    />
+    <>
+      <ModulBar
+        alt="EPDK bildirim · mutabakat · fiyat"
+        yukleniyor={false}
+        yenile={() => setTazele((n) => n + 1)}
+        duyuru="Mevzuat verileri yenilendi."
+      />
+      <Sekmeler
+        anahtar="mevzuat"
+        tanimlar={[
+          { id: 'uzlastirma', ad: 'Tank Uzlaştırma', icerik: () => <Uzlastirma key={tazele} /> },
+          { id: 'mutabakat', ad: 'A3 ↔ Logo Mutabakatı', icerik: () => <Mutabakat key={tazele} /> },
+          { id: 'fiyat', ad: 'Fiyat Takibi', icerik: () => <Fiyat key={tazele} /> },
+          { id: 'bilgi', ad: 'Mevzuat Bilgisi', icerik: () => <MevzuatBilgi /> },
+        ]}
+      />
+    </>
   );
 }

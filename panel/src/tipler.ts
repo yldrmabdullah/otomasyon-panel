@@ -10,6 +10,9 @@ export interface Istasyon {
   bolge: string | null;
   aktif: boolean;
   tip: string | null;
+  /** Bayi cep telefonu (bayi_iletisim'den, EPDK no ile eşleşir). Müdahale
+   *  kuyruğundaki "Bayiyi ara" tel: bağlantısı için. Kayıt yoksa null. */
+  telefon?: string | null;
 }
 export type BaglantiKategori = 'online' | 'kopuk' | 'rakibe' | 'kapandi' | 'bilinmiyor';
 export interface Baglanti {
@@ -25,6 +28,12 @@ export interface Baglanti {
   rakip: string | null;
   iptal_aciklama: string | null;
   iptal_tarihi: string | null;
+  /** Yeni dağıtıcıyla SÖZLEŞME başlangıcı (bayiler_epdk.sozlesme_baslangic).
+   *  Gerçek geçiş tarihi budur — önce bu kullanılır. */
+  gecis_sozlesme?: string | null;
+  /** Dağıtıcı değişiminin bizim TESPİT ettiğimiz gün (transferler.tespit_gun).
+   *  Yalnız 29.07.2026 sonrası var; sözleşme tarihi yoksa yedek olarak kullanılır. */
+  gecis_tespit?: string | null;
 }
 /** Tank anlık durumu. ŞU AN /api/durum'da GÖNDERİLMİYOR: UI'da tüketicisi yoktu
  *  ama yanıtın %41'iydi (114 KB) ve 60 sn'de bir çekiliyordu. Mutabakat hesabı

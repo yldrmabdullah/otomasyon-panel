@@ -1,11 +1,13 @@
 // Kullanıcı yönetimi — YALNIZ admin. Yetki kontrolü korumali({rol:'admin'}) ile.
 //
-//   GET    /api/kullanicilar                → liste
-//   POST   /api/kullanicilar {ad, sifre?, rol?, adSoyad?}
+//   GET    /api/kullanicilar                → liste + tumEkranlar
+//   POST   /api/kullanicilar {ad, sifre?, rol?, adSoyad?, ekranlar?}
 //                                            → ekle (sifre boşsa otomatik üretilir)
-//   PATCH  /api/kullanicilar {ad, rol?, yeniSifre?}
-//                                            → rol değiştir ve/veya şifre sıfırla
+//   PATCH  /api/kullanicilar {ad, rol?, yeniSifre?, ekranlar?}
+//                                            → rol / şifre / ekran yetkisi güncelle
 //   DELETE /api/kullanicilar?ad=x            → sil
+//
+// `ekranlar`: gönderilmezse DOKUNULMAZ, null → hepsi, dizi → yalnız o ekranlar.
 //
 // Üretilen/sıfırlanan şifre yanıtta BİR KEZ döner (hash'lenmiş hali saklanır);
 // admin onu kullanıcıya iletir. Kullanıcı ilk girişte değiştirmeye zorlanır.
@@ -13,8 +15,9 @@ import { db, hataYanit } from './_db.js';
 import { korumali } from './_oturum.js';
 import {
   kullaniciListesi, kullaniciEkle, kullaniciSil, rolDegistir, sifreDegistir,
-  sifreUret, adNormal, type Rol,
+  ekranlariGuncelle, sifreUret, adNormal, type Rol,
 } from '../core/kullanicilar.js';
+import { EKRANLAR } from '../core/ekranlar.js';
 
 const rolGecerli = (r: unknown): r is Rol => r === 'admin' || r === 'izleyici';
 
@@ -30,7 +33,13 @@ export default korumali(
       res.setHeader('Cache-Control', 'private, no-store');
 
       if (req.method === 'GET') {
-        res.status(200).json({ kullanicilar: await kullaniciListesi(p), benKim: benKim.kullanici_ad });
+        res.status(200).json({
+          kullanicilar: await kullaniciListesi(p),
+          benKim: benKim.kullanici_ad,
+          // Yetki seçicisinin kutularını bu listeden çizer — panelde ikinci bir
+          // ekran listesi tutulmaz (kayma riski).
+          tumEkranlar: EKRANLAR,
+        });
         return;
       }
 
@@ -46,6 +55,9 @@ export default korumali(
           adSoyad: g.adSoyad ? String(g.adSoyad) : undefined,
           olusturan: benKim.kullanici_ad,
           sifreDegistir: true, // ilk girişte değiştirmeye zorla
+          // Alan hiç gönderilmediyse undefined → NULL (hepsi). Gönderildiyse
+          // temizlenir; uydurma ekran adları sessizce atılır.
+          ekranlar: 'ekranlar' in g ? g.ekranlar : undefined,
         });
         res.status(201).json({ kullanici: k, sifre, uretildi });
         return;
@@ -67,6 +79,9 @@ export default korumali(
             throw new Error('Kendi yönetici rolünü düşüremezsin.');
           await rolDegistir(p, hedef, g.rol);
         }
+        // Ekran yetkisi. Alan gönderilmediyse DOKUNULMAZ (rol değişimi yetkileri
+        // sıfırlamasın); null gönderilirse sınırlama kalkar, dizi ise o liste yazılır.
+        if ('ekranlar' in g) await ekranlariGuncelle(p, hedef, g.ekranlar);
         res.status(200).json({ tamam: true, sifre: yeniSifre });
         return;
       }

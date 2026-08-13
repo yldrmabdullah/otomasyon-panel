@@ -7,6 +7,7 @@ import { db, hataYanit } from './_db.js';
 import { korumali } from './_oturum.js';
 import { sorunTespiti } from '../core/panelSorgu.js';
 
+
 export default korumali(async (_req: unknown, res: any) => {
   try {
     const veri = await sorunTespiti(db());
@@ -15,4 +16,4 @@ export default korumali(async (_req: unknown, res: any) => {
   } catch (e) {
     hataYanit(res, e);
   }
-});
+}, { ekran: 'sorun' });

@@ -21,8 +21,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pool, kapat } from '../core/db.js';
 
-const BASE = (process.env.POL_URL ?? 'https://pol.parkoil.tr/POL/').replace(/\/$/, '') + '/';
-const REF_URL = process.env.FIYAT_REF_URL ?? 'https://parkoil.com.tr/data/fiyatlar-guncel.json';
+/** Ortam değişkeni oku — BOŞ STRING de "yok" sayılır.
+ *
+ * ⚠️ 2026-08-13: workflow `FIYAT_REF_URL: ${{ vars.FIYAT_REF_URL }}` yazıyor ama
+ * o repo variable tanımlı değil → GitHub boş string geçiriyor. `??` yalnız
+ * undefined/null'da devreye girer, '' geçer → `fetch('')` → "Failed to parse URL
+ * from" ve job çöküyordu. Fiyat takibi bu yüzden GÜNLERDİR koşmuyordu ve panelde
+ * sessizce eski veri duruyordu. */
+const cevre = (ad: string, varsayilan: string): string => {
+  const v = process.env[ad];
+  return v && v.trim() ? v.trim() : varsayilan;
+};
+
+const BASE = cevre('POL_URL', 'https://pol.parkoil.tr/POL/').replace(/\/$/, '') + '/';
+const REF_URL = cevre('FIYAT_REF_URL', 'https://parkoil.com.tr/data/fiyatlar-guncel.json');
 const IND_DIR = join(tmpdir(), 'a5-indir');
 mkdirSync(IND_DIR, { recursive: true });
 const log = (...a: unknown[]) => console.log(new Date().toISOString().slice(11, 19), ...a);
