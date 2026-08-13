@@ -98,7 +98,13 @@ export function Fiyat() {
             {(veri?.gunler ?? []).map((g) => (
               <option key={g.gun} value={g.gun}>
                 {new Date(g.gun).toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' })}
-                {g.pahali > 0 ? ` — ${g.pahali} referans üstü` : ' — temiz'}
+                {/* ⚠️ kayit=0 → o gün ÇEKİM YAPILMAMIŞ. "temiz" demek yanlış olur:
+                    "kontrol edildi, sorun yok" ile "hiç bakılmadı" aynı şey değil. */}
+                {g.kayit === 0
+                  ? ' — çekim yok'
+                  : g.pahali > 0
+                    ? ` — ${g.pahali} referans üstü`
+                    : ' — temiz'}
               </option>
             ))}
           </select>
@@ -111,7 +117,20 @@ export function Fiyat() {
         )}
       </div>
 
-      {ozet && (
+      {/* Çekim yapılmamış gün seçildi — kartlar sıfır gösterecekti ve kullanıcı
+          "bugün hiç pahalı bayi yok" sanabilirdi. Sebep açıkça yazılır.
+          Çekim TR saatiyle ~10:15'te koşar (.github/workflows/fiyat-takip.yml). */}
+      {ozet && ozet.kayit === 0 && (
+        <div className="analiz-not krit-not" role="status">
+          <b>{new Date(ozet.gun).toLocaleDateString('tr-TR')}</b> için fiyat çekimi yapılmamış.
+          {ozet.gun === new Date().toISOString().slice(0, 10)
+            ? ' Günlük çekim her sabah ~10:15’te koşuyor; henüz tamamlanmamış olabilir.'
+            : ' O gün çekim koşmamış ya da POL veri vermemiş.'}{' '}
+          Aşağıdaki liste boş — bu <b>“sorun yok” demek değil</b>, ölçüm yok demek.
+        </div>
+      )}
+
+      {ozet && ozet.kayit > 0 && (
         <section className="kartlar" aria-label="Fiyat özeti">
           <button type="button" className={`kart ${!yalnizPahali ? 'sec' : ''}`} aria-pressed={!yalnizPahali} onClick={() => setYalnizPahali(false)}>
             <div className="kart-deger">{ozet.kayit}</div>
@@ -143,7 +162,15 @@ export function Fiyat() {
         aramaEtiket="Bayi / il / ürün ara…"
         kaydirmaEsigi={25}
         ilkGosterim={80}
-        bosMesaj={yukleniyor ? 'Yükleniyor…' : (yalnizPahali ? 'Bu günde referans üstü satan bayi yok.' : 'Kayıt yok.')}
+        bosMesaj={
+          yukleniyor
+            ? 'Yükleniyor…'
+            : ozet?.kayit === 0
+              ? 'Bu gün için fiyat çekimi yapılmamış — ölçüm yok.'
+              : yalnizPahali
+                ? 'Bu günde referans üstü satan bayi yok.'
+                : 'Kayıt yok.'
+        }
         aktarGizle
         ustSag={
           <div className="mutabakat-indir">

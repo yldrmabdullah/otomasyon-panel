@@ -1212,15 +1212,34 @@ export async function uzlastirmaVerisi(p: Pool, bas?: string, bit?: string, epdk
  * `gun` verilmezse en güncel gün.
  */
 export async function fiyatVerisi(p: Pool, gun?: string) {
+  // ⚠️ SON 60 TAKVİM GÜNÜ — yalnız kayıt OLAN günler değil (2026-08-13, kullanıcı).
+  // Önceki sürüm `FROM bayi_fiyat GROUP BY gun` yapıyordu: çekim yapılmamış gün
+  // listede HİÇ görünmüyordu, dolayısıyla BUGÜN seçilemiyordu ve kullanıcı
+  // "bugünün fiyatı nerede?" sorusunun cevabını alamıyordu.
+  // Şimdi takvim üretilip LEFT JOIN ediliyor → boş günler de seçilebilir ve
+  // panel "bu gün için çekim yapılmamış" diyebilir (sessiz boşluk yerine).
   const gunler = await p.query(
-    `SELECT gun, count(*)::int kayit,
-            count(*) filter (where durum='pahali')::int pahali,
-            max(ref_guncelleme) ref_guncelleme, max(guncelleme) cekim
-     FROM bayi_fiyat GROUP BY gun ORDER BY gun DESC LIMIT 60`,
+    `SELECT d.gun::date gun,
+            coalesce(f.kayit, 0)  kayit,
+            coalesce(f.pahali, 0) pahali,
+            f.ref_guncelleme, f.cekim
+     FROM generate_series(current_date - 59, current_date, interval '1 day') d(gun)
+     LEFT JOIN (
+       SELECT gun, count(*)::int kayit,
+              count(*) filter (where durum='pahali')::int pahali,
+              max(ref_guncelleme) ref_guncelleme, max(guncelleme) cekim
+       FROM bayi_fiyat GROUP BY gun
+     ) f ON f.gun = d.gun::date
+     ORDER BY d.gun DESC`,
   );
-  if (gunler.rows.length === 0) return { gunler: [], secili: null, ozet: null, satirlar: [] };
   const g = (v: unknown): string => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
-  const secili = gunler.rows.find((r) => g(r.gun) === gun) ?? gunler.rows[0];
+  // İstenen gün varsa o, yoksa VERİSİ OLAN en yeni gün (boş güne düşüp "kayıt yok"
+  // göstermek ilk açılışta yanıltıcı olurdu).
+  const secili =
+    gunler.rows.find((r) => g(r.gun) === gun) ??
+    gunler.rows.find((r) => Number(r.kayit) > 0) ??
+    gunler.rows[0];
+  if (!secili) return { gunler: [], secili: null, ozet: null, satirlar: [] };
   const sG = g(secili.gun);
 
   const satirlar = await p.query(
