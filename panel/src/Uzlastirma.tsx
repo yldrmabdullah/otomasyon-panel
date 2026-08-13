@@ -50,7 +50,7 @@ export function Uzlastirma() {
   const qs = new URLSearchParams();
   if (aralik) { qs.set('bas', aralik.bas); qs.set('bit', aralik.bit); }
   if (acikBayi) qs.set('epdk', acikBayi);
-  const { veri, yukleniyor, hata } = useVeri<Veri>(`/api/uzlastirma${qs.toString() ? '?' + qs : ''}`);
+  const { veri, yukleniyor, hata } = useVeri<Veri>(`/api/uzlastirma${qs.toString() ? '?' + qs : ''}`, undefined, 600_000);
 
   const bayiKolon: TabloKolon<Bayi>[] = useMemo(() => [
     {

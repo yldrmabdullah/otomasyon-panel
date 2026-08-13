@@ -59,7 +59,7 @@ const litreTam = (v: number) => v.toLocaleString('tr-TR', { maximumFractionDigit
 export function Mutabakat() {
   const [donem, setDonem] = useState<string | null>(null);
   const url = donem ? `/api/mutabakat?donem=${encodeURIComponent(donem)}` : '/api/mutabakat';
-  const { veri, yukleniyor, hata } = useVeri<Veri>(url);
+  const { veri, yukleniyor, hata } = useVeri<Veri>(url, undefined, 600_000);
   // Sadece sorunluları göster filtresi.
   const [yalnizSorun, setYalnizSorun] = useState(false);
 

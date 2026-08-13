@@ -899,9 +899,21 @@ td.yok { color: var(--soluk-2); font-style: italic; }
 
 
 /* ── Sekmeler (gerçek tab pattern) ── */
+/* Sekme şeridi kendi içinde yatay kaydırılır (3-6 sekme dar ekrana sığmaz).
+   ⚠️ Kaydırma çubuğu gizli olduğu için "sağda daha var" görünmüyordu — mobilde
+   kullanıcı diğer sekmelerin varlığını fark etmiyordu (ölçüldü 390px: 3. sekme
+   470px'te, ekran 390px). Sağ kenara solma maskesi eklendi: içerik kırpılıyormuş
+   hissi verir, kaydırınca kaybolur. Sayfa gövdesi TAŞMIYOR, taşma şerit içinde. */
 .sekme-serit {
   display: flex; gap: 2px; margin-bottom: var(--s-5); overflow-x: auto;
   border-bottom: 1px solid var(--cizgi); scrollbar-width: none;
+  /* Solma yalnız sağ uçta; kaydırma sonunda maske kendiliğinden biter. */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+          mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+/* Şerit tamamen sığıyorsa maske gereksiz — geniş ekranda kapat. */
+@media (min-width: 900px) {
+  .sekme-serit { -webkit-mask-image: none; mask-image: none; }
 }
 .sekme-serit::-webkit-scrollbar { display: none; }
 .sekme {
@@ -1110,7 +1122,13 @@ td.yok { color: var(--soluk-2); font-style: italic; }
      Diğerlerinde ikon + aria-label taşır (App.tsx). */
   .ray-oge:not(.akt) .ray-ad { display: none; }
   .ray-oge.akt .ray-ad { font-size: var(--t-md); white-space: nowrap; }
-  .ray-dip { width: auto; padding-top: 0; border-top: none; margin-left: auto; flex-shrink: 0; }
+  /* ⚠️ Avatar son modül ikonunun ÜSTÜNE biniyordu (390px'de görüldü): nav
+     kaydırılabilir ama dip `margin-left:auto` ile üstüne oturuyordu. Dip artık
+     nav'dan SONRA yer kaplıyor (shrink yok) ve solunda ayraç var. */
+  .ray-dip {
+    width: auto; padding: 0 0 0 var(--s-2); border-top: none; border-left: 1px solid var(--cizgi);
+    margin-left: var(--s-1); flex: 0 0 auto;
+  }
   .ray-avatar { width: 34px; height: 34px; }
   /* Menü şeridin ALTINA açılır (yanına değil — ekran dışına taşardı). */
   .kul-menu { left: auto; right: 0; bottom: auto; top: calc(100% + 10px); }

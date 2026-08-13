@@ -88,6 +88,8 @@ export function useVeri<T>(url: string, dogrula?: (d: unknown) => T, aralikMs?: 
   const [yukleniyor, setYukleniyor] = useState(true);
   // Yarış koşulu koruması: yalnız EN SON isteğin sonucu state'e yazılır.
   const sonRef = useRef(0);
+  /** Son başarılı çekim anı — sekmeye dönünce "bayat mı" kararı buna bakar. */
+  const sonYukleme = useRef(0);
 
   const yukle = useCallback(
     async (sinyal?: AbortSignal) => {
@@ -108,6 +110,7 @@ export function useVeri<T>(url: string, dogrula?: (d: unknown) => T, aralikMs?: 
         if (benim !== sonRef.current) return; // bayat yanıt — yut
         setVeri(temiz);
         setHata(null);
+        sonYukleme.current = Date.now();
       } catch (e) {
         if ((e as Error)?.name === 'AbortError') return;
         if (benim !== sonRef.current) return;
@@ -122,7 +125,26 @@ export function useVeri<T>(url: string, dogrula?: (d: unknown) => T, aralikMs?: 
   useEffect(() => {
     const ac = new AbortController();
     yukle(ac.signal);
-    if (!aralikMs) return () => ac.abort();
+
+    // ── SEKMEYE GERİ DÖNÜNCE TAZELE ────────────────────────────────────────
+    // Panel gün boyu açık bir sekmede duruyor. Polling'i olan modüller kendi
+    // aralığında yenileniyordu ama polling'i OLMAYANLAR (Piyasa, Fiyat,
+    // Mutabakat, Uzlaştırma) ilk yüklemede kalıyordu: kullanıcı öğleden sonra
+    // sekmeye dönüp sabahki veriye bakıyor ve güncel sanıyordu.
+    // Arka plandayken ağ yorulmaz; yalnız GÖRÜNÜR olunca ve veri bayatsa çekilir.
+    const BAYAT_MS = 60_000;
+    const gorunurlukDegisti = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - sonYukleme.current >= BAYAT_MS) yukle();
+    };
+    document.addEventListener('visibilitychange', gorunurlukDegisti);
+
+    if (!aralikMs) {
+      return () => {
+        ac.abort();
+        document.removeEventListener('visibilitychange', gorunurlukDegisti);
+      };
+    }
     const t = setInterval(() => {
       // Sekme arka plandaysa ağı yorma (günde ~164 MB gereksiz trafik).
       if (document.visibilityState === 'visible') yukle();
@@ -130,6 +152,7 @@ export function useVeri<T>(url: string, dogrula?: (d: unknown) => T, aralikMs?: 
     return () => {
       ac.abort();
       clearInterval(t);
+      document.removeEventListener('visibilitychange', gorunurlukDegisti);
     };
   }, [yukle, aralikMs]);
 

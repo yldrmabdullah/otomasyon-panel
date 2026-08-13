@@ -26,7 +26,7 @@ const tl = (v: number | null | undefined) => v == null ? '—' : v.toLocaleStrin
 export function Fiyat() {
   const [gun, setGun] = useState<string | null>(null);
   const [yalnizPahali, setYalnizPahali] = useState(false);
-  const { veri, yukleniyor, hata } = useVeri<Veri>(`/api/fiyat${gun ? `?gun=${encodeURIComponent(gun)}` : ''}`);
+  const { veri, yukleniyor, hata } = useVeri<Veri>(`/api/fiyat${gun ? `?gun=${encodeURIComponent(gun)}` : ''}`, undefined, 600_000);
 
   const satirlar = useMemo(() => {
     const s = veri?.satirlar ?? [];

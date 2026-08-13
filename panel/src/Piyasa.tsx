@@ -246,7 +246,7 @@ function piyasaDogrula(d: unknown): PiyasaVeri {
 }
 
 export function Piyasa() {
-  const { veri, hata, yukleniyor, yenile } = useVeri<PiyasaVeri>('/api/piyasa', piyasaDogrula);
+  const { veri, hata, yukleniyor, yenile } = useVeri<PiyasaVeri>('/api/piyasa', piyasaDogrula, 600_000);
 
 
   // Bayi tablosu — SUNUCU TARAFLI sayfalama.
