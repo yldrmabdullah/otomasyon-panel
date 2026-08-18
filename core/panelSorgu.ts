@@ -12,6 +12,7 @@
 
 import type { Pool } from 'pg';
 import { KAPANIS_PENCERE_BAS, KAPANIS_PENCERE_BIT } from './db.js';
+import { VARSAYILAN_ESIK } from './a1bKural.js';
 
 /** Parkoil'in EPDK'daki tüzel kimliği (bkz docs/bilgi/piyasa-istihbarat.md). */
 export const BIZ = 'TURGUT DAĞITIM ENERJİ ANONİM ŞİRKETİ';
@@ -54,7 +55,9 @@ export async function tazelikVerisi(p: Pool) {
       -- uzlaştırma AYLIK koşuyor (45 gün — ayın 2-3'ünde çekilir).
       ('fiyat',       'Bayi fiyat takibi', (SELECT max(guncelleme) FROM bayi_fiyat),      2880),
       ('mutabakat',   'A3 ↔ Logo kıyası',  (SELECT max(cekim_zamani) FROM mutabakat_a3_donem), 64800),
-      ('uzlastirma',  'Tank uzlaştırma',   (SELECT max(cekim_zamani) FROM uzlastirma_donem),   64800)
+      ('uzlastirma',  'Tank uzlaştırma',   (SELECT max(cekim_zamani) FROM uzlastirma_donem),   64800),
+      -- A1b günlük çekim: 2 gün tolerans (fiyat ile aynı mantık).
+      ('a1b',         'Stok-satış anomali', (SELECT max(guncelleme) FROM a1b_gun),         2880)
     ) t(anahtar, ad, son, esik_dk)
     ORDER BY son NULLS FIRST`);
 
@@ -1274,4 +1277,165 @@ export async function fiyatVerisi(p: Pool, gun?: string) {
       fark: r.fark == null ? null : Number(r.fark), durum: r.durum,
     })),
   };
+}
+
+/**
+ * A1b stok-satış anomali verisi (Mevzuat → Stok-Satış Anomali sekmesi).
+ *
+ * Gün listesi Fiyat Takibi'ndeki desenle aynı: SON 60 TAKVİM GÜNÜ (yalnız kayıt
+ * olan günler değil) — çekim yapılmamış gün de seçilebilsin ve panel "çekim yok"
+ * diyebilsin. Sessiz boşluk, bayat veriyi "güncel" göstermekten kötüdür.
+ */
+export async function a1bVerisi(p: Pool, gun?: string) {
+  const gunler = await p.query(
+    `SELECT d.gun::date gun,
+            coalesce(f.kayit, 0)  kayit,
+            coalesce(f.alarm, 0)  alarm,
+            coalesce(f.kritik, 0) kritik
+     FROM generate_series(current_date - 59, current_date, interval '1 day') d(gun)
+     LEFT JOIN (
+       SELECT gun, count(*)::int kayit,
+              count(*) FILTER (WHERE risk <> 'NORMAL')::int alarm,
+              count(*) FILTER (WHERE risk = 'KRITIK')::int kritik
+       FROM a1b_gun GROUP BY gun
+     ) f ON f.gun = d.gun::date
+     ORDER BY d.gun DESC`,
+  );
+  const g = (v: unknown): string => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
+  // İstenen gün yoksa VERİSİ OLAN en yeni güne düş (boş güne düşmek yanıltıcı olur).
+  const secili =
+    gunler.rows.find((r) => g(r.gun) === gun) ??
+    gunler.rows.find((r) => Number(r.kayit) > 0) ??
+    gunler.rows[0];
+  if (!secili) return { gunler: [], secili: null, ozet: null, satirlar: [] };
+  const sG = g(secili.gun);
+
+  const [satirlar, ozet] = await Promise.all([
+    p.query(
+      `SELECT istasyon_kod, istasyon_ad, epdk_kod, tank_no, urun, bolge, mintika,
+              gun_basi, dolum, satis, gun_sonu, kapasite,
+              beklenen_sonu, gercek_cikis, fark, yansimayan, kapasite_asim,
+              risk, nedenler, aciklama, duzenleyen, kriter_ks
+       FROM a1b_gun WHERE gun = $1
+       -- Aciliyet sırası: kritik önce, sonra yansımayan oranı yüksek olan.
+       ORDER BY CASE risk WHEN 'VERI_HATASI' THEN 0 WHEN 'KRITIK' THEN 1 WHEN 'YUKSEK' THEN 2
+                          WHEN 'INCELE' THEN 3 ELSE 4 END,
+                yansimayan DESC NULLS LAST, abs(fark) DESC`,
+      [sG],
+    ),
+    p.query(
+      `SELECT count(*)::int kayit,
+              count(*) FILTER (WHERE risk='KRITIK')::int kritik,
+              count(*) FILTER (WHERE risk='YUKSEK')::int yuksek,
+              count(*) FILTER (WHERE risk='INCELE')::int incele,
+              count(*) FILTER (WHERE risk='VERI_HATASI')::int veriHatasi,
+              count(*) FILTER (WHERE risk<>'NORMAL' AND aciklama IS NOT NULL)::int aciklamali,
+              max(guncelleme) cekim, max(esik_surum) esik
+       FROM a1b_gun WHERE gun = $1`,
+      [sG],
+    ),
+  ]);
+  const o = ozet.rows[0] ?? {};
+  return {
+    gunler: gunler.rows.map((r) => ({
+      gun: g(r.gun), kayit: Number(r.kayit), alarm: Number(r.alarm), kritik: Number(r.kritik),
+    })),
+    secili: sG,
+    ozet: {
+      gun: sG, kayit: Number(o.kayit ?? 0), kritik: Number(o.kritik ?? 0),
+      yuksek: Number(o.yuksek ?? 0), incele: Number(o.incele ?? 0),
+      veriHatasi: Number(o.verihatasi ?? o.veriHatasi ?? 0),
+      aciklamali: Number(o.aciklamali ?? 0),
+      cekim: o.cekim ? new Date(o.cekim).toISOString() : null,
+      esikSurum: o.esik ?? null,
+    },
+    satirlar: satirlar.rows.map((r) => ({
+      istKod: r.istasyon_kod, istasyon: r.istasyon_ad, epdk: r.epdk_kod,
+      tankNo: r.tank_no, urun: r.urun, bolge: r.bolge, mintika: r.mintika,
+      gunBasi: Number(r.gun_basi), dolum: Number(r.dolum), satis: Number(r.satis),
+      gunSonu: Number(r.gun_sonu), kapasite: r.kapasite === null ? null : Number(r.kapasite),
+      beklenenSonu: Number(r.beklenen_sonu), gercekCikis: Number(r.gercek_cikis), fark: Number(r.fark),
+      yansimayan: r.yansimayan === null ? null : Number(r.yansimayan),
+      kapasiteAsim: r.kapasite_asim === null ? null : Number(r.kapasite_asim),
+      risk: r.risk, nedenler: r.nedenler ?? [], aciklama: r.aciklama,
+      duzenleyen: r.duzenleyen, kriterKs: r.kriter_ks,
+    })),
+  };
+}
+
+/** A1b eşik ayarları — panel okur/yazar. sistem_ayar'da 'a1b.*' anahtarları. */
+export async function a1bEsikOku(p: Pool) {
+  const r = await p.query(`SELECT anahtar, deger FROM sistem_ayar WHERE anahtar LIKE 'a1b.%'`);
+  const m = new Map(r.rows.map((x) => [String(x.anahtar).slice(4), String(x.deger)]));
+  const g = (k: string, v: number) => {
+    const x = Number(m.get(k));
+    return Number.isFinite(x) ? x : v;
+  };
+  return {
+    minSatis: g('minSatis', VARSAYILAN_ESIK.minSatis),
+    ayniStok: g('ayniStok', VARSAYILAN_ESIK.ayniStok),
+    kritikOran: g('kritikOran', VARSAYILAN_ESIK.kritikOran),
+    yuksekOran: g('yuksekOran', VARSAYILAN_ESIK.yuksekOran),
+    inceleOran: g('inceleOran', VARSAYILAN_ESIK.inceleOran),
+    inceleFark: g('inceleFark', VARSAYILAN_ESIK.inceleFark),
+    kapasiteTolerans: g('kapasiteTolerans', VARSAYILAN_ESIK.kapasiteTolerans),
+  };
+}
+
+/**
+ * Eşikleri kaydet ve GEÇMİŞİ YENİDEN HESAPLA.
+ *
+ * ⚠️ NEDEN YENİDEN HESAP: eşik yalnız sonraki çekime uygulansaydı kullanıcı
+ * "5 yerine 10 yapsam kaç alarm kalır" sorusunu göremezdi — ayarı körlemesine
+ * değiştirirdi. Ham değerler (gun_basi/dolum/satis/gun_sonu/kapasite) tabloda
+ * duruyor, POL'e gitmeye gerek yok: saf hesap, saniyeler sürer.
+ *
+ * Tek UPDATE ile yapılır (satır satır döngü 60 günde ~40 bin sorgu olurdu).
+ * Kural motorunun TS karşılığı burada SQL olarak yazılmıştır — ikisi aynı sırayı
+ * izler (kapasite → stok artışı → aynı stok → oranlar).
+ */
+export async function a1bEsikKaydet(p: Pool, gelen: Record<string, unknown>, surum: string) {
+  const ALAN = ['minSatis', 'ayniStok', 'kritikOran', 'yuksekOran', 'inceleOran', 'inceleFark', 'kapasiteTolerans'] as const;
+  for (const a of ALAN) {
+    const v = Number(gelen[a]);
+    if (!Number.isFinite(v) || v < 0) continue;         // geçersiz değer sessizce atlanır
+    await p.query(
+      `INSERT INTO sistem_ayar (anahtar, deger) VALUES ($1, $2)
+       ON CONFLICT (anahtar) DO UPDATE SET deger = EXCLUDED.deger, guncelleme = now()`,
+      [`a1b.${a}`, String(v)],
+    );
+  }
+  const e = await a1bEsikOku(p);
+
+  // Geçmişi yeniden değerlendir. NOT: türetilmiş alanlar (beklenen/çıkış/fark)
+  // ham değerlerden zaten sabit — yalnız risk/neden eşiğe bağlı, onlar güncellenir.
+  const r = await p.query(
+    `UPDATE a1b_gun SET
+       risk = CASE
+         WHEN gun_basi IS NULL OR dolum IS NULL OR satis IS NULL OR gun_sonu IS NULL THEN 'VERI_HATASI'
+         WHEN satis < 0 OR dolum < 0 OR gun_basi < 0 OR gun_sonu < 0 THEN 'VERI_HATASI'
+         WHEN kapasite > 0 AND (gun_sonu - kapasite) > $7 THEN 'KRITIK'
+         WHEN satis > $1 AND gercek_cikis < 0 THEN 'KRITIK'
+         WHEN satis > $1 AND abs(gercek_cikis) <= $2 THEN 'KRITIK'
+         WHEN satis > $1 AND satis > 0 AND (GREATEST(0, fark) / satis) >= $3 THEN 'KRITIK'
+         WHEN satis > $1 AND satis > 0 AND (GREATEST(0, fark) / satis) >= $4 THEN 'YUKSEK'
+         WHEN satis > $1 AND satis > 0 AND fark >= $6 AND (GREATEST(0, fark) / satis) >= $5 THEN 'INCELE'
+         ELSE 'NORMAL' END,
+       nedenler = ARRAY_REMOVE(ARRAY[
+         CASE WHEN kapasite > 0 AND (gun_sonu - kapasite) > $7 THEN 'Tank kapasitesi aşılmış' END,
+         CASE WHEN satis > $1 AND gercek_cikis < 0 THEN 'Satış varken stok net artmış'
+              WHEN satis > $1 AND abs(gercek_cikis) <= $2 THEN 'Satış var, stok neredeyse hiç değişmemiş'
+              WHEN satis > $1 AND satis > 0 AND (GREATEST(0, fark) / satis) >= $3
+                THEN 'Satışın %' || round($3 * 100) || '+ kısmı stokta görünmüyor'
+              WHEN satis > $1 AND satis > 0 AND (GREATEST(0, fark) / satis) >= $4
+                THEN 'Satışın %' || round($4 * 100) || '+ kısmı stokta görünmüyor'
+              WHEN satis > $1 AND satis > 0 AND fark >= $6 AND (GREATEST(0, fark) / satis) >= $5
+                THEN 'Stok-satış mutabakat farkı' END
+       ], NULL),
+       kapasite_asim = CASE WHEN kapasite > 0 THEN GREATEST(0, gun_sonu - kapasite) ELSE NULL END,
+       esik_surum = $8,
+       guncelleme = now()`,
+    [e.minSatis, e.ayniStok, e.kritikOran, e.yuksekOran, e.inceleOran, e.inceleFark, e.kapasiteTolerans, surum],
+  );
+  return { esik: e, guncellenen: r.rowCount ?? 0 };
 }

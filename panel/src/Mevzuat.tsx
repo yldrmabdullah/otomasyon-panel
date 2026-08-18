@@ -5,6 +5,7 @@ import { Sekmeler } from './Sekme.js';
 import { Mutabakat } from './Mutabakat.js';
 import { Uzlastirma } from './Uzlastirma.js';
 import { Fiyat } from './Fiyat.js';
+import { Anomali } from './Anomali.js';
 import { ModulBar } from './ortak.js';
 
 interface Konu {
@@ -293,6 +294,7 @@ export function Mevzuat() {
         tanimlar={[
           { id: 'uzlastirma', ad: 'Tank Uzlaştırma', icerik: () => <Uzlastirma key={tazele} /> },
           { id: 'mutabakat', ad: 'A3 ↔ Logo Mutabakatı', icerik: () => <Mutabakat key={tazele} /> },
+          { id: 'anomali', ad: 'Stok-Satış Anomali', icerik: () => <Anomali key={tazele} /> },
           { id: 'fiyat', ad: 'Fiyat Takibi', icerik: () => <Fiyat key={tazele} /> },
           { id: 'bilgi', ad: 'Mevzuat Bilgisi', icerik: () => <MevzuatBilgi /> },
         ]}

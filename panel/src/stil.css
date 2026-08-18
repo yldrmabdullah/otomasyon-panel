@@ -1694,6 +1694,14 @@ td { vertical-align: middle; font-variant-numeric: tabular-nums; }
 .satir-uyari td:first-child { background: color-mix(in srgb, var(--uyari) 12%, var(--panel)); }
 .satir-uyari:hover td:first-child { background: color-mix(in srgb, var(--uyari) 18%, var(--panel)); }
 
+/* Eşik ayar formundaki alan açıklaması — ne işe yaradığını kutunun altında söyler. */
+.esik-not { font-size: var(--t-xs); color: var(--soluk-2); line-height: 1.4; margin-top: 3px; }
+
+/* Rozet + alt açıklama taşıyan hücre (Anomali: risk rozeti + neden satırı).
+   Tavan yoksa uzun neden metni kolonu 280px'e şişirip tabloyu taşırıyordu. */
+.rozet-hucre { max-width: 190px; }
+.rozet-hucre .alt-satir { white-space: normal; line-height: 1.3; }
+
 /* Buton grubu (CSV/Excel/temizle) — dokunulabilir boy + ikon hizası. */
 .temizle { min-height: 34px; display: inline-flex; align-items: center; gap: 5px; }
 
