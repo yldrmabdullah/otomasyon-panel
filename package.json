@@ -23,7 +23,8 @@
     "seviye": "tsx araclar/seviyeCek.ts",
     "piyasa:mail": "tsx araclar/piyasaMail.ts",
     "kolon:test": "tsx araclar/kolonMenuTest.ts",
-    "fiyat": "tsx araclar/fiyatKiyas.mts"
+    "fiyat": "tsx araclar/fiyatKiyas.mts",
+    "a1b": "tsx araclar/a1bCek.mts"
   },
   "dependencies": {
     "fast-xml-parser": "^5.10.1",

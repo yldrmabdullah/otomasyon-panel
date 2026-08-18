@@ -1,0 +1,65 @@
+name: A1b Stok-Satış Anomali (günlük)
+
+# POL "Tablo A1b - Düzeltilmiş Otomasyon Sistemi" raporunu indirir, pompa satışı
+# ile tank stok hareketi uyuşmayan kayıtları DETERMİNİSTİK kural motoruyla
+# (core/a1bKural.ts) işaretler → panel Mevzuat → "Stok-Satış Anomali".
+#
+# Kaynak gereksinim: "Günlük Akaryakıt Tank Stok-Satış Anomali Kontrol Sistemi"
+# teknik dokümanı (Turgut Dağıtım, 18.08.2026 v1.0).
+#
+# ⚠️ AI KULLANILMAZ — doküman 2. madde: aynı veri her gün aynı sonucu vermeli,
+# eşikler denetlenebilir ve sonuç EPDK denetiminde açıklanabilir olmalı.
+# ⚠️ Playwright (POL Excel indirmesi) → Actions'ta koşar. Salt-okuma.
+
+on:
+  # Her gün 08:00 UTC (TR 11:00) — A1b bir önceki günün kapanışını içerir, sabah
+  # oturmuş olur. Fiyat takibinden (07:15) sonra: aynı anda iki Playwright işi
+  # POL'e yüklenmesin.
+  schedule:
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      bas:
+        description: 'Başlangıç YYYY-MM-DD (boş: dün)'
+        required: false
+        default: ''
+      bit:
+        description: 'Bitiş YYYY-MM-DD (boş: bugün)'
+        required: false
+        default: ''
+
+concurrency:
+  group: a1b-anomali
+  cancel-in-progress: false
+
+jobs:
+  a1b:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Bağımlılıklar
+        run: npm ci
+
+      - name: Playwright chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Şema (idempotent)
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: A1b çek + anomali analizi
+        run: npm run a1b -- ${{ github.event.inputs.bas }} ${{ github.event.inputs.bit }}
+        env:
+          POL_URL: ${{ secrets.POL_URL }}
+          POL_KULLANICI: ${{ secrets.POL_KULLANICI }}
+          POL_SIFRE: ${{ secrets.POL_SIFRE }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

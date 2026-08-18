@@ -54,7 +54,9 @@ export async function tazelikVerisi(p: Pool) {
       -- uzlaştırma AYLIK koşuyor (45 gün — ayın 2-3'ünde çekilir).
       ('fiyat',       'Bayi fiyat takibi', (SELECT max(guncelleme) FROM bayi_fiyat),      2880),
       ('mutabakat',   'A3 ↔ Logo kıyası',  (SELECT max(cekim_zamani) FROM mutabakat_a3_donem), 64800),
-      ('uzlastirma',  'Tank uzlaştırma',   (SELECT max(cekim_zamani) FROM uzlastirma_donem),   64800)
+      ('uzlastirma',  'Tank uzlaştırma',   (SELECT max(cekim_zamani) FROM uzlastirma_donem),   64800),
+      -- A1b günlük çekim: 2 gün tolerans (fiyat ile aynı mantık).
+      ('a1b',         'Stok-satış anomali', (SELECT max(guncelleme) FROM a1b_gun),         2880)
     ) t(anahtar, ad, son, esik_dk)
     ORDER BY son NULLS FIRST`);
 
@@ -1272,6 +1274,90 @@ export async function fiyatVerisi(p: Pool, gun?: string) {
       urun: r.urun, urunHam: r.urun_ham,
       bayiFiyat: Number(r.bayi_fiyat), refFiyat: r.ref_fiyat == null ? null : Number(r.ref_fiyat),
       fark: r.fark == null ? null : Number(r.fark), durum: r.durum,
+    })),
+  };
+}
+
+/**
+ * A1b stok-satış anomali verisi (Mevzuat → Stok-Satış Anomali sekmesi).
+ *
+ * Gün listesi Fiyat Takibi'ndeki desenle aynı: SON 60 TAKVİM GÜNÜ (yalnız kayıt
+ * olan günler değil) — çekim yapılmamış gün de seçilebilsin ve panel "çekim yok"
+ * diyebilsin. Sessiz boşluk, bayat veriyi "güncel" göstermekten kötüdür.
+ */
+export async function a1bVerisi(p: Pool, gun?: string) {
+  const gunler = await p.query(
+    `SELECT d.gun::date gun,
+            coalesce(f.kayit, 0)  kayit,
+            coalesce(f.alarm, 0)  alarm,
+            coalesce(f.kritik, 0) kritik
+     FROM generate_series(current_date - 59, current_date, interval '1 day') d(gun)
+     LEFT JOIN (
+       SELECT gun, count(*)::int kayit,
+              count(*) FILTER (WHERE risk <> 'NORMAL')::int alarm,
+              count(*) FILTER (WHERE risk = 'KRITIK')::int kritik
+       FROM a1b_gun GROUP BY gun
+     ) f ON f.gun = d.gun::date
+     ORDER BY d.gun DESC`,
+  );
+  const g = (v: unknown): string => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
+  // İstenen gün yoksa VERİSİ OLAN en yeni güne düş (boş güne düşmek yanıltıcı olur).
+  const secili =
+    gunler.rows.find((r) => g(r.gun) === gun) ??
+    gunler.rows.find((r) => Number(r.kayit) > 0) ??
+    gunler.rows[0];
+  if (!secili) return { gunler: [], secili: null, ozet: null, satirlar: [] };
+  const sG = g(secili.gun);
+
+  const [satirlar, ozet] = await Promise.all([
+    p.query(
+      `SELECT istasyon_kod, istasyon_ad, epdk_kod, tank_no, urun, bolge, mintika,
+              gun_basi, dolum, satis, gun_sonu, kapasite,
+              beklenen_sonu, gercek_cikis, fark, yansimayan, kapasite_asim,
+              risk, nedenler, aciklama, duzenleyen, kriter_ks
+       FROM a1b_gun WHERE gun = $1
+       -- Aciliyet sırası: kritik önce, sonra yansımayan oranı yüksek olan.
+       ORDER BY CASE risk WHEN 'VERI_HATASI' THEN 0 WHEN 'KRITIK' THEN 1 WHEN 'YUKSEK' THEN 2
+                          WHEN 'INCELE' THEN 3 ELSE 4 END,
+                yansimayan DESC NULLS LAST, abs(fark) DESC`,
+      [sG],
+    ),
+    p.query(
+      `SELECT count(*)::int kayit,
+              count(*) FILTER (WHERE risk='KRITIK')::int kritik,
+              count(*) FILTER (WHERE risk='YUKSEK')::int yuksek,
+              count(*) FILTER (WHERE risk='INCELE')::int incele,
+              count(*) FILTER (WHERE risk='VERI_HATASI')::int veriHatasi,
+              count(*) FILTER (WHERE risk<>'NORMAL' AND aciklama IS NOT NULL)::int aciklamali,
+              max(guncelleme) cekim, max(esik_surum) esik
+       FROM a1b_gun WHERE gun = $1`,
+      [sG],
+    ),
+  ]);
+  const o = ozet.rows[0] ?? {};
+  return {
+    gunler: gunler.rows.map((r) => ({
+      gun: g(r.gun), kayit: Number(r.kayit), alarm: Number(r.alarm), kritik: Number(r.kritik),
+    })),
+    secili: sG,
+    ozet: {
+      gun: sG, kayit: Number(o.kayit ?? 0), kritik: Number(o.kritik ?? 0),
+      yuksek: Number(o.yuksek ?? 0), incele: Number(o.incele ?? 0),
+      veriHatasi: Number(o.verihatasi ?? o.veriHatasi ?? 0),
+      aciklamali: Number(o.aciklamali ?? 0),
+      cekim: o.cekim ? new Date(o.cekim).toISOString() : null,
+      esikSurum: o.esik ?? null,
+    },
+    satirlar: satirlar.rows.map((r) => ({
+      istKod: r.istasyon_kod, istasyon: r.istasyon_ad, epdk: r.epdk_kod,
+      tankNo: r.tank_no, urun: r.urun, bolge: r.bolge, mintika: r.mintika,
+      gunBasi: Number(r.gun_basi), dolum: Number(r.dolum), satis: Number(r.satis),
+      gunSonu: Number(r.gun_sonu), kapasite: r.kapasite === null ? null : Number(r.kapasite),
+      beklenenSonu: Number(r.beklenen_sonu), gercekCikis: Number(r.gercek_cikis), fark: Number(r.fark),
+      yansimayan: r.yansimayan === null ? null : Number(r.yansimayan),
+      kapasiteAsim: r.kapasite_asim === null ? null : Number(r.kapasite_asim),
+      risk: r.risk, nedenler: r.nedenler ?? [], aciklama: r.aciklama,
+      duzenleyen: r.duzenleyen, kriterKs: r.kriter_ks,
     })),
   };
 }

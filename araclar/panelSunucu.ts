@@ -10,7 +10,7 @@
 import { createServer } from 'node:http';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { pool, kapat } from '../core/db.js';
-import { piyasaVerisi, durumVerisi, operasyonVerisi, sorunTespiti, bayiVerisi, bayiSecenekleri, a3LogoVerisi, uzlastirmaVerisi, fiyatVerisi } from '../core/panelSorgu.js';
+import { piyasaVerisi, durumVerisi, operasyonVerisi, sorunTespiti, bayiVerisi, bayiSecenekleri, a3LogoVerisi, uzlastirmaVerisi, fiyatVerisi, a1bVerisi } from '../core/panelSorgu.js';
 import {
   girisDogrula, kullaniciBul, kullaniciListesi, kullaniciEkle, kullaniciSil,
   rolDegistir, sifreDegistir, ekranlariGuncelle, sifreUret, adNormal,
@@ -189,6 +189,10 @@ const sunucu = createServer(async (istek, yanit) => {
     if (url.pathname === '/api/fiyat') {
       if (!ekranKapi('mevzuat')) return;
       return json(200, await fiyatVerisi(p, q.get('gun') ?? undefined));
+    }
+    if (url.pathname === '/api/a1b') {
+      if (!ekranKapi('mevzuat')) return;
+      return json(200, await a1bVerisi(p, q.get('gun') ?? undefined));
     }
     if (url.pathname === '/api/bayiler') {
       if (!ekranKapi('piyasa')) return;
