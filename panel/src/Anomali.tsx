@@ -7,7 +7,7 @@
 // ⚠️ DİL: buradaki bulgular "kaçak/usulsüzlük" DEĞİL, İNCELENMESİ GEREKEN
 // anomalidir (teknik doküman 7.3). Şamandıra arızası, gece yarısı başlayan dolum,
 // konsol haberleşme hatası hepsi masum sebepler. Panel "kontrol edilmeli" der.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Tablo, type TabloKolon } from './Tablo.js';
 import { Bos, Kart, useVeri } from './ortak.js';
 import { csvIndir, xlsIndir } from './disaAktar.js';
@@ -27,6 +27,15 @@ interface Satir {
   duzenleyen: string | null; kriterKs: string | null;
 }
 interface Veri { gunler: GunOzet[]; secili: string | null; ozet: Ozet | null; satirlar: Satir[] }
+interface Esikler {
+  minSatis: number; ayniStok: number; kritikOran: number;
+  yuksekOran: number; inceleOran: number; inceleFark: number; kapasiteTolerans: number;
+}
+/** core/a1bKural.ts VARSAYILAN_ESIK ile aynı — "Varsayılana dön" için. */
+const VARSAYILAN: Esikler = {
+  minSatis: 1, ayniStok: 5, kritikOran: 0.8, yuksekOran: 0.5,
+  inceleOran: 0.2, inceleFark: 20, kapasiteTolerans: 50,
+};
 
 const RISK: Record<string, { ad: string; sinif: string; sira: number }> = {
   VERI_HATASI: { ad: 'Veri hatası', sinif: 'uyari', sira: 0 },
@@ -44,8 +53,10 @@ export function Anomali() {
   const [gun, setGun] = useState<string | null>(null);
   // Doküman 8: "Varsayılan ekran yalnızca NORMAL dışındaki kayıtları göstermelidir."
   const [yalnizAlarm, setYalnizAlarm] = useState(true);
+  const [esikAcik, setEsikAcik] = useState(false);
+  const [tazele, setTazele] = useState(0);
   const { veri, yukleniyor, hata } = useVeri<Veri>(
-    `/api/a1b${gun ? `?gun=${encodeURIComponent(gun)}` : ''}`, undefined, 600_000,
+    `/api/a1b${gun ? `?gun=${encodeURIComponent(gun)}` : ''}${tazele ? `${gun ? '&' : '?'}t=${tazele}` : ''}`, undefined, 600_000,
   );
 
   const satirlar = useMemo(() => {
@@ -175,6 +186,9 @@ export function Anomali() {
             ))}
           </select>
         </label>
+        <button type="button" className="temizle" onClick={() => setEsikAcik((a) => !a)}>
+          {esikAcik ? 'Ayarları kapat' : '⚙ Eşik ayarları'}
+        </button>
         {ozet?.cekim && (
           <span className="taze">
             {new Date(ozet.cekim).toLocaleString('tr-TR', { dateStyle: 'medium', timeStyle: 'short' })} çekildi
@@ -182,6 +196,8 @@ export function Anomali() {
           </span>
         )}
       </div>
+
+      {esikAcik && <EsikAyar kapat={() => setEsikAcik(false)} kaydedildi={() => setTazele((n) => n + 1)} />}
 
       {/* Doküman 7.3: kesin hüküm verilmez, operasyonel dil kullanılır. */}
       <p className="analiz-not">
@@ -249,6 +265,103 @@ export function Anomali() {
           </div>
         }
       />
+    </div>
+  );
+}
+
+/** Eşik alanı tanımı — etiket + açıklama + biçim. Tek yerde, hem form hem yardım. */
+const ESIK_ALAN: { id: keyof Esikler; ad: string; aciklama: string; yuzde?: boolean; birim?: string }[] = [
+  { id: 'ayniStok', ad: 'Stok "değişmedi" sınırı', birim: 'lt',
+    aciklama: 'Stok hareketi bu değerin altındaysa "satış var ama stok değişmemiş" sayılır. Düşürürsen daha az alarm.' },
+  { id: 'kritikOran', ad: 'Kritik oran', yuzde: true,
+    aciklama: 'Satışın bu kadarı stokta görünmüyorsa KRİTİK.' },
+  { id: 'yuksekOran', ad: 'Yüksek oran', yuzde: true,
+    aciklama: 'Bu oranın üstü YÜKSEK.' },
+  { id: 'inceleOran', ad: 'İncele oranı', yuzde: true,
+    aciklama: 'Bu oranın üstü (ve aşağıdaki litre farkı sağlanırsa) İNCELE.' },
+  { id: 'inceleFark', ad: 'İncele litre eşiği', birim: 'lt',
+    aciklama: 'Küçük yüzdelerde gürültüyü keser: en az bu kadar litre fark olsun.' },
+  { id: 'minSatis', ad: 'En az satış', birim: 'lt',
+    aciklama: 'Bundan az satışta alarm üretilmez (ölçüm gürültüsü).' },
+  { id: 'kapasiteTolerans', ad: 'Kapasite toleransı', birim: 'lt',
+    aciklama: 'Gün sonu stok kapasiteyi bu kadar aşabilir; üstü KRİTİK.' },
+];
+
+/** Eşik ayar paneli — YALNIZ ADMIN. Kaydedince GEÇMİŞ de yeniden hesaplanır,
+ *  böylece "5 yerine 10 yapsam kaç alarm kalır" anında görülür. */
+function EsikAyar({ kapat, kaydedildi }: { kapat: () => void; kaydedildi: () => void }) {
+  const [esik, setEsik] = useState<Esikler | null>(null);
+  const [bekliyor, setBekliyor] = useState(false);
+  const [hata, setHata] = useState<string | null>(null);
+  const [sonuc, setSonuc] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/a1b-esik')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`Ayarlar alınamadı (${r.status})`))))
+      .then((d) => setEsik(d.esik))
+      .catch((e) => setHata(e.message));
+  }, []);
+
+  async function kaydet() {
+    if (!esik) return;
+    setBekliyor(true); setHata(null); setSonuc(null);
+    try {
+      const r = await fetch('/api/a1b-esik', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(esik),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.hata ?? 'Kaydedilemedi');
+      setSonuc(`${d.guncellenen.toLocaleString('tr')} kayıt yeni eşiklerle yeniden değerlendirildi.`);
+      kaydedildi();
+    } catch (e) {
+      setHata(e instanceof Error ? e.message : String(e));
+    } finally { setBekliyor(false); }
+  }
+
+  if (hata && !esik) return <div className="ekle-form"><div className="hata" role="alert">{hata}</div></div>;
+  if (!esik) return <div className="ekle-form"><span className="soluk">Ayarlar yükleniyor…</span></div>;
+
+  return (
+    <div className="ekle-form">
+      <div className="yetki-bas">
+        <div>
+          <strong>Eşik Ayarları</strong>
+          <div className="alt-satir soluk">
+            Kaydedince <b>geçmiş kayıtlar da</b> yeni eşiklerle yeniden değerlendirilir —
+            POL'e gidilmez, saklanan ham değerler kullanılır.
+          </div>
+        </div>
+        <button type="button" className="cikis-btn" onClick={kapat}>✕ Kapat</button>
+      </div>
+
+      {hata && <div className="hata" role="alert"><span aria-hidden="true">⚠ </span>{hata}</div>}
+      {sonuc && <div className="analiz-not" role="status">{sonuc}</div>}
+
+      <div className="ekle-alanlar">
+        {ESIK_ALAN.map((a) => (
+          <label key={a.id} className="giris-alan">
+            <span>{a.ad}{a.birim ? ` (${a.birim})` : a.yuzde ? ' (%)' : ''}</span>
+            <input
+              className="arama" type="number" min={0} step={a.yuzde ? 1 : 0.5}
+              value={a.yuzde ? Math.round(esik[a.id] * 100) : esik[a.id]}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                setEsik({ ...esik, [a.id]: a.yuzde ? v / 100 : v });
+              }}
+            />
+            <span className="esik-not">{a.aciklama}</span>
+          </label>
+        ))}
+      </div>
+
+      <div className="yetki-islem">
+        <button type="button" className="giris-btn" onClick={kaydet} disabled={bekliyor}>
+          {bekliyor ? 'Hesaplanıyor…' : 'Kaydet ve yeniden hesapla'}
+        </button>
+        <button type="button" className="cikis-btn" onClick={() => setEsik(VARSAYILAN)}>
+          Varsayılana dön
+        </button>
+      </div>
     </div>
   );
 }

@@ -10,12 +10,13 @@
 import { createServer } from 'node:http';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { pool, kapat } from '../core/db.js';
-import { piyasaVerisi, durumVerisi, operasyonVerisi, sorunTespiti, bayiVerisi, bayiSecenekleri, a3LogoVerisi, uzlastirmaVerisi, fiyatVerisi, a1bVerisi } from '../core/panelSorgu.js';
+import { piyasaVerisi, durumVerisi, operasyonVerisi, sorunTespiti, bayiVerisi, bayiSecenekleri, a3LogoVerisi, uzlastirmaVerisi, fiyatVerisi, a1bVerisi, a1bEsikOku, a1bEsikKaydet } from '../core/panelSorgu.js';
 import {
   girisDogrula, kullaniciBul, kullaniciListesi, kullaniciEkle, kullaniciSil,
   rolDegistir, sifreDegistir, ekranlariGuncelle, sifreUret, adNormal,
 } from '../core/kullanicilar.js';
 import { EKRANLAR, EKRAN_AD, gorebilir, gorunurEkranlar, type Ekran } from '../core/ekranlar.js';
+import { ESIK_SURUM } from '../core/a1bKural.js';
 
 const PORT = Number(process.env.PANEL_API_PORT ?? 5178);
 const SIR = process.env.PANEL_OTURUM_SIRRI ?? 'local-gelistirme-sirri-en-az-32-karakter-olmali';
@@ -193,6 +194,16 @@ const sunucu = createServer(async (istek, yanit) => {
     if (url.pathname === '/api/a1b') {
       if (!ekranKapi('mevzuat')) return;
       return json(200, await a1bVerisi(p, q.get('gun') ?? undefined));
+    }
+    if (url.pathname === '/api/a1b-esik') {
+      if (benKim.rol !== 'admin') return json(403, { hata: 'Bu işlem için yönetici yetkisi gerekli.' });
+      if (istek.method === 'GET') return json(200, { esik: await a1bEsikOku(p) });
+      if (istek.method === 'POST') {
+        const g = await govdeOku(istek);
+        const surum = `${ESIK_SURUM}+elle-${new Date().toISOString().slice(0, 10)}`;
+        return json(200, await a1bEsikKaydet(p, g, surum));
+      }
+      return json(405, { hata: 'Yöntem desteklenmiyor.' });
     }
     if (url.pathname === '/api/bayiler') {
       if (!ekranKapi('piyasa')) return;

@@ -12,6 +12,7 @@
 
 import type { Pool } from 'pg';
 import { KAPANIS_PENCERE_BAS, KAPANIS_PENCERE_BIT } from './db.js';
+import { VARSAYILAN_ESIK } from './a1bKural.js';
 
 /** Parkoil'in EPDK'daki tüzel kimliği (bkz docs/bilgi/piyasa-istihbarat.md). */
 export const BIZ = 'TURGUT DAĞITIM ENERJİ ANONİM ŞİRKETİ';
@@ -1360,4 +1361,81 @@ export async function a1bVerisi(p: Pool, gun?: string) {
       duzenleyen: r.duzenleyen, kriterKs: r.kriter_ks,
     })),
   };
+}
+
+/** A1b eşik ayarları — panel okur/yazar. sistem_ayar'da 'a1b.*' anahtarları. */
+export async function a1bEsikOku(p: Pool) {
+  const r = await p.query(`SELECT anahtar, deger FROM sistem_ayar WHERE anahtar LIKE 'a1b.%'`);
+  const m = new Map(r.rows.map((x) => [String(x.anahtar).slice(4), String(x.deger)]));
+  const g = (k: string, v: number) => {
+    const x = Number(m.get(k));
+    return Number.isFinite(x) ? x : v;
+  };
+  return {
+    minSatis: g('minSatis', VARSAYILAN_ESIK.minSatis),
+    ayniStok: g('ayniStok', VARSAYILAN_ESIK.ayniStok),
+    kritikOran: g('kritikOran', VARSAYILAN_ESIK.kritikOran),
+    yuksekOran: g('yuksekOran', VARSAYILAN_ESIK.yuksekOran),
+    inceleOran: g('inceleOran', VARSAYILAN_ESIK.inceleOran),
+    inceleFark: g('inceleFark', VARSAYILAN_ESIK.inceleFark),
+    kapasiteTolerans: g('kapasiteTolerans', VARSAYILAN_ESIK.kapasiteTolerans),
+  };
+}
+
+/**
+ * Eşikleri kaydet ve GEÇMİŞİ YENİDEN HESAPLA.
+ *
+ * ⚠️ NEDEN YENİDEN HESAP: eşik yalnız sonraki çekime uygulansaydı kullanıcı
+ * "5 yerine 10 yapsam kaç alarm kalır" sorusunu göremezdi — ayarı körlemesine
+ * değiştirirdi. Ham değerler (gun_basi/dolum/satis/gun_sonu/kapasite) tabloda
+ * duruyor, POL'e gitmeye gerek yok: saf hesap, saniyeler sürer.
+ *
+ * Tek UPDATE ile yapılır (satır satır döngü 60 günde ~40 bin sorgu olurdu).
+ * Kural motorunun TS karşılığı burada SQL olarak yazılmıştır — ikisi aynı sırayı
+ * izler (kapasite → stok artışı → aynı stok → oranlar).
+ */
+export async function a1bEsikKaydet(p: Pool, gelen: Record<string, unknown>, surum: string) {
+  const ALAN = ['minSatis', 'ayniStok', 'kritikOran', 'yuksekOran', 'inceleOran', 'inceleFark', 'kapasiteTolerans'] as const;
+  for (const a of ALAN) {
+    const v = Number(gelen[a]);
+    if (!Number.isFinite(v) || v < 0) continue;         // geçersiz değer sessizce atlanır
+    await p.query(
+      `INSERT INTO sistem_ayar (anahtar, deger) VALUES ($1, $2)
+       ON CONFLICT (anahtar) DO UPDATE SET deger = EXCLUDED.deger, guncelleme = now()`,
+      [`a1b.${a}`, String(v)],
+    );
+  }
+  const e = await a1bEsikOku(p);
+
+  // Geçmişi yeniden değerlendir. NOT: türetilmiş alanlar (beklenen/çıkış/fark)
+  // ham değerlerden zaten sabit — yalnız risk/neden eşiğe bağlı, onlar güncellenir.
+  const r = await p.query(
+    `UPDATE a1b_gun SET
+       risk = CASE
+         WHEN gun_basi IS NULL OR dolum IS NULL OR satis IS NULL OR gun_sonu IS NULL THEN 'VERI_HATASI'
+         WHEN satis < 0 OR dolum < 0 OR gun_basi < 0 OR gun_sonu < 0 THEN 'VERI_HATASI'
+         WHEN kapasite > 0 AND (gun_sonu - kapasite) > $7 THEN 'KRITIK'
+         WHEN satis > $1 AND gercek_cikis < 0 THEN 'KRITIK'
+         WHEN satis > $1 AND abs(gercek_cikis) <= $2 THEN 'KRITIK'
+         WHEN satis > $1 AND satis > 0 AND (GREATEST(0, fark) / satis) >= $3 THEN 'KRITIK'
+         WHEN satis > $1 AND satis > 0 AND (GREATEST(0, fark) / satis) >= $4 THEN 'YUKSEK'
+         WHEN satis > $1 AND satis > 0 AND fark >= $6 AND (GREATEST(0, fark) / satis) >= $5 THEN 'INCELE'
+         ELSE 'NORMAL' END,
+       nedenler = ARRAY_REMOVE(ARRAY[
+         CASE WHEN kapasite > 0 AND (gun_sonu - kapasite) > $7 THEN 'Tank kapasitesi aşılmış' END,
+         CASE WHEN satis > $1 AND gercek_cikis < 0 THEN 'Satış varken stok net artmış'
+              WHEN satis > $1 AND abs(gercek_cikis) <= $2 THEN 'Satış var, stok neredeyse hiç değişmemiş'
+              WHEN satis > $1 AND satis > 0 AND (GREATEST(0, fark) / satis) >= $3
+                THEN 'Satışın %' || round($3 * 100) || '+ kısmı stokta görünmüyor'
+              WHEN satis > $1 AND satis > 0 AND (GREATEST(0, fark) / satis) >= $4
+                THEN 'Satışın %' || round($4 * 100) || '+ kısmı stokta görünmüyor'
+              WHEN satis > $1 AND satis > 0 AND fark >= $6 AND (GREATEST(0, fark) / satis) >= $5
+                THEN 'Stok-satış mutabakat farkı' END
+       ], NULL),
+       kapasite_asim = CASE WHEN kapasite > 0 THEN GREATEST(0, gun_sonu - kapasite) ELSE NULL END,
+       esik_surum = $8,
+       guncelleme = now()`,
+    [e.minSatis, e.ayniStok, e.kritikOran, e.yuksekOran, e.inceleOran, e.inceleFark, e.kapasiteTolerans, surum],
+  );
+  return { esik: e, guncellenen: r.rowCount ?? 0 };
 }
