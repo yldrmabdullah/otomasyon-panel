@@ -1,0 +1,69 @@
+name: Satış Gün-İçi (3 saatte bir)
+
+# BUGÜNÜN satışını gün içinde tazeler → panel "Satış & Tank" ekranında bugün de
+# veri görünür ("bugünün satışı yarın gelir" kısıtı kalkar).
+#
+# ⚠️ NEDEN AYRI WORKFLOW (mutabakat-cek.yml'e eklenmedi): o iş TR 00:00'da koşuyor
+# ve satışı TANK SEVİYESİYLE BİRLİKTE, gün kapanışı olarak yazıyor. Gün bitmeden
+# koşarsa satış ile stok farklı günlere bakar ve mutabakat bozulur (gerekçe
+# mutabakat-cek.yml yorumunda; bir kez 20:30'a alınıp geri döndürülmüş).
+# Bu iş YALNIZ satışa dokunur, seviyeye/mutabakata karışmaz.
+#
+# ⚠️ ÜZERİNE YAZMA GÜVENLİ: satis_ozet upsert'i (gun,istasyon,tank,urun,cari_tip)
+# anahtarında DO UPDATE yapıyor — litre/tutar TOPLANMAZ, değiştirilir. Aynı günü
+# 8 kez çekmek son durumu verir, mükerrer birikme olmaz.
+#
+# Gün sonu kesin değeri gece koşusu (mutabakat-cek) yine yazar; bu iş yalnız
+# "şu ana kadar ne satıldı" sorusunu cevaplar.
+
+on:
+  # 06:00–21:00 UTC arası 3 saatte bir (TR 09:00–00:00). Gece koşusu 21:00'da
+  # zaten var, onunla çakışmasın diye 21 dışarıda bırakıldı.
+  schedule:
+    - cron: '0 6,9,12,15,18 * * *'
+  workflow_dispatch:
+    inputs:
+      gun:
+        description: 'Gün YYYY-MM-DD (boş: bugün)'
+        required: false
+        default: ''
+
+concurrency:
+  # Gece mutabakat koşusuyla AYNI GRUP DEĞİL: o satış+seviye+mutabakat zinciri
+  # koşarken bu iş araya girip satışı değiştirmemeli. Aynı gruba alınırsa biri
+  # diğerini bekler — istenen davranış bu.
+  group: satis-yazma
+  cancel-in-progress: false
+
+jobs:
+  satis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Bağımlılıklar
+        run: npm ci
+
+      - name: Şema (idempotent)
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Bugünün satışını çek
+        run: |
+          GUN="${{ github.event.inputs.gun }}"
+          if [ -z "$GUN" ]; then GUN="$(date -u +%F)"; fi
+          npm run satis -- "$GUN" "$GUN"
+        env:
+          ASIS_GATEWAY: ${{ secrets.ASIS_GATEWAY }}
+          ASIS_GUID_KEY: ${{ secrets.ASIS_GUID_KEY }}
+          ASIS_DAGITICI_KOD: ${{ secrets.ASIS_DAGITICI_KOD }}
+          ASIS_NAMESPACE: ${{ secrets.ASIS_NAMESPACE }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

@@ -68,7 +68,10 @@ on:
         required: false
 
 concurrency:
-  group: mutabakat-cek
+  # ⚠️ satis-gun-ici.yml ile AYNI GRUP: o iş gün içinde satis_ozet'e yazıyor.
+  # Bu zincir (satış → seviye → mutabakat) koşarken araya girmemeli, yoksa
+  # gün kapanışı hesaplanırken satış satırları altından değişir.
+  group: satis-yazma
   cancel-in-progress: false # yarıda kesmek eksik gün bırakır
 
 jobs:

@@ -220,21 +220,30 @@ export function Satis() {
         </div>
       </div>
 
-      {/* ⚠️ "BUGÜN NEDEN YOK" — satış çekimi TR 00:00'da (gün kapanışında) koşuyor
-          (.github/workflows/mutabakat-cek.yml, cron '0 21 * * *' UTC). Sebep: tank
-          seviyesi de aynı işte "gün sonu" olarak yazılıyor; gün bitmeden koşarsa
-          satış ile stok farklı günlere bakar. Yani bugünün satışı YARIN gelir.
-          Boş tablo göstermek "satış olmadı" izlenimi verirdi → sebep yazılıyor. */}
+      {/* Seçilen aralık verinin bittiği günü aşıyorsa sebebi yaz — boş tablo
+          "satış olmadı" izlenimi verirdi. Gün-içi çekim 3 saatte bir koşuyor
+          (.github/workflows/satis-gun-ici.yml), gün sonu kesin değeri gece
+          mutabakat koşusunda yazılır. */}
       {veri?.sonVeriGun && bit > veri.sonVeriGun && (
         <div className="analiz-not" role="status">
-          <b>{new Date(bit).toLocaleDateString('tr-TR')}</b> için satış verisi henüz yok.
-          Günlük satış çekimi <b>gece 00:00'da</b> (gün kapanışında) koşuyor — bugünün
-          satışı yarın gelir. En güncel veri:{' '}
+          <b>{new Date(bit).toLocaleDateString('tr-TR')}</b> için henüz satış kaydı yok.
+          Gün-içi çekim <b>3 saatte bir</b> koşuyor; en güncel veri{' '}
           <b>{new Date(veri.sonVeriGun).toLocaleDateString('tr-TR')}</b>.{' '}
           <button type="button" className="ic-baglanti"
             onClick={() => { setBas(veri.sonVeriGun!); setBit(veri.sonVeriGun!); }}>
             O günü göster
           </button>
+        </div>
+      )}
+
+      {/* BUGÜN seçiliyse: veri var ama GÜN SÜRÜYOR. "Yarım gün" olduğunu
+          söylemezsek kullanıcı düşük rakamı gerileme sanır (bugün 434 bin lt
+          görünüyor, tam gün ~880 bin). */}
+      {o && o.litre > 0 && bit === bugun && (
+        <div className="analiz-not" role="status">
+          <b>Gün sürüyor.</b> Bugünün rakamı <b>şu ana kadarki</b> satıştır — gün
+          sonu değeri değil. Gün-içi çekim 3 saatte bir tazeleniyor; kesin gün
+          kapanışı gece yazılır.
         </div>
       )}
 
