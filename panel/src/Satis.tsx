@@ -3,6 +3,9 @@
 // İki soruyu BİRLİKTE cevaplar: "hangi istasyon ne kadar sattı" + "şu an
 // tanklarında ne var". Kaynak: /api/satis (satis_ozet + tank_durum).
 //
+// ⚠️ KAPSAM: yalnız MOTORİN + KURŞUNSUZ 95 (kullanıcı kararı). LPG ve AdBlue hem
+// satıştan hem tanktan dışlanır — kapsam core/panelSorgu.ts SATIS_URUN/TANK_URUN.
+//
 // POL karşılığı: "İstasyon Günlük Ürün Analizi" (Ürün Raporları) + "Tank Durum
 // Raporu" (Tank Raporları). POL bunları AYRI ekranlarda ve ürünü SATIR bazında
 // veriyor; burada ürün grupları KOLON, tank durumu aynı satırda özet.
@@ -15,7 +18,7 @@ import { csvIndir, xlsIndir } from './disaAktar.js';
 interface Satir {
   istKod: string; ad: string; sehir: string | null; bolge: string | null;
   litre: number; tutar: number; fis: number; gunSayisi: number;
-  motorin: number; benzin: number; lpg: number; diger: number;
+  motorin: number; benzin: number;
   tankMevcut: number | null; tankKapasite: number | null; tankSayisi: number;
 }
 interface Tank {
@@ -91,14 +94,6 @@ export function Satis() {
       hucre: (r) => lt(r.benzin), sirala: (r) => r.benzin,
     },
     {
-      id: 'lpg', ad: 'LPG', varsayilan: true, sinif: 'sag mono',
-      hucre: (r) => lt(r.lpg), sirala: (r) => r.lpg,
-    },
-    {
-      id: 'diger', ad: 'Diğer', varsayilan: false, sinif: 'sag mono soluk',
-      hucre: (r) => lt(r.diger), sirala: (r) => r.diger,
-    },
-    {
       id: 'litre', ad: 'Toplam (lt)', varsayilan: true, sinif: 'sag mono',
       hucre: (r) => <strong>{lt(r.litre)}</strong>, sirala: (r) => r.litre,
     },
@@ -147,11 +142,11 @@ export function Satis() {
 
   function disaAktar(xls: boolean) {
     const baslik = ['İstasyon', 'İst. Kod', 'Şehir', 'Bölge', 'Motorin lt', 'Kurşunsuz 95 lt',
-      'LPG lt', 'Diğer lt', 'Toplam lt', 'Tutar TL', 'Fiş', 'Tank Mevcut lt', 'Tank Kapasite lt', 'Tank Sayısı'];
+      'Toplam lt', 'Tutar TL', 'Fiş', 'Tank Mevcut lt', 'Tank Kapasite lt', 'Tank Sayısı'];
     const satir = satirlar.map((r) => [
       r.ad, r.istKod, r.sehir ?? '', r.bolge ?? '',
-      String(Math.round(r.motorin)), String(Math.round(r.benzin)), String(Math.round(r.lpg)),
-      String(Math.round(r.diger)), String(Math.round(r.litre)), String(Math.round(r.tutar)),
+      String(Math.round(r.motorin)), String(Math.round(r.benzin)),
+      String(Math.round(r.litre)), String(Math.round(r.tutar)),
       String(r.fis), r.tankMevcut == null ? '' : String(Math.round(r.tankMevcut)),
       r.tankKapasite == null ? '' : String(Math.round(r.tankKapasite)), String(r.tankSayisi),
     ]);
@@ -285,9 +280,10 @@ export function Satis() {
         baslik={<>İstasyon Satışları{tekGun ? ` · ${new Date(bit).toLocaleDateString('tr-TR')}` : ''}</>}
         aciklama={
           <>
-            Ürün grupları <b>kolon</b> olarak (litre). <b>Tank Son Durum</b> anlık
-            doluluktur — seçili tarih aralığından bağımsız, en son ölçüm. Bir istasyon
-            seçerseniz tank tank detay açılır.
+            Yalnız <b>motorin ve kurşunsuz 95</b> (LPG/AdBlue dahil değil — satışta
+            da tankta da). Ürün grupları kolon olarak, litre. <b>Tank Son Durum</b>
+            anlık doluluktur — seçili tarih aralığından bağımsız, en son ölçüm.
+            Bir istasyon seçerseniz tank tank detay açılır.
           </>
         }
         kolonlar={kolonlar}

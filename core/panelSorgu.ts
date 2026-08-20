@@ -1461,9 +1461,18 @@ export async function a1bEsikKaydet(p: Pool, gelen: Record<string, unknown>, sur
  *          Günlük Ürün Analizi" ekranında da LPG üçüncü ürün olarak görünüyor.
  * Eşleşmeyen yeni kod çıkarsa ham gösterilir — uydurma ad yanlış bilgi olurdu.
  */
-const URUN_AD_ID: Record<string, string> = {
-  '1': 'Motorin', '2': 'Kurşunsuz 95', '1003': 'LPG', '1002': 'AdBlue',
-};
+const URUN_AD_ID: Record<string, string> = { '1': 'Motorin', '2': 'Kurşunsuz 95' };
+
+/**
+ * ⚠️ KAPSAM: YALNIZ MOTORİN + BENZİN (kullanıcı kararı 2026-08-20).
+ * LPG (urun_id 1003) ve AdBlue (1002) hem satıştan hem tanktan DIŞLANIR.
+ * Sebep: bunlar akaryakıt dağıtım işinin ana kalemi değil; toplamlara karışınca
+ * "kaç litre yakıt sattık" sorusunun cevabı bulanıyor. Tank tarafında zaten LPG
+ * tankı YOK (491 Motorin + 190 K95 + 2 AdBlue) — AdBlue tankı da elenir.
+ * Ürün eklemek gerekirse tek yer: bu iki sabit.
+ */
+const SATIS_URUN = ['1', '2'];              // satis_ozet.urun_id
+const TANK_URUN = ['Motorin', 'K95'];       // tank_durum.urun
 
 export async function satisTankVerisi(
   p: Pool,
@@ -1489,46 +1498,52 @@ export async function satisTankVerisi(
               -- satır bazlı veriyor; kolon hâli tek satırda karşılaştırılabilir).
               sum(s.litre) FILTER (WHERE s.urun_id = '1')::numeric motorin,
               sum(s.litre) FILTER (WHERE s.urun_id = '2')::numeric benzin,
-              sum(s.litre) FILTER (WHERE s.urun_id = '1003')::numeric lpg,
-              sum(s.litre) FILTER (WHERE s.urun_id NOT IN ('1','2','1003'))::numeric diger,
               -- Tank doluluk: o istasyonun ANLIK durumu (aralıktan bağımsız).
-              (SELECT sum(t.mevcut_lt) FROM tank_durum t WHERE t.istasyon_kod = i.istasyon_kod)::numeric tank_mevcut,
-              (SELECT sum(t.kapasite_lt) FROM tank_durum t WHERE t.istasyon_kod = i.istasyon_kod)::numeric tank_kapasite,
-              (SELECT count(*) FROM tank_durum t WHERE t.istasyon_kod = i.istasyon_kod)::int tank_sayisi
+              -- Tank toplamı da YALNIZ motorin+benzin tanklarından (AdBlue hariç).
+              (SELECT sum(t.mevcut_lt) FROM tank_durum t
+                WHERE t.istasyon_kod = i.istasyon_kod AND t.urun = ANY($5))::numeric tank_mevcut,
+              (SELECT sum(t.kapasite_lt) FROM tank_durum t
+                WHERE t.istasyon_kod = i.istasyon_kod AND t.urun = ANY($5))::numeric tank_kapasite,
+              (SELECT count(*) FROM tank_durum t
+                WHERE t.istasyon_kod = i.istasyon_kod AND t.urun = ANY($5))::int tank_sayisi
        FROM satis_ozet s
        JOIN istasyonlar i ON i.t_istasyon_id = s.istasyon_kod
        WHERE s.gun BETWEEN $1 AND $2 AND ($3::text IS NULL OR i.istasyon_kod = $3)
+         AND s.urun_id = ANY($4)
        GROUP BY i.istasyon_kod, i.ad, i.sehir, i.bolge
        ORDER BY litre DESC`,
-      [bas, bit, ist],
+      [bas, bit, ist, SATIS_URUN, TANK_URUN],
     ),
     p.query(
       `SELECT sum(s.litre)::numeric litre, sum(s.tutar)::numeric tutar, sum(s.fis_sayisi)::int fis,
               count(DISTINCT i.istasyon_kod)::int istasyon, count(DISTINCT s.gun)::int gun
        FROM satis_ozet s JOIN istasyonlar i ON i.t_istasyon_id = s.istasyon_kod
-       WHERE s.gun BETWEEN $1 AND $2 AND ($3::text IS NULL OR i.istasyon_kod = $3)`,
-      [bas, bit, ist],
+       WHERE s.gun BETWEEN $1 AND $2 AND ($3::text IS NULL OR i.istasyon_kod = $3)
+         AND s.urun_id = ANY($4)`,
+      [bas, bit, ist, SATIS_URUN],
     ),
     p.query(
       `SELECT s.urun_id, sum(s.litre)::numeric litre, sum(s.tutar)::numeric tutar
        FROM satis_ozet s JOIN istasyonlar i ON i.t_istasyon_id = s.istasyon_kod
        WHERE s.gun BETWEEN $1 AND $2 AND ($3::text IS NULL OR i.istasyon_kod = $3)
+         AND s.urun_id = ANY($4)
        GROUP BY s.urun_id ORDER BY litre DESC`,
-      [bas, bit, ist],
+      [bas, bit, ist, SATIS_URUN],
     ),
     p.query(
       `SELECT s.gun::text gun, sum(s.litre)::numeric litre, sum(s.tutar)::numeric tutar
        FROM satis_ozet s JOIN istasyonlar i ON i.t_istasyon_id = s.istasyon_kod
        WHERE s.gun BETWEEN $1 AND $2 AND ($3::text IS NULL OR i.istasyon_kod = $3)
+         AND s.urun_id = ANY($4)
        GROUP BY s.gun ORDER BY s.gun`,
-      [bas, bit, ist],
+      [bas, bit, ist, SATIS_URUN],
     ),
     // Tank detayı: yalnız TEK istasyon seçiliyse (tüm liste 683 tank olurdu).
     ist
       ? p.query(
           `SELECT tank_no, urun, kapasite_lt, mevcut_lt, su_lt, son_olcum_zamani
-           FROM tank_durum WHERE istasyon_kod = $1 ORDER BY tank_no`,
-          [ist],
+           FROM tank_durum WHERE istasyon_kod = $1 AND urun = ANY($2) ORDER BY tank_no`,
+          [ist, TANK_URUN],
         )
       : Promise.resolve({ rows: [] as any[] }),
   ]);
@@ -1553,7 +1568,7 @@ export async function satisTankVerisi(
       istKod: r.istasyon_kod as string, ad: r.ad as string,
       sehir: r.sehir as string | null, bolge: r.bolge as string | null,
       litre: n(r.litre), tutar: n(r.tutar), fis: n(r.fis), gunSayisi: n(r.gun_sayisi),
-      motorin: n(r.motorin), benzin: n(r.benzin), lpg: n(r.lpg), diger: n(r.diger),
+      motorin: n(r.motorin), benzin: n(r.benzin),
       tankMevcut: r.tank_mevcut === null ? null : n(r.tank_mevcut),
       tankKapasite: r.tank_kapasite === null ? null : n(r.tank_kapasite),
       tankSayisi: n(r.tank_sayisi),
