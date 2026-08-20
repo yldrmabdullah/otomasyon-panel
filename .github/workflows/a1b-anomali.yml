@@ -35,7 +35,10 @@ concurrency:
 jobs:
   a1b:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # ⚠️ 20 dk YETMEDİ: 19.08 koşusu Playwright chromium kurulumunda 20,4 dk'da
+    # iptal oldu ve O GÜNÜN VERİSİ EKSİK KALDI (a1b_gun'da 18.08 yok). Kurulum
+    # süresi runner yüküne göre değişiyor; 35 dk pay bırakılıyor.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
@@ -56,8 +59,16 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
+      # TELAFİ: elle tarih verilmediyse SON 3 GÜN çekilir (yalnız dün+bugün değil).
+      # Bir gün koşu kaçarsa (19.08'de olduğu gibi) boşluk kalıcı olurdu; 3 günlük
+      # pencere ertesi gün kendini onarır. Kayıtlar upsert, tekrar çekmek zararsız.
       - name: A1b çek + anomali analizi
-        run: npm run a1b -- ${{ github.event.inputs.bas }} ${{ github.event.inputs.bit }}
+        run: |
+          if [ -n "${{ github.event.inputs.bas }}" ]; then
+            npm run a1b -- ${{ github.event.inputs.bas }} ${{ github.event.inputs.bit }}
+          else
+            npm run a1b -- "$(date -u -d '3 days ago' +%F)" "$(date -u +%F)"
+          fi
         env:
           POL_URL: ${{ secrets.POL_URL }}
           POL_KULLANICI: ${{ secrets.POL_KULLANICI }}

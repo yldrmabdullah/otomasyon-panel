@@ -31,7 +31,9 @@ concurrency:
 jobs:
   fiyat:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # ⚠️ A1b'de 20 dk yetmedi (Playwright kurulumu 20,4 dk → iptal, o günün verisi
+    # eksik kaldı). Aynı kurulum burada da var; pay bırakılıyor.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
