@@ -10,7 +10,7 @@
 import { createServer } from 'node:http';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { pool, kapat } from '../core/db.js';
-import { piyasaVerisi, durumVerisi, operasyonVerisi, sorunTespiti, bayiVerisi, bayiSecenekleri, a3LogoVerisi, uzlastirmaVerisi, fiyatVerisi, a1bVerisi, a1bEsikOku, a1bEsikKaydet } from '../core/panelSorgu.js';
+import { piyasaVerisi, durumVerisi, operasyonVerisi, sorunTespiti, bayiVerisi, bayiSecenekleri, a3LogoVerisi, uzlastirmaVerisi, fiyatVerisi, a1bVerisi, a1bEsikOku, a1bEsikKaydet, satisTankVerisi } from '../core/panelSorgu.js';
 import {
   girisDogrula, kullaniciBul, kullaniciListesi, kullaniciEkle, kullaniciSil,
   rolDegistir, sifreDegistir, ekranlariGuncelle, sifreUret, adNormal,
@@ -190,6 +190,13 @@ const sunucu = createServer(async (istek, yanit) => {
     if (url.pathname === '/api/fiyat') {
       if (!ekranKapi('mevzuat')) return;
       return json(200, await fiyatVerisi(p, q.get('gun') ?? undefined));
+    }
+    if (url.pathname === '/api/satis') {
+      if (!ekranKapi('operasyon')) return;
+      return json(200, await satisTankVerisi(p, {
+        bas: q.get('bas') ?? undefined, bit: q.get('bit') ?? undefined,
+        istasyon: q.get('istasyon') ?? undefined,
+      }));
     }
     if (url.pathname === '/api/a1b') {
       if (!ekranKapi('mevzuat')) return;

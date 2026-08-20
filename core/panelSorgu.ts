@@ -1439,3 +1439,131 @@ export async function a1bEsikKaydet(p: Pool, gelen: Record<string, unknown>, sur
   );
   return { esik: e, guncellenen: r.rowCount ?? 0 };
 }
+
+/**
+ * Satış + tank durumu (İşletme ekranı).
+ *
+ * İki soruyu BİRLİKTE cevaplar: "hangi istasyon ne kadar sattı" ve "şu an
+ * tanklarında ne var". Ayrı ekranlarda olsaydı stok/satış dengesini görmek için
+ * iki yere bakmak gerekirdi.
+ *
+ * ⚠️ ANAHTAR ÇEVİRİSİ: satis_ozet.istasyon_kod = ASIS **TIstasyonID** (ör "201"),
+ * istasyonlar.istasyon_kod = POL **IstasyonKod** (ör "210107"). Köprü
+ * istasyonlar.t_istasyon_id. Doğrudan JOIN kesişim 0 verir.
+ *
+ * ⚠️ ÜRÜN ADI: satis_ozet yalnız urun_id tutuyor (ASIS TUrunID) ve
+ * GetProductTypeList API'si Code=000 ile başarısız oluyor. Adlar İKİ KANITLA
+ * türetildi:
+ *   1 / 2 / 1002 → tank_durum.urun ile aynı tank üzerinden birebir eşleşti
+ *                  (7322 / 2631 / 74 kayıt).
+ *   1003 → tankla eşleşmedi ama ORTALAMA BİRİM FİYAT 31,45 TL/lt ve 82 istasyonda
+ *          var; motorin 76,44 / benzin 69,37 iken bu LPG aralığı. POL "İstasyon
+ *          Günlük Ürün Analizi" ekranında da LPG üçüncü ürün olarak görünüyor.
+ * Eşleşmeyen yeni kod çıkarsa ham gösterilir — uydurma ad yanlış bilgi olurdu.
+ */
+const URUN_AD_ID: Record<string, string> = {
+  '1': 'Motorin', '2': 'Kurşunsuz 95', '1003': 'LPG', '1002': 'AdBlue',
+};
+
+export async function satisTankVerisi(
+  p: Pool,
+  opts: { bas?: string; bit?: string; istasyon?: string } = {},
+) {
+  // Varsayılan aralık: son 7 gün (bugün dahil). Tek gün seçilirse bas=bit.
+  const bit = opts.bit && /^\d{4}-\d{2}-\d{2}$/.test(opts.bit) ? opts.bit : new Date().toISOString().slice(0, 10);
+  const bas = opts.bas && /^\d{4}-\d{2}-\d{2}$/.test(opts.bas)
+    ? opts.bas
+    : new Date(new Date(bit).getTime() - 6 * 864e5).toISOString().slice(0, 10);
+  const ist = opts.istasyon?.trim() || null;
+
+  const [gunler, satir, ozet, urunKir, gunlukTrend, tanklar] = await Promise.all([
+    // Veri OLAN günler — seçicide "veri yok" günü göstermemek için.
+    p.query(`SELECT DISTINCT gun::text g FROM satis_ozet ORDER BY g DESC LIMIT 90`),
+    // İstasyon bazında toplam (aralık boyunca).
+    p.query(
+      `SELECT i.istasyon_kod, i.ad, i.sehir, i.bolge,
+              sum(s.litre)::numeric litre, sum(s.tutar)::numeric tutar, sum(s.fis_sayisi)::int fis,
+              count(DISTINCT s.gun)::int gun_sayisi,
+              -- Ürün kırılımı: en çok satılan iki yakıt kolon olarak.
+              -- Ürün grupları KOLON olarak (POL "İstasyon Günlük Ürün Analizi"
+              -- satır bazlı veriyor; kolon hâli tek satırda karşılaştırılabilir).
+              sum(s.litre) FILTER (WHERE s.urun_id = '1')::numeric motorin,
+              sum(s.litre) FILTER (WHERE s.urun_id = '2')::numeric benzin,
+              sum(s.litre) FILTER (WHERE s.urun_id = '1003')::numeric lpg,
+              sum(s.litre) FILTER (WHERE s.urun_id NOT IN ('1','2','1003'))::numeric diger,
+              -- Tank doluluk: o istasyonun ANLIK durumu (aralıktan bağımsız).
+              (SELECT sum(t.mevcut_lt) FROM tank_durum t WHERE t.istasyon_kod = i.istasyon_kod)::numeric tank_mevcut,
+              (SELECT sum(t.kapasite_lt) FROM tank_durum t WHERE t.istasyon_kod = i.istasyon_kod)::numeric tank_kapasite,
+              (SELECT count(*) FROM tank_durum t WHERE t.istasyon_kod = i.istasyon_kod)::int tank_sayisi
+       FROM satis_ozet s
+       JOIN istasyonlar i ON i.t_istasyon_id = s.istasyon_kod
+       WHERE s.gun BETWEEN $1 AND $2 AND ($3::text IS NULL OR i.istasyon_kod = $3)
+       GROUP BY i.istasyon_kod, i.ad, i.sehir, i.bolge
+       ORDER BY litre DESC`,
+      [bas, bit, ist],
+    ),
+    p.query(
+      `SELECT sum(s.litre)::numeric litre, sum(s.tutar)::numeric tutar, sum(s.fis_sayisi)::int fis,
+              count(DISTINCT i.istasyon_kod)::int istasyon, count(DISTINCT s.gun)::int gun
+       FROM satis_ozet s JOIN istasyonlar i ON i.t_istasyon_id = s.istasyon_kod
+       WHERE s.gun BETWEEN $1 AND $2 AND ($3::text IS NULL OR i.istasyon_kod = $3)`,
+      [bas, bit, ist],
+    ),
+    p.query(
+      `SELECT s.urun_id, sum(s.litre)::numeric litre, sum(s.tutar)::numeric tutar
+       FROM satis_ozet s JOIN istasyonlar i ON i.t_istasyon_id = s.istasyon_kod
+       WHERE s.gun BETWEEN $1 AND $2 AND ($3::text IS NULL OR i.istasyon_kod = $3)
+       GROUP BY s.urun_id ORDER BY litre DESC`,
+      [bas, bit, ist],
+    ),
+    p.query(
+      `SELECT s.gun::text gun, sum(s.litre)::numeric litre, sum(s.tutar)::numeric tutar
+       FROM satis_ozet s JOIN istasyonlar i ON i.t_istasyon_id = s.istasyon_kod
+       WHERE s.gun BETWEEN $1 AND $2 AND ($3::text IS NULL OR i.istasyon_kod = $3)
+       GROUP BY s.gun ORDER BY s.gun`,
+      [bas, bit, ist],
+    ),
+    // Tank detayı: yalnız TEK istasyon seçiliyse (tüm liste 683 tank olurdu).
+    ist
+      ? p.query(
+          `SELECT tank_no, urun, kapasite_lt, mevcut_lt, su_lt, son_olcum_zamani
+           FROM tank_durum WHERE istasyon_kod = $1 ORDER BY tank_no`,
+          [ist],
+        )
+      : Promise.resolve({ rows: [] as any[] }),
+  ]);
+
+  const s = ozet.rows[0] ?? {};
+  const n = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
+  return {
+    aralik: { bas, bit },
+    istasyon: ist,
+    gunler: gunler.rows.map((r) => r.g as string),
+    ozet: {
+      litre: n(s.litre), tutar: n(s.tutar), fis: n(s.fis),
+      istasyon: n(s.istasyon), gun: n(s.gun),
+    },
+    urunKirilim: urunKir.rows.map((r) => ({
+      urunId: r.urun_id as string,
+      ad: URUN_AD_ID[r.urun_id as string] ?? `Ürün ${r.urun_id}`,
+      litre: n(r.litre), tutar: n(r.tutar),
+    })),
+    trend: gunlukTrend.rows.map((r) => ({ gun: r.gun as string, litre: n(r.litre), tutar: n(r.tutar) })),
+    satirlar: satir.rows.map((r) => ({
+      istKod: r.istasyon_kod as string, ad: r.ad as string,
+      sehir: r.sehir as string | null, bolge: r.bolge as string | null,
+      litre: n(r.litre), tutar: n(r.tutar), fis: n(r.fis), gunSayisi: n(r.gun_sayisi),
+      motorin: n(r.motorin), benzin: n(r.benzin), lpg: n(r.lpg), diger: n(r.diger),
+      tankMevcut: r.tank_mevcut === null ? null : n(r.tank_mevcut),
+      tankKapasite: r.tank_kapasite === null ? null : n(r.tank_kapasite),
+      tankSayisi: n(r.tank_sayisi),
+    })),
+    tanklar: (tanklar.rows as any[]).map((r) => ({
+      tankNo: r.tank_no as string, urun: r.urun as string | null,
+      kapasite: r.kapasite_lt === null ? null : Number(r.kapasite_lt),
+      mevcut: r.mevcut_lt === null ? null : Number(r.mevcut_lt),
+      su: r.su_lt === null ? null : Number(r.su_lt),
+      sonOlcum: r.son_olcum_zamani ? new Date(r.son_olcum_zamani).toISOString() : null,
+    })),
+  };
+}

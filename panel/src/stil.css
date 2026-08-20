@@ -1694,6 +1694,26 @@ td { vertical-align: middle; font-variant-numeric: tabular-nums; }
 .satir-uyari td:first-child { background: color-mix(in srgb, var(--uyari) 12%, var(--panel)); }
 .satir-uyari:hover td:first-child { background: color-mix(in srgb, var(--uyari) 18%, var(--panel)); }
 
+/* ── Tank son durum kartları (Satış & Tank ekranı) ─────────────────────────
+   Tank başına doluluk çubuğu. Renk TEK taşıyıcı değil: yüzde metni de yazılı
+   (WCAG 1.4.1). %15 altı kritik — yakında bitecek. */
+.tank-izgara { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(210px, 100%), 1fr)); gap: var(--s-3); }
+.tank-kart { background: var(--panel-2); border: 1px solid var(--cizgi); border-radius: var(--r-sm); padding: var(--s-3); }
+.tank-kart.krit { border-color: color-mix(in srgb, var(--krit) 45%, var(--cizgi)); }
+.tank-ust { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-2); }
+.tank-no { font-weight: 700; font-size: var(--t-md); color: var(--metin); }
+.tank-urun { font-size: var(--t-xs); color: var(--soluk); }
+.tank-deger { font-size: var(--t-lg); font-weight: 600; color: var(--metin); margin: 6px 0 5px; }
+.tank-deger span { font-size: var(--t-sm); font-weight: 400; color: var(--soluk); }
+.tank-yol { background: var(--panel-3); border-radius: 3px; height: 8px; overflow: hidden; }
+.tank-dolu { height: 100%; background: var(--iyi); border-radius: 3px 0 0 3px; transition: width .2s; }
+.tank-dolu.krit { background: var(--krit); }
+.tank-alt { font-size: var(--t-xs); color: var(--soluk); margin-top: 5px; }
+.tank-su { color: var(--uyari); font-weight: 600; }
+
+/* Tarih kutusu — filtre çubuğunda select'lerle aynı boy. */
+.tarih-kutu { flex: none; width: auto; min-width: 0; }
+
 /* Eşik ayar formundaki alan açıklaması — ne işe yaradığını kutunun altında söyler. */
 .esik-not { font-size: var(--t-xs); color: var(--soluk-2); line-height: 1.4; margin-top: 3px; }
 

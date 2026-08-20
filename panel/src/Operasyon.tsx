@@ -7,6 +7,7 @@ import { Tablo, type TabloKolon } from './Tablo.js';
 import { Sekmeler, type SekmeTanim } from './Sekme.js';
 import { CubukYatay } from './Grafik.js';
 import { Bos, Kart, ModulBar, TazelikSerit, useVeri, zamanFark } from './ortak.js';
+import { Satis } from './Satis.js';
 import type { Tazelik } from './tipler.js';
 
 interface StokSatir {
@@ -270,6 +271,12 @@ export function Operasyon() {
     if (!veri) return [];
     const o = veri.ozet;
     return [
+      {
+        // Satış & tank ilk sekme: günlük en sık bakılan ekran.
+        id: 'satis',
+        ad: 'Satış & Tank',
+        icerik: () => <Satis />,
+      },
       {
         id: 'stok',
         ad: 'Stok durumu',
