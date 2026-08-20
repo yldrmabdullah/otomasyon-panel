@@ -1694,6 +1694,14 @@ td { vertical-align: middle; font-variant-numeric: tabular-nums; }
 .satir-uyari td:first-child { background: color-mix(in srgb, var(--uyari) 12%, var(--panel)); }
 .satir-uyari:hover td:first-child { background: color-mix(in srgb, var(--uyari) 18%, var(--panel)); }
 
+/* Metin içindeki eylem bağlantısı (uyarı şeridinde "O günü göster" gibi).
+   <button> ama bağlantı görünümlü: akış içinde durur, tab sırasına girer. */
+.ic-baglanti {
+  background: none; border: none; padding: 0; font: inherit; cursor: pointer;
+  color: var(--accent); text-decoration: underline; text-underline-offset: 2px;
+}
+.ic-baglanti:hover { color: var(--accent-2); }
+
 /* ══ ARAMALI SEÇİCİ (combobox) ═════════════════════════════════════════════
    149 istasyonluk native <select> kullanılamıyordu: liste ekranı kaplıyor,
    arama yok (tarayıcı yalnız ilk harfe atlıyor), uzun unvanlar kesiliyor.

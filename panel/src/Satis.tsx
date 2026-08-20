@@ -28,6 +28,8 @@ interface Tank {
 }
 interface Veri {
   aralik: { bas: string; bit: string };
+  /** Satış verisinin en son bulunduğu gün — "bugün neden boş" uyarısı için. */
+  sonVeriGun: string | null;
   istasyon: string | null;
   gunler: string[];
   ozet: { litre: number; tutar: number; fis: number; istasyon: number; gun: number };
@@ -218,7 +220,25 @@ export function Satis() {
         </div>
       </div>
 
-      {o && (
+      {/* ⚠️ "BUGÜN NEDEN YOK" — satış çekimi TR 00:00'da (gün kapanışında) koşuyor
+          (.github/workflows/mutabakat-cek.yml, cron '0 21 * * *' UTC). Sebep: tank
+          seviyesi de aynı işte "gün sonu" olarak yazılıyor; gün bitmeden koşarsa
+          satış ile stok farklı günlere bakar. Yani bugünün satışı YARIN gelir.
+          Boş tablo göstermek "satış olmadı" izlenimi verirdi → sebep yazılıyor. */}
+      {veri?.sonVeriGun && bit > veri.sonVeriGun && (
+        <div className="analiz-not" role="status">
+          <b>{new Date(bit).toLocaleDateString('tr-TR')}</b> için satış verisi henüz yok.
+          Günlük satış çekimi <b>gece 00:00'da</b> (gün kapanışında) koşuyor — bugünün
+          satışı yarın gelir. En güncel veri:{' '}
+          <b>{new Date(veri.sonVeriGun).toLocaleDateString('tr-TR')}</b>.{' '}
+          <button type="button" className="ic-baglanti"
+            onClick={() => { setBas(veri.sonVeriGun!); setBit(veri.sonVeriGun!); }}>
+            O günü göster
+          </button>
+        </div>
+      )}
+
+      {o && o.litre > 0 && (
         <section className="kartlar" aria-label="Satış özeti">
           <Kart ad="Toplam Satış" deger={`${lt(o.litre)} lt`} alt={`${o.gun} gün · ${o.istasyon} istasyon`} />
           <Kart ad="Tutar" deger={tlKisa(o.tutar)} alt={tl(o.tutar)} />

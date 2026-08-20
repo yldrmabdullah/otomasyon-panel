@@ -1485,7 +1485,7 @@ export async function satisTankVerisi(
     : new Date(new Date(bit).getTime() - 6 * 864e5).toISOString().slice(0, 10);
   const ist = opts.istasyon?.trim() || null;
 
-  const [gunler, satir, ozet, urunKir, gunlukTrend, tanklar] = await Promise.all([
+  const [gunler, satir, ozet, urunKir, gunlukTrend, tanklar, sonVeri] = await Promise.all([
     // Veri OLAN günler — seçicide "veri yok" günü göstermemek için.
     p.query(`SELECT DISTINCT gun::text g FROM satis_ozet ORDER BY g DESC LIMIT 90`),
     // İstasyon bazında toplam (aralık boyunca).
@@ -1546,12 +1546,18 @@ export async function satisTankVerisi(
           [ist, TANK_URUN],
         )
       : Promise.resolve({ rows: [] as any[] }),
+    // Satış verisinin BİTTİĞİ gün — panel "bugün neden boş" sorusunu bununla
+    // cevaplıyor. Çekim TR 00:00'da koşuyor (gün kapanışı), o yüzden bugünün
+    // satışı ancak yarın gelir; boş tablo göstermek yanıltıcı olurdu.
+    p.query(`SELECT max(gun)::text g FROM satis_ozet`),
   ]);
 
   const s = ozet.rows[0] ?? {};
   const n = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
   return {
     aralik: { bas, bit },
+    /** Satış verisinin en son bulunduğu gün (null = hiç veri yok). */
+    sonVeriGun: (sonVeri.rows[0]?.g as string | null) ?? null,
     istasyon: ist,
     gunler: gunler.rows.map((r) => r.g as string),
     ozet: {
