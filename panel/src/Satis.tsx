@@ -14,6 +14,7 @@ import { Tablo, type TabloKolon } from './Tablo.js';
 import { Bos, Kart, useVeri, zamanFark } from './ortak.js';
 import { CubukYatay } from './Grafik.js';
 import { csvIndir, xlsIndir } from './disaAktar.js';
+import { AramaliSecici, type SeciciOge } from './AramaliSecici.js';
 
 interface Satir {
   istKod: string; ad: string; sehir: string | null; bolge: string | null;
@@ -55,6 +56,7 @@ export function Satis() {
   // Varsayılan aralık: son 7 gün. Tek gün istenirse iki tarih aynı seçilir.
   const bugun = new Date().toISOString().slice(0, 10);
   const haftaOnce = new Date(Date.now() - 6 * 864e5).toISOString().slice(0, 10);
+  const ayOnce = new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10);
   const [bas, setBas] = useState(haftaOnce);
   const [bit, setBit] = useState(bugun);
   const [istasyon, setIstasyon] = useState('');
@@ -64,6 +66,17 @@ export function Satis() {
   const { veri, yukleniyor, hata } = useVeri<Veri>(`/api/satis?${qs}`, undefined, 600_000);
 
   const satirlar = veri?.satirlar ?? [];
+  /** Seçici için istasyon listesi — ada göre sıralı, alt satırda kod + şehir.
+   *  Seçili istasyon bu aralıkta satış yapmadıysa listede olmaz → kaybolmasın
+   *  diye ayrıca eklenir (yoksa filtre "Tümü"ne düşmüş gibi görünür). */
+  const istOgeler = useMemo<SeciciOge[]>(() => {
+    const l = [...satirlar]
+      .sort((a, b) => a.ad.localeCompare(b.ad, 'tr'))
+      .map((x) => ({ deger: x.istKod, ad: x.ad, alt: [x.istKod, x.sehir].filter(Boolean).join(' · ') }));
+    if (istasyon && !l.some((x) => x.deger === istasyon))
+      l.unshift({ deger: istasyon, ad: istasyon, alt: 'bu aralıkta satış yok' });
+    return l;
+  }, [satirlar, istasyon]);
   const secili = useMemo(
     () => (istasyon ? satirlar.find((s) => s.istKod === istasyon) ?? null : null),
     [istasyon, satirlar],
@@ -164,54 +177,45 @@ export function Satis() {
           düğmeden ya da 10 dk polling ile oluyor. */}
       {hata && <div className="hata" role="alert"><span aria-hidden="true">⚠ </span>{hata}</div>}
 
-      {/* FİLTRE — POL'deki gibi tarih aralığı + bayi seçimi */}
-      <div className="filtre-cubugu">
-        <label className="mutabakat-donem-secim">
-          <span>Başlangıç</span>
-          <input
-            className="arama tarih-kutu" type="date" value={bas} max={bit}
-            onChange={(e) => setBas(e.target.value)}
-          />
-        </label>
-        <label className="mutabakat-donem-secim">
-          <span>Bitiş</span>
-          <input
-            className="arama tarih-kutu" type="date" value={bit} min={bas} max={bugun}
-            onChange={(e) => setBit(e.target.value)}
-          />
-        </label>
+      {/* FİLTRE ÇUBUĞU — POL'deki gibi tarih aralığı + bayi seçimi.
+          Gruplar görsel olarak ayrık: [tarih] [hızlı aralık] [istasyon].
+          Native <select> 149 istasyonda kullanılamıyordu → AramaliSecici. */}
+      <div className="satis-filtre">
+        <div className="sf-grup">
+          <label className="sf-alan">
+            <span>Başlangıç</span>
+            <input className="sf-tarih" type="date" value={bas} max={bit}
+              onChange={(e) => setBas(e.target.value)} />
+          </label>
+          <label className="sf-alan">
+            <span>Bitiş</span>
+            <input className="sf-tarih" type="date" value={bit} min={bas} max={bugun}
+              onChange={(e) => setBit(e.target.value)} />
+          </label>
+        </div>
+
         {/* Hızlı aralıklar — en sık kullanılan üç seçim tek tıkla. */}
         <div className="segment" role="group" aria-label="Hızlı tarih aralığı">
           <button type="button" className={tekGun && bit === bugun ? 'akt' : ''}
             onClick={() => { setBas(bugun); setBit(bugun); }}>Bugün</button>
           <button type="button" className={bas === haftaOnce && bit === bugun ? 'akt' : ''}
             onClick={() => { setBas(haftaOnce); setBit(bugun); }}>7 gün</button>
-          <button type="button"
-            onClick={() => { setBas(new Date(Date.now() - 29 * 864e5).toISOString().slice(0, 10)); setBit(bugun); }}>
-            30 gün
-          </button>
+          <button type="button" className={bas === ayOnce && bit === bugun ? 'akt' : ''}
+            onClick={() => { setBas(ayOnce); setBit(bugun); }}>30 gün</button>
         </div>
-        {/* Bayi filtresi — boş = tüm istasyonlar. Seçilince tank detayı da açılır. */}
-        <select
-          aria-label="İstasyon filtresi" value={istasyon}
-          onChange={(e) => setIstasyon(e.target.value)}
-        >
-          <option value="">Tüm istasyonlar</option>
-          {[...satirlar]
-            .sort((a, b) => a.ad.localeCompare(b.ad, 'tr'))
-            .map((s) => (
-              <option key={s.istKod} value={s.istKod}>{s.ad}</option>
-            ))}
-          {/* Seçili istasyon aralıkta satış yapmadıysa listede olmaz → kaybolmasın */}
-          {istasyon && !satirlar.some((s) => s.istKod === istasyon) && (
-            <option value={istasyon}>{istasyon} (bu aralıkta satış yok)</option>
+
+        <div className="sf-grup">
+          <span className="sf-etiket">İstasyon</span>
+          <AramaliSecici
+            etiket="İstasyon" tumuEtiket="Tüm istasyonlar"
+            ogeler={istOgeler} deger={istasyon} degisti={setIstasyon}
+          />
+          {istasyon && (
+            <button type="button" className="temizle" onClick={() => setIstasyon('')}>
+              ✕ Temizle
+            </button>
           )}
-        </select>
-        {istasyon && (
-          <button type="button" className="temizle" onClick={() => setIstasyon('')}>
-            Filtreyi kaldır
-          </button>
-        )}
+        </div>
       </div>
 
       {o && (

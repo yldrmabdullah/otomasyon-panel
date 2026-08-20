@@ -1694,6 +1694,93 @@ td { vertical-align: middle; font-variant-numeric: tabular-nums; }
 .satir-uyari td:first-child { background: color-mix(in srgb, var(--uyari) 12%, var(--panel)); }
 .satir-uyari:hover td:first-child { background: color-mix(in srgb, var(--uyari) 18%, var(--panel)); }
 
+/* ══ ARAMALI SEÇİCİ (combobox) ═════════════════════════════════════════════
+   149 istasyonluk native <select> kullanılamıyordu: liste ekranı kaplıyor,
+   arama yok (tarayıcı yalnız ilk harfe atlıyor), uzun unvanlar kesiliyor.
+   Bu bileşen arama + klavye gezinme + iki satırlı öğe (ad + kod/şehir) verir.
+   ═════════════════════════════════════════════════════════════════════════ */
+.ar-secici { position: relative; display: inline-block; }
+.ar-tetik {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: var(--s-2);
+  width: var(--ar-en, 260px); max-width: 100%;
+  background: var(--panel); color: var(--metin); border: 1px solid var(--cizgi-2);
+  border-radius: var(--r-sm); padding: 9px var(--s-3); cursor: pointer;
+  font: inherit; text-align: left; transition: border-color .13s;
+}
+.ar-tetik:hover { border-color: var(--accent-cizgi); }
+.ar-tetik[aria-expanded='true'] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+/* Seçim yapılmışsa görsel olarak belli olsun (filtre aktif). */
+.ar-tetik.dolu { border-color: var(--accent-cizgi); color: var(--accent-2); font-weight: 500; }
+.ar-deger { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ar-ok { flex: none; color: var(--soluk); font-size: var(--t-xs); }
+
+.ar-menu {
+  position: absolute; left: 0; top: calc(100% + 4px); z-index: 60;
+  width: max(var(--ar-en, 260px), 340px); max-width: min(440px, calc(100vw - 32px));
+  background: var(--panel); border: 1px solid var(--cizgi-2); border-radius: var(--r);
+  box-shadow: 0 10px 28px rgba(0,0,0,.38);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.ar-ara {
+  border: none; border-bottom: 1px solid var(--cizgi); background: var(--panel-2);
+  color: var(--metin); padding: 10px var(--s-3); font: inherit; outline: none;
+}
+.ar-ara::placeholder { color: var(--soluk-2); }
+.ar-ara:focus { background: var(--panel-2); box-shadow: inset 0 -2px 0 var(--accent); }
+.ar-liste { max-height: min(46dvh, 340px); overflow-y: auto; overscroll-behavior: contain; padding: var(--s-1); }
+@supports not (height: 1dvh) { .ar-liste { max-height: 340px; } }
+.ar-oge {
+  display: flex; flex-direction: column; gap: 1px; width: 100%; text-align: left;
+  background: transparent; border: none; border-radius: var(--r-sm);
+  padding: 8px var(--s-3); cursor: pointer; color: var(--metin-2); font: inherit;
+  min-height: 40px; justify-content: center;
+}
+/* İmleç (klavye) ve hover aynı görünür — fare ile klavye ayrı vurgu kafa karıştırır. */
+.ar-oge.imlec { background: var(--panel-2); color: var(--metin); }
+.ar-oge.sec { color: var(--accent-2); font-weight: 600; }
+.ar-oge-ad { font-size: var(--t-md); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ar-oge-alt { font-size: var(--t-xs); color: var(--soluk-2); font-variant-numeric: tabular-nums; }
+.ar-bos { padding: var(--s-4) var(--s-3); color: var(--soluk-2); font-size: var(--t-md); text-align: center; }
+.ar-dip { padding: 6px var(--s-3); border-top: 1px solid var(--cizgi); font-size: var(--t-xs); color: var(--soluk-2); background: var(--panel-2); }
+@media (pointer: coarse) { .ar-tetik { min-height: 44px; } .ar-oge { min-height: 48px; } }
+/* Dar ekran: menü alt sayfa gibi tam genişlik (kolon seçicideki desen). */
+@media (max-width: 520px) {
+  .ar-secici { width: 100%; }
+  .ar-tetik { width: 100%; }
+  .ar-menu { width: 100%; max-width: none; }
+}
+
+/* ── Satış ekranı filtre çubuğu ────────────────────────────────────────────
+   Gruplar görsel olarak ayrık: [tarih aralığı] [hızlı seçim] [istasyon].
+   Tek sırada dizilmiş 6 kontrol hangisinin hangisiyle ilgili olduğunu
+   göstermiyordu; gruplama ayraçla yapılıyor. */
+.satis-filtre {
+  display: flex; align-items: flex-end; gap: var(--s-4); flex-wrap: wrap;
+  margin-bottom: var(--s-4); padding-bottom: var(--s-4); border-bottom: 1px solid var(--cizgi);
+}
+.sf-grup { display: flex; align-items: flex-end; gap: var(--s-2); flex-wrap: wrap; }
+.sf-alan { display: flex; flex-direction: column; gap: 4px; }
+.sf-alan > span { font-size: var(--t-xs); color: var(--soluk); font-weight: 500; }
+.sf-etiket { font-size: var(--t-xs); color: var(--soluk); font-weight: 500; align-self: center; padding-bottom: 10px; }
+/* Tarih kutusu: native date picker ama panel temasıyla uyumlu.
+   color-scheme takvim açılır penceresini de koyu/açık temaya uydurur. */
+.sf-tarih {
+  background: var(--panel); color: var(--metin); border: 1px solid var(--cizgi-2);
+  border-radius: var(--r-sm); padding: 9px var(--s-3); font: inherit;
+  color-scheme: light dark; cursor: pointer;
+}
+.sf-tarih:hover { border-color: var(--accent-cizgi); }
+.sf-tarih:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+:root[data-theme='dark'] .sf-tarih { color-scheme: dark; }
+:root[data-theme='light'] .sf-tarih { color-scheme: light; }
+@media (pointer: coarse) { .sf-tarih { min-height: 44px; } }
+@media (max-width: 640px) {
+  .satis-filtre { gap: var(--s-3); }
+  .sf-grup, .sf-alan { flex: 1 1 100%; }
+  .sf-tarih { width: 100%; }
+  .sf-etiket { padding-bottom: 0; }
+}
+
 /* ── Tank son durum kartları (Satış & Tank ekranı) ─────────────────────────
    Tank başına doluluk çubuğu. Renk TEK taşıyıcı değil: yüzde metni de yazılı
    (WCAG 1.4.1). %15 altı kritik — yakında bitecek. */

@@ -7,6 +7,7 @@ import { Sekmeler } from './Sekme.js';
 import { CubukYatay, IsiIzgara } from './Grafik.js';
 import { Harita } from './Harita.js';
 import { Bos, ModulBar, TazelikSerit, trTarih, useVeri } from './ortak.js';
+import { AramaliSecici } from './AramaliSecici.js';
 import { csvIndir } from './disaAktar.js';
 import type { Tazelik } from './tipler.js';
 
@@ -1016,26 +1017,22 @@ function TumBayiler(p: {
                 value={sorgu.q}
                 onChange={(e) => dispatch({ tip: 'filtre', deger: { q: e.target.value } })}
               />
-              <select
-                aria-label="İl filtresi"
-                value={sorgu.il}
-                onChange={(e) => dispatch({ tip: 'filtre', deger: { il: e.target.value } })}
-              >
-                <option value="">Tüm iller</option>
-                {secenekler.iller.map((il: string) => <option key={il} value={il}>{il}</option>)}
-              </select>
-              <select
-                aria-label="Dağıtıcı filtresi"
-                value={sorgu.dagitici}
-                onChange={(e) => dispatch({ tip: 'filtre', deger: { dagitici: e.target.value } })}
-              >
-                <option value="">Tüm dağıtıcılar</option>
-                {secenekler.dagiticilar.map((d: string) => (
-                  <option key={d} value={d}>
-                    {d === BIZ ? 'Parkoil (Turgut)' : d.length > 34 ? d.slice(0, 34) + '…' : d}
-                  </option>
-                ))}
-              </select>
+              {/* 81 il + 68 dağıtıcı native select'te aranamıyordu (tarayıcı yalnız
+                  ilk harfe atlar) → aramalı seçici. */}
+              <AramaliSecici
+                etiket="İl" tumuEtiket="Tüm iller" genislik={170}
+                ogeler={secenekler.iller.map((il: string) => ({ deger: il, ad: il }))}
+                deger={sorgu.il}
+                degisti={(v) => dispatch({ tip: 'filtre', deger: { il: v } })}
+              />
+              <AramaliSecici
+                etiket="Dağıtıcı" tumuEtiket="Tüm dağıtıcılar" genislik={230}
+                ogeler={secenekler.dagiticilar.map((d: string) => ({
+                  deger: d, ad: d === BIZ ? 'Parkoil (Turgut)' : d,
+                }))}
+                deger={sorgu.dagitici}
+                degisti={(v) => dispatch({ tip: 'filtre', deger: { dagitici: v } })}
+              />
               <select
                 aria-label="Lisans durumu filtresi"
                 value={sorgu.durum}
