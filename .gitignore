@@ -31,4 +31,6 @@ panel/public/api/
 .*.mjs
 .*.json
 .*.txt
+_*.txt
+_*.mjs
 .k
