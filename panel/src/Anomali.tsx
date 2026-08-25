@@ -296,7 +296,7 @@ function EsikAyar({ kapat, kaydedildi }: { kapat: () => void; kaydedildi: () => 
   const [sonuc, setSonuc] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/a1b-esik')
+    fetch('/api/a1b?kapsam=esik')
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`Ayarlar alınamadı (${r.status})`))))
       .then((d) => setEsik(d.esik))
       .catch((e) => setHata(e.message));
@@ -306,7 +306,7 @@ function EsikAyar({ kapat, kaydedildi }: { kapat: () => void; kaydedildi: () => 
     if (!esik) return;
     setBekliyor(true); setHata(null); setSonuc(null);
     try {
-      const r = await fetch('/api/a1b-esik', {
+      const r = await fetch('/api/a1b?kapsam=esik', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(esik),
       });
       const d = await r.json();

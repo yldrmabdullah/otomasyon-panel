@@ -191,19 +191,23 @@ const sunucu = createServer(async (istek, yanit) => {
       if (!ekranKapi('mevzuat')) return;
       return json(200, await fiyatVerisi(p, q.get('gun') ?? undefined));
     }
+    // a1b + esik TEK UC (2026-08-25): Vercel Hobby 12 fonksiyon siniri nedeniyle
+    // api/a1b-esik.ts, api/a1b.ts icine ?kapsam=esik olarak tasindi. Yerel sunucu
+    // uretimle AYNI davranmali, yoksa local'de calisan bir sey canlida 404 olur.
     if (url.pathname === '/api/a1b') {
       if (!ekranKapi('mevzuat')) return;
-      return json(200, await a1bVerisi(p, q.get('gun') ?? undefined));
-    }
-    if (url.pathname === '/api/a1b-esik') {
-      if (benKim.rol !== 'admin') return json(403, { hata: 'Bu işlem için yönetici yetkisi gerekli.' });
-      if (istek.method === 'GET') return json(200, { esik: await a1bEsikOku(p) });
-      if (istek.method === 'POST') {
-        const g = await govdeOku(istek);
-        const surum = `${ESIK_SURUM}+elle-${new Date().toISOString().slice(0, 10)}`;
-        return json(200, await a1bEsikKaydet(p, g, surum));
+      // ESIK dali: yalniz ADMIN (esik degisikligi tum gecmis alarmlari yeniden siniflandirir)
+      if (q.get('kapsam') === 'esik') {
+        if (benKim.rol !== 'admin') return json(403, { hata: 'Bu işlem için yönetici yetkisi gerekli.' });
+        if (istek.method === 'GET') return json(200, { esik: await a1bEsikOku(p) });
+        if (istek.method === 'POST') {
+          const g = await govdeOku(istek);
+          const surum = `${ESIK_SURUM}+elle-${new Date().toISOString().slice(0, 10)}`;
+          return json(200, await a1bEsikKaydet(p, g, surum));
+        }
+        return json(405, { hata: 'Yöntem desteklenmiyor.' });
       }
-      return json(405, { hata: 'Yöntem desteklenmiyor.' });
+      return json(200, await a1bVerisi(p, q.get('gun') ?? undefined));
     }
     if (url.pathname === '/api/bayiler') {
       if (!ekranKapi('piyasa')) return;

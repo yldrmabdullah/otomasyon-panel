@@ -23,3 +23,14 @@ panel/public/api/
 .olc.ts
 .mutOlc.ts
 .test.ts
+
+# Gecici DB sorgu betikleri ve ciktilari (2026-08-25).
+# Bu klasorde nokta ile baslayan .mjs/.json/.txt dosyalari AI oturumlarinda uretilen
+# tek kullanimlik araclardir: canli Logo/ParkB2B'ye baglanir, gercek fis/bayi verisi
+# icerir, bazen API anahtari tutar. REPO PUBLIC -> asla commit edilmemeli.
+.*.mjs
+.*.json
+.*.txt
+_*.txt
+_*.mjs
+.k
