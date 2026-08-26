@@ -10,7 +10,7 @@
 import { createServer } from 'node:http';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { pool, kapat } from '../core/db.js';
-import { piyasaVerisi, durumVerisi, operasyonVerisi, sorunTespiti, bayiVerisi, bayiSecenekleri, a3LogoVerisi, uzlastirmaVerisi, fiyatVerisi, a1bVerisi, a1bEsikOku, a1bEsikKaydet } from '../core/panelSorgu.js';
+import { piyasaVerisi, durumVerisi, operasyonVerisi, sorunTespiti, bayiVerisi, bayiSecenekleri, a3LogoVerisi, uzlastirmaVerisi, fiyatVerisi, a1bVerisi, a1bEsikOku, a1bEsikKaydet, yonetimVerisi } from '../core/panelSorgu.js';
 import {
   girisDogrula, kullaniciBul, kullaniciListesi, kullaniciEkle, kullaniciSil,
   rolDegistir, sifreDegistir, ekranlariGuncelle, sifreUret, adNormal,
@@ -171,6 +171,16 @@ const sunucu = createServer(async (istek, yanit) => {
       if (!ekranKapi('piyasa')) return;
       return json(200, await piyasaVerisi(p));
     }
+    // Yönetim: bayi × ürün grubu alımları (tarih filtreli). Vercel'deki
+    // api/yonetim.ts ile AYNI sorguyu kullanır — ikisi ayrı kod, birlikte güncellenir.
+    if (url.pathname === '/api/yonetim') {
+      if (!ekranKapi('yonetim')) return;
+      return json(200, await yonetimVerisi(
+        p,
+        url.searchParams.get('baslangic') ?? undefined,
+        url.searchParams.get('bitis') ?? undefined,
+      ));
+    }
     if (url.pathname === '/api/operasyon') {
       if (!ekranKapi('operasyon')) return;
       return json(200, await operasyonVerisi(p));
@@ -236,7 +246,7 @@ sunucu.listen(PORT, () => {
   console.log(`✔ Panel API → http://localhost:${PORT}`);
   console.log('  Giriş GEREKLİ (prod ile aynı). Kullanıcı yok ise:');
   console.log('    npm run kullanici -- ekle ahmet --admin');
-  console.log('  Uçlar: /api/giris /api/kullanicilar /api/durum /api/piyasa /api/operasyon /api/sorun /api/bayiler');
+  console.log('  Uçlar: /api/giris /api/kullanicilar /api/durum /api/piyasa /api/yonetim /api/operasyon /api/sorun /api/bayiler');
 });
 
 for (const s of ['SIGINT', 'SIGTERM'] as const) {

@@ -1,0 +1,75 @@
+name: Bayi Alımları (satış faturası, günlük)
+
+# Bayi × ürün grubu alımlarını (litre + TL) BFF üzerinden canlı Logo'dan çeker
+# → panel "Yönetim" modülü.
+#
+# Zincir: Logo INVOICE+STLINE → BFF /dis/v1/mutabakat/fatura-satislari
+#         → araclar/satisFaturaCek.ts → satis_fatura → /api/yonetim
+#
+# NEDEN BFF üzerinden: Logo VPN arkasında, Actions runner erişemez. BFF (reportapi)
+# public ve X-Api-Key korumalı; a3-mutabakat işi de AYNI ucu kullanıyor.
+#
+# ⚠️ Bu uç TL + bayi adını 2026-08-26'da kazandı (LogoCanliServisi.MutabakatSatislariAsync
+#    → SUM(sl.TOTAL) + cl.DEFINITION_). BFF canlıya çıkmadan tutar/ad BOŞ gelir;
+#    satisFaturaCek.ts bunu satır sayısıyla UYARIR (sessiz eksik veri olmasın).
+#
+# Salt-okuma: Logo'ya/BFF'e hiçbir yazma yok.
+
+on:
+  # Günlük 05:40 UTC (TR 08:40) — bir önceki günün faturaları kesilmiş olur.
+  # Diğer BFF'e dokunan iş (a3-mutabakat) ile aynı saate denk gelmesin.
+  schedule:
+    - cron: '40 5 * * *'
+  workflow_dispatch:
+    inputs:
+      bas:
+        description: 'Başlangıç YYYY-MM-DD (boş: içinde bulunulan ay)'
+        required: false
+        default: ''
+      bit:
+        description: 'Bitiş YYYY-MM-DD — HARİÇ (boş: ay sonu)'
+        required: false
+        default: ''
+      aylar:
+        description: "Geri dolum: kaç ay geriye (ör. 12). Doluysa bas/bit yok sayılır."
+        required: false
+        default: ''
+
+concurrency:
+  group: satis-fatura-cek
+  cancel-in-progress: false
+
+jobs:
+  satis:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Bağımlılıklar
+        run: npm ci
+
+      - name: Şema (idempotent)
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # Günlük koşuda içinde bulunulan ay yeniden çekilir (upsert) — gün içinde
+      # kesilen/iptal edilen faturalar da güncellenir. Geri dolum elle tetiklenir.
+      - name: Satış faturası çekimi
+        run: |
+          if [ -n "${{ github.event.inputs.aylar }}" ]; then
+            npm run satis:fatura -- --aylar "${{ github.event.inputs.aylar }}"
+          else
+            npm run satis:fatura -- ${{ github.event.inputs.bas }} ${{ github.event.inputs.bit }}
+          fi
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BFF_URL: ${{ secrets.BFF_URL }}
+          BFF_API_KEY: ${{ secrets.BFF_API_KEY }}

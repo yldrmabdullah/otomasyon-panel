@@ -12,7 +12,7 @@
 // Bu ayrım sayesinde "her ekranı gören ama kullanıcı açamayan" kişi mümkün.
 
 /** Yetkilendirilebilir ekran kimlikleri. */
-export const EKRANLAR = ['izleme', 'operasyon', 'sorun', 'mevzuat', 'piyasa'] as const;
+export const EKRANLAR = ['izleme', 'operasyon', 'sorun', 'mevzuat', 'piyasa', 'yonetim'] as const;
 export type Ekran = (typeof EKRANLAR)[number];
 
 /** Ekran adları — Kullanıcılar ekranındaki onay kutuları ve hata mesajları için. */
@@ -22,6 +22,7 @@ export const EKRAN_AD: Record<Ekran, string> = {
   sorun: 'Sorun Tespiti',
   mevzuat: 'Mevzuat',
   piyasa: 'Piyasa',
+  yonetim: 'Yönetim',
 };
 
 /** Ekran kısa açıklaması (menü alt satırı + yetki seçicideki ipucu). */
@@ -31,6 +32,7 @@ export const EKRAN_ALT: Record<Ekran, string> = {
   sorun: 'İrsaliye & dolum anomalisi',
   mevzuat: 'EPDK & mutabakat',
   piyasa: 'Dağıtıcı & bayi',
+  yonetim: 'Bayi alımları & ciro',
 };
 
 export function ekranMi(s: unknown): s is Ekran {

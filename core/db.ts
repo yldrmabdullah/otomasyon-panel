@@ -706,3 +706,139 @@ export async function transferleriTespitEt(bugun: string): Promise<number> {
   );
   return r.rowCount ?? 0;
 }
+
+// ══ HACİM: EPDK sektör raporu (hacim bazlı pazar payı) ═══════════════════
+// Kaynak/tuzaklar: docs/bilgi/epdk-sektor-raporu-hacim.md · şema: schema_hacim.sql
+
+/** Dağıtıcı × ürün grubu hacim + EPDK'nın kendi pazar payı yüzdesi (upsert). */
+export async function hacimDagiticiKaydet(
+  yil: number, ay: number, kaynak: string,
+  liste: { unvan: string; urunGrubu: string; istasyon: number | null; koy: number | null;
+           tarim: number | null; dis: number | null; toplam: number; pay: number | null }[],
+): Promise<void> {
+  if (liste.length === 0) return;
+  const p = pool();
+  const KOLON = 10;
+  const PARCA = 600; // 600×10 = 6000 parametre (limit ~65535)
+  for (let i = 0; i < liste.length; i += PARCA) {
+    const grup = liste.slice(i, i + PARCA);
+    // kaynak_rapor tüm satırlarda aynı → tek parametre, en sona konur ve
+    // her satır aynı indeksi kullanır (grup.length * KOLON + 1).
+    const kaynakIdx = grup.length * KOLON + 1;
+    const deger: unknown[] = [];
+    const satir = grup.map((x, j) => {
+      const b = j * KOLON;
+      deger.push(yil, ay, x.unvan, x.urunGrubu, x.istasyon, x.koy, x.tarim, x.dis, x.toplam, x.pay);
+      return `(${Array.from({ length: KOLON }, (_, k) => `$${b + k + 1}`).join(',')},$${kaynakIdx})`;
+    });
+    deger.push(kaynak);
+    await p.query(
+      `INSERT INTO epdk_hacim_dagitici
+         (donem_yil, donem_ay, unvan, urun_grubu, istasyon_litre, koy_litre,
+          tarim_litre, dis_litre, toplam_litre, pazar_payi, kaynak_rapor)
+       VALUES ${satir.join(',')}
+       ON CONFLICT (donem_yil, donem_ay, unvan, urun_grubu) DO UPDATE SET
+         istasyon_litre = EXCLUDED.istasyon_litre, koy_litre = EXCLUDED.koy_litre,
+         tarim_litre = EXCLUDED.tarim_litre, dis_litre = EXCLUDED.dis_litre,
+         toplam_litre = EXCLUDED.toplam_litre, pazar_payi = EXCLUDED.pazar_payi,
+         kaynak_rapor = EXCLUDED.kaynak_rapor, guncelleme = now()`,
+      deger,
+    );
+  }
+}
+
+/** İl × şirket hacmi (TON — litre tablolarıyla toplanmaz). */
+export async function hacimIlKaydet(
+  yil: number, ay: number, kumulatif: boolean,
+  liste: { il: string; unvan: string; benzin: number | null; motorin: number | null; toplam: number | null }[],
+): Promise<void> {
+  if (liste.length === 0) return;
+  const p = pool();
+  const KOLON = 8;
+  const PARCA = 700;
+  for (let i = 0; i < liste.length; i += PARCA) {
+    const grup = liste.slice(i, i + PARCA);
+    const deger: unknown[] = [];
+    const satir = grup.map((x, j) => {
+      const b = j * KOLON;
+      deger.push(yil, ay, kumulatif, x.il, x.unvan, x.benzin, x.motorin, x.toplam);
+      return `(${Array.from({ length: KOLON }, (_, k) => `$${b + k + 1}`).join(',')})`;
+    });
+    await p.query(
+      `INSERT INTO epdk_hacim_il
+         (donem_yil, donem_ay, kumulatif, il, unvan, benzin_ton, motorin_ton, toplam_ton)
+       VALUES ${satir.join(',')}
+       ON CONFLICT (donem_yil, donem_ay, il, unvan) DO UPDATE SET
+         kumulatif = EXCLUDED.kumulatif, benzin_ton = EXCLUDED.benzin_ton,
+         motorin_ton = EXCLUDED.motorin_ton, toplam_ton = EXCLUDED.toplam_ton,
+         guncelleme = now()`,
+      deger,
+    );
+  }
+}
+
+/** Çekim koşusu kaydı — biçim kayması ve boş/bozuk yayın burada görünür. */
+export async function hacimKosuKaydet(
+  yil: number, ay: number, bicim: string,
+  dagiticiSatir: number, ilSatir: number, dosyaBayt: number | null, hata: string | null,
+): Promise<void> {
+  await pool().query(
+    `INSERT INTO epdk_hacim_kosu (donem_yil, donem_ay, bicim, dagitici_satir, il_satir, dosya_bayt, hata)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)
+     ON CONFLICT (donem_yil, donem_ay) DO UPDATE SET
+       bicim = EXCLUDED.bicim, dagitici_satir = EXCLUDED.dagitici_satir,
+       il_satir = EXCLUDED.il_satir, dosya_bayt = EXCLUDED.dosya_bayt,
+       hata = EXCLUDED.hata, kosu_zamani = now()`,
+    [yil, ay, bicim, dagiticiSatir, ilSatir, dosyaBayt, hata],
+  );
+}
+
+// ══ BİZİM SATIŞIMIZ: bayi × ürün grubu alımları (Yönetim sekmesi) ════════
+
+/** BFF /dis/v1/mutabakat/fatura-satislari satırları → satis_fatura (upsert). */
+export async function satisFaturaKaydet(
+  liste: { faturaNo: string; tarih: string; cariKod: string; bayiAd: string | null;
+           urunKod: string; urun: string | null; urunGrubu: string; litre: number;
+           tutar: number | null; cikisTesisi: string | null; iptal: boolean }[],
+): Promise<void> {
+  if (liste.length === 0) return;
+  const p = pool();
+  const KOLON = 11;
+  const PARCA = 500;
+  for (let i = 0; i < liste.length; i += PARCA) {
+    const grup = liste.slice(i, i + PARCA);
+    const deger: unknown[] = [];
+    const satir = grup.map((x, j) => {
+      const b = j * KOLON;
+      deger.push(x.faturaNo, x.tarih, x.cariKod, x.bayiAd, x.urunKod, x.urun,
+                 x.urunGrubu, x.litre, x.tutar, x.cikisTesisi, x.iptal);
+      return `(${Array.from({ length: KOLON }, (_, k) => `$${b + k + 1}`).join(',')})`;
+    });
+    await p.query(
+      `INSERT INTO satis_fatura
+         (fatura_no, tarih, cari_kod, bayi_ad, urun_kod, urun, urun_grubu,
+          litre, tutar, cikis_tesisi, iptal)
+       VALUES ${satir.join(',')}
+       ON CONFLICT (fatura_no, urun_kod) DO UPDATE SET
+         tarih = EXCLUDED.tarih, cari_kod = EXCLUDED.cari_kod, bayi_ad = EXCLUDED.bayi_ad,
+         urun = EXCLUDED.urun, urun_grubu = EXCLUDED.urun_grubu, litre = EXCLUDED.litre,
+         tutar = EXCLUDED.tutar, cikis_tesisi = EXCLUDED.cikis_tesisi,
+         iptal = EXCLUDED.iptal, guncelleme = now()`,
+      deger,
+    );
+  }
+}
+
+/** Satış çekim koşusu kaydı (dönem boşluğu tespiti). */
+export async function satisFaturaKosuKaydet(
+  bas: string, bit: string, satir: number, litre: number, tutar: number, hata: string | null,
+): Promise<void> {
+  await pool().query(
+    `INSERT INTO satis_fatura_kosu (donem_bas, donem_bit, satir, litre, tutar, hata)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     ON CONFLICT (donem_bas, donem_bit) DO UPDATE SET
+       satir = EXCLUDED.satir, litre = EXCLUDED.litre, tutar = EXCLUDED.tutar,
+       hata = EXCLUDED.hata, kosu_zamani = now()`,
+    [bas, bit, satir, litre, tutar, hata],
+  );
+}

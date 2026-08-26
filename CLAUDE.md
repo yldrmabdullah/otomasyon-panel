@@ -70,6 +70,11 @@ Postgres'te.
 - `job/` — GH Actions entry noktası (`index.ts`): tek seferlik çek→değerlendir→bildir→yaz.
 - `panel/` — React + Vite izleme paneli (Vercel).
 - `docs/bilgi/` — ⭐ AI'ın biriktirdiği iş/mevzuat bilgisi.
+- `docs/bilgi/epdk-sektor-raporu-hacim.md` — ⭐ **HACİM bazlı pazar payı** (EPDK aylık
+  sektör raporu Excel eki). Panelin diğer pazar payı BAYİ ADEDİ bazlı; bu litre/ton.
+  Biçim YILA GÖRE değişiyor + EPDK yazım hatası + HTML varlık tuzağı — dosyayı OKU.
+- `docs/bilgi/yonetim-bayi-alimlari.md` — ⭐ **Yönetim modülü** (bayi × ürün grubu
+  alımları, litre + TL). Logo→BFF→panel zinciri ve Türkçe-I tuzağı orada.
 - `docs/bilgi/pol-harita.md` — ⭐⭐ **POL rapor haritası**: 35 rapor, kolonları, filtreleri ve
   **Excel indirme akışı** (tek tık / Raporla). Yeni bir POL raporunu otomatikleştirmeden ÖNCE
   buraya bak — sıfırdan keşif yapmaya gerek yok (kullanıcı turu 2026-08-12).

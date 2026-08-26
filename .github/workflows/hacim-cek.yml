@@ -1,0 +1,65 @@
+name: EPDK Hacim Payı (aylık)
+
+# EPDK Petrol Piyasası Aylık Sektör Raporu ekini (Excel) indirir, dağıtıcı ×
+# ürün grubu satış hacmini + pazar payını ve il × şirket hacmini DB'ye yazar
+# → panel Piyasa → "Hacim Payı" sekmesi.
+#
+# NEDEN GEREKLİ: panelin diğer pazar payı BAYİ ADEDİ bazlı. Kullanıcı motorin/benzin
+# SATIŞ HACMİ bazlı istedi (2026-08-26). Hacim EPDK web servislerinde YOK — lisans
+# uçları kütük verisi, fiyat ucu firma kırılımı kabul etmiyor, bildirim* uçları
+# "Sorgu Yetkisi Yok". Tek public kaynak bu Excel eki.
+#
+# Kaynak + TUZAKLAR (biçim yıla göre değişiyor, EPDK yazım hatası, HTML varlıkları):
+#   docs/bilgi/epdk-sektor-raporu-hacim.md
+#
+# Salt-okuma: yalnız public dosya indirilir, EPDK'ya hiçbir şey gönderilmez.
+
+on:
+  # AYLIK yayın (ay kapandıktan ~1-2 ay sonra çıkıyor) → günlük koşmanın anlamı yok.
+  # Ayın 5'i ve 20'si 06:20 UTC: yayın tarihi sabit değil, ayda iki deneme ile
+  # yeni rapor çıktığı gibi yakalanır. Aynı dönem tekrar çekilirse upsert →
+  # EPDK bildirim DÜZELTMESİ yapmışsa değer güncellenir (bu istenen davranış).
+  schedule:
+    - cron: '20 6 5,20 * *'
+  workflow_dispatch:
+    inputs:
+      hedef:
+        description: "Boş: en yeni dönem · '2026': o yılın tümü · '--tumu': dizindeki tüm Excel'ler"
+        required: false
+        default: ''
+
+concurrency:
+  group: hacim-cek
+  cancel-in-progress: false
+
+jobs:
+  hacim:
+    runs-on: ubuntu-latest
+    # Ölçüldü (2026-08-26): tek dönem ~8 sn (495 KB dosya + 1.755 satır upsert),
+    # `--tumu` 22 dönem ~3 dk. 30 dk bol pay — EPDK yavaşlarsa yine bitsin.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          # Repo kökü = bu proje (otomasyon-panel/ öneki YOK).
+          cache-dependency-path: package-lock.json
+
+      - name: Bağımlılıklar
+        run: npm ci
+
+      - name: Şema (idempotent)
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: EPDK hacim çekimi
+        run: npm run hacim -- ${{ github.event.inputs.hedef }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      # hacimCek.ts dönem başına hata yakalar ve epdk_hacim_kosu'ya yazar; dizin
+      # sayfası hiç ayrıştırılamazsa (EPDK sayfa yapısı değişti) job KIRILIR —
+      # sessizce "başarılı ama 0 satır" görünmesin.

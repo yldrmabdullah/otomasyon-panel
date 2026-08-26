@@ -138,6 +138,28 @@ interface BolgeselSatir { il: string; toplam: string; bizim: string; pay: string
 interface BeyazAlan { il: string; toplam: string }
 interface Kaybedilen { ad: string; epdk_kod: string; sehir: string | null; rakip: string; il: string | null }
 
+/** HACİM bazlı pazar payı (EPDK sektör raporu). Adet bazlı `bolgesel`den AYRI ölçü. */
+interface HacimDagitici {
+  urun_grubu: string; unvan: string; toplam_litre: string;
+  pazar_payi: string | null; bizim: boolean;
+}
+interface HacimBizim {
+  urun_grubu: string; toplam_litre: string; pazar_payi: string | null;
+  istasyon_litre: string | null; koy_litre: string | null;
+  tarim_litre: string | null; dis_litre: string | null;
+  sira: string; toplam_dagitici: string;
+}
+interface HacimIl {
+  il: string; il_ton: string; biz_ton: string;
+  il_benzin: string | null; il_motorin: string | null;
+  biz_benzin: string | null; biz_motorin: string | null; pay: string;
+}
+interface HacimVeri {
+  donem: { yil: number; ay: number; etiket: string } | null;
+  dagitici: HacimDagitici[]; bizim: HacimBizim[]; il: HacimIl[];
+  trend: { yil: number; ay: number; urun_grubu: string; pazar_payi: string | null; toplam_litre: string }[];
+}
+
 interface PiyasaVeri {
   uretim: string; ozet: Ozet;
   dagiticiBayiDagilim: DagiticiBayi[]; ilDagilim: IlDagilim[]; transferler: Transfer[];
@@ -149,6 +171,8 @@ interface PiyasaVeri {
   kaybedilen: Kaybedilen[];
   /** Eski sürüm API'den gelmeyebilir → opsiyonel. */
   tazelik?: Tazelik[];
+  /** HACİM bazlı pazar payı — veri çekilmemişse donem=null. Eski API'de yok → opsiyonel. */
+  hacim?: HacimVeri;
 }
 
 interface Bayi {
@@ -723,13 +747,23 @@ export function Piyasa() {
                         ad={(b) => b.il}
                         deger={(b) => Number(b.pay)}
                         altDeger={(b) => `${b.bizim}/${b.toplam} bayi`}
-                        baslik="Parkoil'in İl Bazında Pazar Payı"
+                        baslik="Parkoil'in İl Bazında Pazar Payı — BAYİ ADEDİ"
                         altBaslik={`Bayimizin bulunduğu ${veri.bolgesel.length} il · koyu = yüksek pay`}
                         birim="%"
                       />
                     )}
                   </>
                 ),
+              },
+              {
+                /* HACİM bazlı pay — ADET bazlı olandan AYRI sekme.
+                   Aynı ekranda iki "pazar payı" ısı ızgarası yan yana dursa
+                   kullanıcı hangisine baktığını karıştırır; üstelik biri litre
+                   biri adet (ölçüldü: ISPARTA adet %2,7 / hacim %7,27).
+                   Kaynak aylık ve KÜMÜLATİF → dönem etiketi her başlıkta. */
+                id: 'hacim',
+                ad: 'Hacim Payı',
+                icerik: () => <HacimBolumu hacim={veri.hacim} />,
               },
               {
                 id: 'firsat',
@@ -1086,5 +1120,123 @@ function TumBayiler(p: {
               }}
             />
     </section>
+  );
+}
+
+/**
+ * HACİM bazlı pazar payı bölümü — EPDK aylık sektör raporundan.
+ *
+ * NEDEN AYRI BİLEŞEN/SEKME: panelin diğer pazar payı ADET bazlı (kaç bayi).
+ * Bu litre/ton bazlı. İkisi aynı soruya farklı cevap veriyor ve KARIŞTIRILMAMALI:
+ * Parkoil bayi ADEDİNDE 15. sırada ama hacimde motorin %0,89 / benzin %0,14 —
+ * yani motorin ağırlıklı bir dağıtıcı. Adet bazlı grafik bunu gizliyor.
+ *
+ * ⚠️ Veri KÜMÜLATİF (Ocak–ilgili ay) ve AYLIK yayınlanıyor (canlı değil) →
+ *    dönem etiketi her başlıkta görünür, yoksa "bu ayın satışı" sanılır.
+ * ⚠️ Dağıtıcı tablosu LİTRE, il tablosu TON — aynı grafikte toplanmaz.
+ */
+function HacimBolumu({ hacim }: { hacim?: HacimVeri }) {
+  if (!hacim?.donem) {
+    return (
+      <div className="analiz-not">
+        EPDK hacim verisi henüz çekilmemiş. <code>npm run hacim</code> ile
+        aylık sektör raporundan doldurulur (public kaynak, kimlik gerekmez).
+      </div>
+    );
+  }
+
+  const donem = hacim.donem.etiket;
+  const litre = (v: string | null) => Number(v ?? 0).toLocaleString('tr', { maximumFractionDigits: 0 });
+  // Ürün grubu bazında ayrı sıralama — benzin ve motorin listesi farklı.
+  const gruplar = [...new Set(hacim.dagitici.map((d) => d.urun_grubu))];
+
+  return (
+    <>
+      {/* Bizim konumumuz — ürün grubu başına bir kart. */}
+      <section className="kartlar">
+        {hacim.bizim.map((b) => (
+          <div className="kart vurgu-kart" key={b.urun_grubu}>
+            <div className="kart-deger">%{Number(b.pazar_payi ?? 0).toFixed(3)}</div>
+            <div className="kart-baslik">
+              <span className="marka-rozet">PARKOIL</span>
+              {b.urun_grubu === 'motorin' ? 'Motorin' : 'Benzin'} · {b.sira}/{b.toplam_dagitici}. sıra
+            </div>
+            <div className="kart-alt">{litre(b.toplam_litre)} litre</div>
+          </div>
+        ))}
+      </section>
+
+      <div className="analiz-not">
+        Kaynak: <b>EPDK Petrol Piyasası Aylık Sektör Raporu</b> · dönem <b>{donem}</b>{' '}
+        (kümülatif — bu ayın tek başına satışı değil). Pay yüzdeleri EPDK'nın kendi
+        hesabıdır. Bu bölüm <b>satış hacmi</b> ölçer; "Rekabet Konumu" sekmesindeki
+        pay ise <b>bayi adedi</b> ölçer — ikisi farklı sorulara cevap verir.
+      </div>
+
+      {gruplar.map((g) => {
+        const satirlar = hacim.dagitici.filter((d) => d.urun_grubu === g);
+        return (
+          <CubukYatay
+            key={g}
+            veri={satirlar}
+            ad={(d) => (d.bizim ? 'Turgut Dağıtım' : d.unvan)}
+            deger={(d) => Number(d.pazar_payi ?? 0)}
+            vurgu={(d) => d.bizim}
+            baslik={`${g === 'motorin' ? 'Motorin' : 'Benzin'} Pazar Payı — HACİM`}
+            altBaslik={`${satirlar.length} dağıtıcı · ${donem} kümülatif · bayi satış litresi`}
+            birim="%"
+            limit={12}
+          />
+        );
+      })}
+
+      {/* İl bazında hacim payı — adet bazlı ısı ızgarasının hacim karşılığı.
+          Yalnız payımızın olduğu iller (pay 0 olan 81 ilin tamamı ızgarayı boğar). */}
+      {hacim.il.some((x) => Number(x.pay) > 0) && (
+        <IsiIzgara
+          veri={hacim.il.filter((x) => Number(x.pay) > 0)}
+          ad={(x) => x.il}
+          deger={(x) => Number(x.pay)}
+          altDeger={(x) => `${Number(x.biz_ton).toLocaleString('tr', { maximumFractionDigits: 0 })}/${Number(x.il_ton).toLocaleString('tr', { maximumFractionDigits: 0 })} ton`}
+          baslik="İl Bazında Pazar Payı — HACİM (ton)"
+          altBaslik={`${hacim.il.filter((x) => Number(x.pay) > 0).length} il · ${donem} · koyu = yüksek pay`}
+          birim="%"
+        />
+      )}
+
+      {/* Pay trendi — "payımız artıyor mu" sorusu. */}
+      {hacim.trend.length > 0 && (
+        <Tablo
+          anahtar="hacimTrend"
+          baslik="Pay Trendi (dönem dönem)"
+          aciklama={
+            <div className="analiz-not">
+              Her satır o dönemin <b>kümülatif</b> değeri (Ocak–ilgili ay). Ardışık iki
+              dönemin farkı tek ayın satışını verir.
+            </div>
+          }
+          kolonlar={[
+            { id: 'donem', ad: 'Dönem', varsayilan: true,
+              hucre: (t: HacimVeri['trend'][number]) => `${t.yil}-${String(t.ay).padStart(2, '0')}`,
+              sirala: (t: HacimVeri['trend'][number]) => `${t.yil}-${String(t.ay).padStart(2, '0')}`,
+              ara: (t: HacimVeri['trend'][number]) => `${t.yil}-${String(t.ay).padStart(2, '0')}` },
+            { id: 'grup', ad: 'Ürün', varsayilan: true,
+              hucre: (t: HacimVeri['trend'][number]) => (t.urun_grubu === 'motorin' ? 'Motorin' : 'Benzin'),
+              sirala: (t: HacimVeri['trend'][number]) => t.urun_grubu,
+              ara: (t: HacimVeri['trend'][number]) => t.urun_grubu },
+            { id: 'pay', ad: 'Pay', varsayilan: true, sinif: 'sag',
+              hucre: (t: HacimVeri['trend'][number]) => `%${Number(t.pazar_payi ?? 0).toFixed(3)}`,
+              sirala: (t: HacimVeri['trend'][number]) => Number(t.pazar_payi ?? 0) },
+            { id: 'litre', ad: 'Litre', varsayilan: true, sinif: 'sag',
+              hucre: (t: HacimVeri['trend'][number]) => Number(t.toplam_litre).toLocaleString('tr', { maximumFractionDigits: 0 }),
+              sirala: (t: HacimVeri['trend'][number]) => Number(t.toplam_litre) },
+          ]}
+          satirlar={hacim.trend}
+          satirAnahtar={(t) => `${t.yil}-${t.ay}-${t.urun_grubu}`}
+          ilkGosterim={24}
+          adim={24}
+        />
+      )}
+    </>
   );
 }

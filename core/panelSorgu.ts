@@ -207,6 +207,10 @@ export async function piyasaVerisi(p: Pool) {
     haritaIl: haritaIl.rows,
     beyazAlan: beyazAlan.rows,
     kaybedilen: kaybedilen.rows,
+    // HACİM bazlı pazar payı (EPDK sektör raporu). `bolgesel`/`haritaIl` ADET bazlı;
+    // bu ayrı bir ölçü, birbirinin yerine geçmez (bkz. hacimVerisi yorumu).
+    // Veri henüz çekilmemişse donem=null döner → panel bölümü gizler.
+    hacim: await hacimVerisi(p),
   };
 }
 
@@ -1437,4 +1441,195 @@ export async function a1bEsikKaydet(p: Pool, gelen: Record<string, unknown>, sur
     [e.minSatis, e.ayniStok, e.kritikOran, e.yuksekOran, e.inceleOran, e.inceleFark, e.kapasiteTolerans, surum],
   );
   return { esik: e, guncellenen: r.rowCount ?? 0 };
+}
+
+// ══ HACİM BAZLI PAZAR PAYI (EPDK sektör raporu) ══════════════════════════
+// Mevcut `bolgesel` ADET bazlı (bizim bayi / ildeki toplam bayi). Bu blok HACİM
+// bazlı (litre/ton). İkisi AYRI soruya cevap veriyor, biri diğerinin yerine geçmez:
+// ölçüldü (2026-06) → ISPARTA adet %2,7 ama hacim %7,27 (az sayıda yüksek hacimli
+// istasyon). Kaynak/tuzaklar: docs/bilgi/epdk-sektor-raporu-hacim.md
+
+/** En yeni EPDK hacim dönemi (dağıtıcı tablosu dolu olan). */
+async function hacimSonDonem(p: Pool): Promise<{ yil: number; ay: number } | null> {
+  const r = await p.query(
+    `SELECT donem_yil yil, donem_ay ay FROM epdk_hacim_dagitici
+     GROUP BY 1,2 ORDER BY 1 DESC, 2 DESC LIMIT 1`,
+  );
+  return r.rows[0] ? { yil: Number(r.rows[0].yil), ay: Number(r.rows[0].ay) } : null;
+}
+
+const AY_AD = ['', 'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+               'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+
+/**
+ * Hacim bazlı pazar payı verisi.
+ *
+ * ⚠️ Rapor KÜMÜLATİF (Ocak–ilgili ay) → panelde dönem etiketi ZORUNLU, yoksa
+ *    kullanıcı "aylık satış" sanır.
+ * ⚠️ Dağıtıcı tablosu LİTRE, il tablosu TON. Toplanmaz/kıyaslanmaz; ayrı döner.
+ */
+export async function hacimVerisi(p: Pool) {
+  const donem = await hacimSonDonem(p);
+  if (!donem) return { donem: null, dagitici: [], bizim: [], il: [], trend: [] };
+  const { yil, ay } = donem;
+
+  const [dagitici, bizim, il, trend] = await Promise.all([
+    // Ürün grubu × dağıtıcı sıralaması (payı EPDK veriyor, biz hesaplamıyoruz).
+    p.query(
+      `SELECT urun_grubu, unvan, toplam_litre, pazar_payi, (unvan = $3) bizim
+       FROM epdk_hacim_dagitici
+       WHERE donem_yil=$1 AND donem_ay=$2
+       ORDER BY urun_grubu, pazar_payi DESC NULLS LAST`,
+      [yil, ay, BIZ],
+    ),
+    // Bizim satırımız + kaçıncı sıradayız.
+    p.query(
+      `SELECT urun_grubu, toplam_litre, pazar_payi, istasyon_litre, koy_litre,
+              tarim_litre, dis_litre,
+              (SELECT count(*)+1 FROM epdk_hacim_dagitici x
+                WHERE x.donem_yil=h.donem_yil AND x.donem_ay=h.donem_ay
+                  AND x.urun_grubu=h.urun_grubu AND x.pazar_payi > h.pazar_payi) sira,
+              (SELECT count(*) FROM epdk_hacim_dagitici x
+                WHERE x.donem_yil=h.donem_yil AND x.donem_ay=h.donem_ay
+                  AND x.urun_grubu=h.urun_grubu) toplam_dagitici
+       FROM epdk_hacim_dagitici h
+       WHERE donem_yil=$1 AND donem_ay=$2 AND unvan=$3
+       ORDER BY urun_grubu`,
+      [yil, ay, BIZ],
+    ),
+    // İl bazında HACİM payı (ton) — adet bazlı ısı ızgarasının hacim karşılığı.
+    // Bizim satırı olmayan il de döner (pay 0) ki harita nötr çizilebilsin.
+    p.query(
+      `WITH t AS (
+         SELECT il, sum(toplam_ton) il_ton,
+                sum(benzin_ton) il_benzin, sum(motorin_ton) il_motorin
+         FROM epdk_hacim_il WHERE donem_yil=$1 AND donem_ay=$2 GROUP BY il),
+       b AS (
+         SELECT il, sum(toplam_ton) biz_ton,
+                sum(benzin_ton) biz_benzin, sum(motorin_ton) biz_motorin
+         FROM epdk_hacim_il WHERE donem_yil=$1 AND donem_ay=$2 AND unvan=$3 GROUP BY il)
+       SELECT t.il, t.il_ton, t.il_benzin, t.il_motorin,
+              COALESCE(b.biz_ton,0) biz_ton,
+              COALESCE(b.biz_benzin,0) biz_benzin,
+              COALESCE(b.biz_motorin,0) biz_motorin,
+              CASE WHEN t.il_ton > 0
+                   THEN round(100.0*COALESCE(b.biz_ton,0)/t.il_ton, 2) ELSE 0 END pay
+       FROM t LEFT JOIN b ON b.il=t.il
+       ORDER BY pay DESC`,
+      [yil, ay, BIZ],
+    ),
+    // Pay trendi (dönem dönem) — "payımız artıyor mu".
+    p.query(
+      `SELECT donem_yil yil, donem_ay ay, urun_grubu, pazar_payi, toplam_litre
+       FROM epdk_hacim_dagitici WHERE unvan=$1
+       ORDER BY donem_yil, donem_ay, urun_grubu`,
+      [BIZ],
+    ),
+  ]);
+
+  return {
+    donem: { yil, ay, etiket: `Ocak–${AY_AD[ay]} ${yil}` },
+    dagitici: dagitici.rows,
+    bizim: bizim.rows,
+    il: il.rows,
+    trend: trend.rows,
+  };
+}
+
+// ══ YÖNETİM: bayilerin ürün grubuna göre alımları ════════════════════════
+// Kaynak: satis_fatura (BFF /dis/v1/mutabakat/fatura-satislari → Logo INVOICE+STLINE).
+// ⚠️ Toplamlar İPTAL HARİÇ. İptal satırı DB'de kalır (yönetim "neden düştü" sorar).
+
+/** Tarih aralığı doğrula/normalize et — SQL'e biçimi doğrulanmamış string gitmesin. */
+function araligiCoz(bas?: string, bit?: string): { bas: string; bit: string } {
+  const gecerli = (s?: string) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null);
+  const b = gecerli(bas);
+  const e = gecerli(bit);
+  if (b && e) return { bas: b, bit: e };
+  // Varsayılan: son 12 ay.
+  const bugun = new Date();
+  const son = new Date(Date.UTC(bugun.getUTCFullYear(), bugun.getUTCMonth() + 1, 1));
+  const ilk = new Date(Date.UTC(bugun.getUTCFullYear(), bugun.getUTCMonth() - 11, 1));
+  return { bas: b ?? ilk.toISOString().slice(0, 10), bit: e ?? son.toISOString().slice(0, 10) };
+}
+
+/**
+ * Yönetim modülü verisi — tarih aralığında bayi × ürün grubu alımları.
+ * `bit` HARİÇ (yarı-açık aralık) — BFF ucuyla aynı sözleşme.
+ */
+export async function yonetimVerisi(p: Pool, basHam?: string, bitHam?: string) {
+  const { bas, bit } = araligiCoz(basHam, bitHam);
+
+  const [ozet, bayiler, gruplar, aylik, tesisler, kapsam] = await Promise.all([
+    // Üst kartlar.
+    p.query(
+      `SELECT count(DISTINCT cari_kod) bayi_sayisi,
+              count(DISTINCT fatura_no) fatura_sayisi,
+              COALESCE(sum(litre),0) litre,
+              COALESCE(sum(tutar),0) tutar
+       FROM satis_fatura WHERE NOT iptal AND tarih >= $1 AND tarih < $2`,
+      [bas, bit],
+    ),
+    // ⭐ ANA SORU: en çok hangi bayi ne kadar aldı (ürün grubu kırılımıyla).
+    p.query(
+      `SELECT cari_kod, MAX(bayi_ad) bayi_ad,
+              COALESCE(sum(litre),0) litre,
+              COALESCE(sum(tutar),0) tutar,
+              COALESCE(sum(litre) FILTER (WHERE urun_grubu='motorin'),0) motorin_litre,
+              COALESCE(sum(litre) FILTER (WHERE urun_grubu='benzin'),0) benzin_litre,
+              COALESCE(sum(litre) FILTER (WHERE urun_grubu NOT IN ('motorin','benzin')),0) diger_litre,
+              count(DISTINCT fatura_no) fatura_sayisi,
+              min(tarih) ilk_alim, max(tarih) son_alim
+       FROM satis_fatura
+       WHERE NOT iptal AND tarih >= $1 AND tarih < $2
+       GROUP BY cari_kod
+       ORDER BY litre DESC`,
+      [bas, bit],
+    ),
+    // Ürün grubu dağılımı.
+    p.query(
+      `SELECT urun_grubu, COALESCE(sum(litre),0) litre, COALESCE(sum(tutar),0) tutar,
+              count(DISTINCT cari_kod) bayi_sayisi
+       FROM satis_fatura WHERE NOT iptal AND tarih >= $1 AND tarih < $2
+       GROUP BY urun_grubu ORDER BY litre DESC`,
+      [bas, bit],
+    ),
+    // Aylık trend (ürün grubu bazında).
+    p.query(
+      `SELECT to_char(date_trunc('month', tarih), 'YYYY-MM') ay,
+              urun_grubu, COALESCE(sum(litre),0) litre, COALESCE(sum(tutar),0) tutar
+       FROM satis_fatura WHERE NOT iptal AND tarih >= $1 AND tarih < $2
+       GROUP BY 1,2 ORDER BY 1,2`,
+      [bas, bit],
+    ),
+    // Çıkış tesisi (ikmal noktası) dağılımı.
+    p.query(
+      `SELECT COALESCE(cikis_tesisi,'(bilinmiyor)') tesis,
+              COALESCE(sum(litre),0) litre, count(DISTINCT cari_kod) bayi_sayisi
+       FROM satis_fatura WHERE NOT iptal AND tarih >= $1 AND tarih < $2
+       GROUP BY 1 ORDER BY litre DESC`,
+      [bas, bit],
+    ),
+    // Veri kapsamı — "boş ekran mı, veri yok mu" ayrımı kullanıcıya görünmeli.
+    p.query(
+      `SELECT (SELECT min(tarih) FROM satis_fatura) veri_bas,
+              (SELECT max(tarih) FROM satis_fatura) veri_bit,
+              (SELECT count(*) FROM satis_fatura WHERE iptal AND tarih >= $1 AND tarih < $2) iptal_satir,
+              (SELECT count(*) FROM satis_fatura WHERE tutar IS NULL AND NOT iptal AND tarih >= $1 AND tarih < $2) tutarsiz_satir,
+              (SELECT count(*) FROM satis_fatura WHERE urun_grubu='diger' AND NOT iptal AND tarih >= $1 AND tarih < $2) grupsuz_satir,
+              (SELECT max(kosu_zamani) FROM satis_fatura_kosu) son_kosu`,
+      [bas, bit],
+    ),
+  ]);
+
+  return {
+    uretim: new Date().toISOString(),
+    aralik: { bas, bit },
+    ozet: ozet.rows[0],
+    bayiler: bayiler.rows,
+    gruplar: gruplar.rows,
+    aylik: aylik.rows,
+    tesisler: tesisler.rows,
+    kapsam: kapsam.rows[0],
+  };
 }

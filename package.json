@@ -24,7 +24,9 @@
     "piyasa:mail": "tsx araclar/piyasaMail.ts",
     "kolon:test": "tsx araclar/kolonMenuTest.ts",
     "fiyat": "tsx araclar/fiyatKiyas.mts",
-    "a1b": "tsx araclar/a1bCek.mts"
+    "a1b": "tsx araclar/a1bCek.mts",
+    "hacim": "tsx araclar/hacimCek.ts",
+    "satis:fatura": "tsx araclar/satisFaturaCek.ts"
   },
   "dependencies": {
     "fast-xml-parser": "^5.10.1",

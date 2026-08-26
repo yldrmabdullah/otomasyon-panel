@@ -107,3 +107,15 @@ export function IkonSpinner({ boyut = 16 }: { boyut?: number }) {
     </svg>
   );
 }
+
+/** Yönetim — yükselen çubuklar + oturum/ciro çizgisi (bayi alımları & ciro). */
+export function IkonYonetim() {
+  return (
+    <svg {...ORTAK}>
+      <path d="M4 20h16" />
+      <rect x="5.5" y="12" width="3.4" height="6" rx="0.8" />
+      <rect x="10.7" y="8.5" width="3.4" height="9.5" rx="0.8" />
+      <rect x="15.9" y="5" width="3.4" height="13" rx="0.8" />
+    </svg>
+  );
+}

@@ -488,6 +488,16 @@ button.kart.sec::after { content: '✓'; color: var(--accent-2); opacity: 1; fon
 .biz-toggle:hover { border-color: var(--cizgi-2); color: var(--metin); }
 .biz-toggle input { accent-color: var(--marka); }
 
+/* Tarih aralığı alanı (Yönetim modülü filtresi). Etiket üstte, input altta —
+   iki tarih yan yana dururken hangisinin "başlangıç" olduğu okunur kalsın. */
+.tarih-alan { display: inline-flex; flex-direction: column; gap: 3px; font-size: 11.5px; color: var(--soluk); }
+.tarih-alan input {
+  background: var(--panel); color: var(--metin); border: 1px solid var(--cizgi-2);
+  border-radius: var(--r-sm); padding: 7px var(--s-3); font: inherit; font-size: var(--t-md);
+  color-scheme: light dark;   /* tarih seçici ikonu temaya uysun */
+}
+.tarih-alan input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+
 /* Segment (İzleme'deki durum filtresi) */
 .segment { display: inline-flex; background: var(--panel); border: 1px solid var(--cizgi); border-radius: var(--r-sm); padding: 3px; gap: 2px; }
 .segment button { background: transparent; color: var(--soluk); border: none; padding: 7px 15px; border-radius: 5px;
