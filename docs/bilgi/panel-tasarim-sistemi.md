@@ -522,3 +522,52 @@ uzun şirket unvanları ("… LİMİTED ŞİRKETİ") hiç sarmıyordu.
 **Ders:** bir testin "geçmesi" yalnız ÖLÇTÜĞÜ şey için geçerlidir. "Responsive mi?"
 sorusunu taşma testiyle yanıtlamak eksikti; kullanıcı gözüyle bakınca hemen görülen
 şeyler ölçüm listesinde yoktu.
+
+## Dışa aktarma: CSV + EXCEL (2026-08-26)
+
+Kullanıcı isteği: *"örnek excel formatımız var, bunu her tablo için aynı güzel
+formata çevirsek, hatta mümkünse logomuz olsa."*
+
+**Önceki durum:** `xlsIndir()` VARDI ama yalnız 3 ekran kullanıyordu (Anomali, Fiyat,
+Uzlaştırma). Panelin geri kalanı — Kaybedilen Bayiler dahil — genel `Tablo`
+bileşeninden geldiği için **düz CSV** iniyordu (kullanıcının gördüğü biçimsiz çıktı).
+
+**Şimdi:** genel `Tablo` bileşenine **Excel** butonu eklendi → her tablo aynı
+kurumsal biçimi veriyor. İki buton bilinçli olarak ayrı:
+- **CSV** → ham veri, başka sisteme aktarma.
+- **Excel** → paylaşılacak rapor (logo + başlık + notlar).
+
+### Excel biçimi (`panel/src/disaAktar.ts > xlsIndir`)
+
+| Satır | İçerik |
+|---|---|
+| 1-2 | Parkoil logosu (gömülü) + rapor adı + "Turgut Dağıtım Enerji A.Ş." |
+| 3-n | bağlam notları (ekrandaki `aciklama` prop'u) + kayıt sayısı + üretim zamanı |
+| başlık | Parkoil kırmızısı (#e30613) zemin, beyaz kalın, **DONDURULMUŞ** |
+| gövde | zebra satır, ince gri kenarlık, sayısal hücreler sağa yaslı |
+
+⚠️ **KÜTÜPHANE YOK** (panel ilkesi): gerçek .xlsx OOXML/ZIP ister (200-900 KB).
+Excel, `application/vnd.ms-excel` MIME + `.xls` uzantılı **HTML tabloyu** native
+açıyor; stil, Türkçe karakter, sekme adı, freeze pane hepsi çalışıyor.
+
+⭐ **KANITLANDI, varsayım değil** (2026-08-26): üretilen dosya gerçek Excel'de COM
+ile açılıp ölçüldü →
+- `Shapes.Count = 1` → **base64 `data:` URI logosu GERÇEKTEN gömülüyor**
+  (legacy .xls HTML biçiminin data-URI resmi desteklemediği yaygın bir yanılgı).
+- `Interior.Color = 1246947` → #e30613 doğru uygulanmış.
+- `FreezePanes = True`, `SplitRow = 6` → başlık satırı donmuş, veri 7'den kayıyor.
+- Türkçe karakterler bozulmamış ("Ayrılış", "ŞANLIURFA").
+- Formül enjeksiyonu korunmuş (`'=ZARARLI…` metin kalıyor).
+
+### Tuzaklar
+- **Sekme adı:** Excel `: \ / ? * [ ]` karakterlerini ve 31 karakteri aşan adı
+  REDDEDİP dosyayı bozuk açıyor → `xlsIndir` temizliyor.
+- **Freeze satırı hesabı:** `SplitHorizontal` = "dondurulan satır SAYISI" (başlık
+  satırının numarası). Başlık bloğu büyüyünce (`notlar` eklenince) bu sayı da
+  değişir; `basSatirNo` dinamik hesaplanıyor, sabit yazılmamalı.
+- **Sunucu modunda Excel butonu GİZLİ:** o tablolarda (Tüm Bayiler, 30.370 satır)
+  aktarım tüm sayfaları çağıran taraf çekiyor; Tablo'nun elindeki tek sayfayı
+  "rapor" diye indirmek yarım dosya olurdu. Orada CSV kalıyor (ham veri amacı da
+  buna uygun).
+- **Tarih aktarımı:** `metin()` ekrandaki TR biçimini vermeli (`25.08.2026`), ham
+  ISO (`2026-08-25`) Excel'de metin olarak kalıyor.

@@ -14,6 +14,8 @@
  *     Bu yüzden hücrenin EKRANDA görünen metni aktarılır, ham değer değil.
  */
 
+import { PARKOIL_LOGO_B64 } from './marka.js';
+
 /** Bir CSV alanını güvenli hale getir.
  *  Tırnak, ayırıcı, satır sonu içeren alan tırnaklanır; içteki tırnak ikilenir. */
 function alan(deger: string): string {
@@ -68,35 +70,153 @@ function xlsHucre(deger: string): string {
   return guvenli.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 }
 
+/** Sayı gibi görünen hücreyi saptar ("1.234,5", "%0,888", "12.000 L", "-3").
+ *
+ *  ⚠️ Excel'e TR biçimli sayıyı metin olarak vermek toplam/sıralama yapılmasını
+ *  engelliyor. Bu yüzden sayısal hücreler sağa yaslanır ve `mso-number-format`
+ *  ile sayı olarak işaretlenir. Ham noktalı değere ÇEVİRMİYORUZ: kullanıcının
+ *  ekranda gördüğü biçim korunmalı (dosya başı 3. tuzak), TR Excel virgüllü
+ *  ondalığı zaten sayı olarak okuyor. */
+function sayisalMi(s: string): boolean {
+  const t = s.trim().replace(/^[%₺]|[%₺]$/g, '').replace(/\s*(L|TL|ton|m³|adet)$/i, '').trim();
+  return t.length > 0 && t.length < 24 && /^-?[\d.]+(,\d+)?$/.test(t);
+}
+
+export interface XlsSecenek {
+  /** Rapor başlığı — dosyanın 1. satırında büyük punto. Verilmezse `baslik`. */
+  raporAdi?: string;
+  /** Başlığın altına yazılan bağlam (dönem, filtre, kaynak…). Satır satır. */
+  notlar?: string[];
+  /** Tablonun altına eklenecek özet satırları (kalın, gri zemin). */
+  ozetSatirlar?: string[][];
+  /** Excel sekme adı (31 karakter sınırı Excel'in kendi kuralı). */
+  sayfaAdi?: string;
+}
+
 /**
- * Excel (.xls) indir — kütüphanesiz. HTML tablo yapısı; Excel'in native açtığı format.
+ * Excel (.xls) indir — kütüphanesiz, KURUMSAL BİÇİMLİ.
  *
  * NEDEN HTML-TABLO: gerçek .xlsx (ZIP/OOXML) kütüphane gerektirir (200-900 KB, bkz.
- * dosya başı ilke). Excel, MIME + .xls uzantılı bir HTML tabloyu tam olarak açar,
- * Türkçe karakter (UTF-8 meta) ve sütun ayrımı sorunsuz gelir. Ondalık için ham
- * sayı değil EKRANDAKİ tr-metni yazılır (CSV ile aynı gerekçe).
+ * dosya başı ilke). Excel, MIME + .xls uzantılı bir HTML tabloyu tam olarak açar;
+ * Türkçe karakter (UTF-8 meta), sütun ayrımı, hücre stili ve GÖMÜLÜ RESİM çalışır.
  *
- * `sayisalKolon`: bu indeksteki hücreler Excel'de SAYI olsun (mso number format) —
- * litre kolonlarında toplam/sıralama yapılabilsin diye. Verilmezse hepsi metin.
+ * Biçim (kullanıcı isteği 2026-08-26 — "logomuz olsa, güzel tablo şeklinde olsa"):
+ *   1. satır  : Parkoil logosu (base64 gömülü, bkz. marka.ts) + rapor adı
+ *   2-n satır : bağlam notları (dönem/filtre/kaynak) + üretim zamanı + satır sayısı
+ *   başlık    : Parkoil kırmızısı zemin, beyaz kalın yazı, DONDURULMUŞ (freeze pane)
+ *   gövde     : zebra (tek/çift satır), ince gri kenarlık, sayısal hücreler sağa
+ *   otomatik  : sütun genişliği içeriğe göre, otomatik filtre (AutoFilter) açık
+ *
+ * ⚠️ Freeze pane + AutoFilter `x:WorksheetOptions` ile veriliyor; bu XML yalnız
+ * Excel tarafından okunuyor (LibreOffice yok sayar, dosya yine açılır).
  */
 export function xlsIndir(
   baslik: string,
   basliklar: string[],
   satirlar: string[][],
-  ozetSatirlar?: string[][],
+  secenekOrOzet?: XlsSecenek | string[][],
 ): void {
-  const bas = `<tr>${basliklar.map((b) => `<th style="background:#e30613;color:#fff;font-weight:bold">${xlsHucre(b)}</th>`).join('')}</tr>`;
-  const govde = satirlar.map((s) => `<tr>${s.map((c) => `<td>${xlsHucre(c)}</td>`).join('')}</tr>`).join('');
-  const ozet = ozetSatirlar?.length
-    ? `<tr><td colspan="${basliklar.length}"></td></tr>` +
-      ozetSatirlar.map((s) => `<tr>${s.map((c) => `<td style="font-weight:bold;background:#f0f0f0">${xlsHucre(c)}</td>`).join('')}</tr>`).join('')
+  // Geriye dönük uyum: eski çağrılar 4. parametre olarak doğrudan özet satırı veriyordu.
+  const sec: XlsSecenek = Array.isArray(secenekOrOzet)
+    ? { ozetSatirlar: secenekOrOzet }
+    : (secenekOrOzet ?? {});
+  const raporAdi = sec.raporAdi ?? baslik;
+  const kolonSayisi = Math.max(1, basliklar.length);
+
+  const KIRMIZI = '#e30613';
+  const stilBas =
+    `background:${KIRMIZI};color:#ffffff;font-weight:bold;font-size:11pt;` +
+    `border:1px solid #b0050f;padding:6px;vertical-align:middle;text-align:center`;
+
+  // ── Rapor başlığı (logo + ad) ──
+  const logo =
+    `<td rowspan="2" style="width:170px;padding:8px;border:none">` +
+    `<img src="data:image/png;base64,${PARKOIL_LOGO_B64}" width="150"/></td>`;
+  const adHucre =
+    `<td colspan="${Math.max(1, kolonSayisi - 1)}" style="font-size:16pt;font-weight:bold;` +
+    `color:${KIRMIZI};border:none;padding:8px 8px 0 8px">${xlsHucre(raporAdi)}</td>`;
+  const sirket =
+    `<td colspan="${Math.max(1, kolonSayisi - 1)}" style="font-size:9pt;color:#666666;` +
+    `border:none;padding:0 8px 8px 8px">Turgut Dağıtım Enerji A.Ş. · Otomasyon Paneli</td>`;
+
+  const damga = new Date().toLocaleString('tr', { dateStyle: 'long', timeStyle: 'short' });
+  const notSatirlari = [
+    ...(sec.notlar ?? []),
+    `${satirlar.length.toLocaleString('tr')} kayıt · ${damga} tarihinde panelden alındı`,
+  ]
+    .map(
+      (n) =>
+        `<tr><td colspan="${kolonSayisi}" style="font-size:9pt;color:#444444;` +
+        `border:none;padding:2px 8px">${xlsHucre(n)}</td></tr>`,
+    )
+    .join('');
+
+  // Boş ayırıcı satır — başlık bloğu ile tablo birbirine yapışmasın.
+  const bosluk = `<tr><td colspan="${kolonSayisi}" style="border:none;height:8px"></td></tr>`;
+
+  const bas = `<tr>${basliklar.map((b) => `<th style="${stilBas}">${xlsHucre(b)}</th>`).join('')}</tr>`;
+
+  const govde = satirlar
+    .map((s, i) => {
+      const zemin = i % 2 ? '#f7f7f9' : '#ffffff';
+      return (
+        `<tr>${s
+          .map((c) => {
+            const sag = sayisalMi(c);
+            const stil =
+              `background:${zemin};border:1px solid #d9d9de;padding:4px 6px;` +
+              `vertical-align:top;${sag ? 'text-align:right;mso-number-format:"\\@"' : ''}`;
+            return `<td style="${stil}">${xlsHucre(c)}</td>`;
+          })
+          .join('')}</tr>`
+      );
+    })
+    .join('');
+
+  const ozet = sec.ozetSatirlar?.length
+    ? `<tr><td colspan="${kolonSayisi}" style="border:none;height:6px"></td></tr>` +
+      sec.ozetSatirlar
+        .map(
+          (s) =>
+            `<tr>${s
+              .map(
+                (c) =>
+                  `<td style="font-weight:bold;background:#ececf0;border:1px solid #c9c9d0;` +
+                  `padding:5px 6px${sayisalMi(c) ? ';text-align:right' : ''}">${xlsHucre(c)}</td>`,
+              )
+              .join('')}</tr>`,
+        )
+        .join('')
     : '';
+
+  // Başlık satırının Excel'deki gerçek satır numarası = logo(2) + notlar + boşluk + 1.
+  const notAdet = (sec.notlar?.length ?? 0) + 1;
+  const basSatirNo = 2 + notAdet + 1 + 1;
+
+  const sayfa = (sec.sayfaAdi ?? raporAdi)
+    // Excel sekme adında YASAK karakterler: : \ / ? * [ ] — ve 31 karakter sınırı.
+    .replace(/[:\\/?*[\]]/g, ' ')
+    .slice(0, 31)
+    .trim() || 'Rapor';
+
   const html =
     `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">` +
-    `<head><meta charset="utf-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>` +
-    `<x:Name>Mutabakat</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet>` +
-    `</x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>` +
-    `<body><table border="1">${bas}${govde}${ozet}</table></body></html>`;
+    `<head><meta charset="utf-8"><style>td,th{font-family:Calibri,Arial,sans-serif;font-size:10pt}</style>` +
+    `<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>` +
+    `<x:Name>${xlsHucre(sayfa)}</x:Name><x:WorksheetOptions>` +
+    // Kılavuz çizgileri KAPALI: kendi kenarlıklarımız var, ikisi birlikte kirli görünüyor.
+    `<x:DoNotDisplayGridlines/>` +
+    // Başlık satırını dondur: uzun listede kaydırırken kolon adları görünür kalsın.
+    `<x:FreezePanes/><x:FrozenNoSplit/>` +
+    `<x:SplitHorizontal>${basSatirNo}</x:SplitHorizontal>` +
+    `<x:TopRowBottomPane>${basSatirNo}</x:TopRowBottomPane>` +
+    `<x:ActivePane>2</x:ActivePane>` +
+    `</x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>` +
+    `<body><table cellspacing="0">` +
+    `<tr>${logo}${adHucre}</tr><tr>${sirket}</tr>` +
+    `${notSatirlari}${bosluk}${bas}${govde}${ozet}` +
+    `</table></body></html>`;
+
   const blob = new Blob(['﻿', html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');

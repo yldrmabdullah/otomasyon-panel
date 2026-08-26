@@ -136,7 +136,14 @@ interface SozlesmeBitecek extends BitisSatiri { sozlesme_bitis: string }
 interface LisansBitecek extends BitisSatiri { lisans_bitis: string }
 interface BolgeselSatir { il: string; toplam: string; bizim: string; pay: string }
 interface BeyazAlan { il: string; toplam: string }
-interface Kaybedilen { ad: string; epdk_kod: string; sehir: string | null; rakip: string; il: string | null }
+interface Kaybedilen {
+  ad: string; epdk_kod: string; sehir: string | null; rakip: string; il: string | null;
+  /** Ayrılış tarihi. Kaynak `tarih_kesin`'e göre değişir — bkz. panelSorgu ANALİZ 3. */
+  ayrilis?: string | null;
+  /** true → bizim tespit günümüz (kesin). false → rakiple sözleşme başlangıcı (alt sınır). */
+  tarih_kesin?: boolean;
+  sozlesme_baslangic?: string | null;
+}
 
 /** HACİM bazlı pazar payı (EPDK sektör raporu). Adet bazlı `bolgesel`den AYRI ölçü. */
 interface HacimDagitici {
@@ -580,6 +587,26 @@ export function Piyasa() {
       hucre: (k) => <span className="rozet uyari">{k.rakip}</span>,
     },
     {
+      /* ⭐ "Ne zaman gitti" (kullanıcı isteği). İki kaynak var ve karıştırılmamalı:
+         kesin = bizim tespit günümüz · tahmini = rakiple sözleşme başlangıcı.
+         Kaynak ayrımı başlıkta DEĞİL hücrede taşınır (satır satır farklı). */
+      id: 'ayrilis', ad: 'Ayrılış', varsayilan: true,
+      sirala: (k) => k.ayrilis ?? '',
+      ara: (k) => k.ayrilis ?? '',
+      // Aktarımda EKRANDAKİ biçim (25.08.2026) kullanılır — ham ISO değil. Excel
+      // TR tarihini tarih olarak tanır; ISO metin olarak kalıyordu.
+      metin: (k) => (k.ayrilis ? `${trTarih(k.ayrilis)}${k.tarih_kesin ? '' : ' (tahmini)'}` : ''),
+      hucre: (k) =>
+        k.ayrilis ? (
+          <span title={k.tarih_kesin
+            ? 'Bizim tespit ettiğimiz gün (EPDK kaydı değişti)'
+            : 'Rakiple sözleşme başlangıcı — bizden ayrılış EN ERKEN bu tarih'}>
+            <time dateTime={k.ayrilis}>{trTarih(k.ayrilis)}</time>
+            {!k.tarih_kesin && <span className="soluk"> ~</span>}
+          </span>
+        ) : <Bos />,
+    },
+    {
       id: 'epdk', ad: 'EPDK', varsayilan: true, sinif: 'mono soluk',
       sirala: (k) => k.epdk_kod, ara: (k) => k.epdk_kod,
       hucre: (k) => k.epdk_kod,
@@ -787,6 +814,10 @@ export function Piyasa() {
                           <div className="analiz-not krit-not">
                             Bu istasyonlar ASIS'te <b>bize veri göndermiyor</b> ama EPDK'da{' '}
                             <b>başka dağıtıcıda aktif</b> — yani Parkoil'den ayrılıp rakibe geçmişler.
+                            {' '}<b>Ayrılış</b> tarihi kesin değilse <span className="soluk">~</span>{' '}
+                            ile işaretli: o satırda tarih, bayinin <b>rakiple sözleşme
+                            başlangıcı</b>dır (bizden ayrılış en erken o tarih). İşaretsiz olanlar
+                            bizim kendi tespit günümüz.
                           </div>
                         }
                       />

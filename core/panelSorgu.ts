@@ -182,13 +182,36 @@ export async function piyasaVerisi(p: Pool) {
       ),
       // ANALİZ 3 — KAYBEDİLEN BAYİLER: ASIS'te bizim istasyonumuz OFFLINE ama
       // EPDK'da başka dağıtıcıda AKTİF → bizden ayrılıp rakibe geçmiş.
+      //
+      // ⭐ "NE ZAMAN GİTTİ" (kullanıcı isteği 2026-08-26). Tarih iki kaynaktan gelir,
+      // güvenilirlik sırasıyla:
+      //   1. `transferler.tespit_gun` — BİZİM tespit ettiğimiz gün. KESİN ama tablo
+      //      2026-07-29'da başladı → 51 kayıptan yalnız 6'sında var.
+      //   2. `bayiler_epdk.sozlesme_baslangic` — RAKİPLE sözleşme başlangıcı. 51/51
+      //      dolu ve derinliği 2021'e gidiyor.
+      // ⚠️ İkisinin anlamı AYNI DEĞİL: (2) bayinin ŞU ANKİ dağıtıcısıyla imza tarihi.
+      // Bayi araya başka dağıtıcı koyup iki kez el değiştirdiyse (2) bizden ayrılış
+      // tarihinden SONRA olur → "en erken bu tarihte gitmiş" alt sınırı. Bizim
+      // snapshot geçmişimiz 2026-08-17'de başlıyor (10 gün), 51'in yalnız 2'sini
+      // kanıtlayabiliyor → daha iyi kaynak YOK. Bu yüzden kaynak ayrımı `tarih_kesin`
+      // ile TAŞINIR ve panelde etiketlenir; tek bir "gidiş tarihi" gibi sunulmaz.
       p.query(
-        `SELECT i.ad, i.epdk_kod, i.sehir, e.dagitim_sirketi rakip, e.il
+        `SELECT i.ad, i.epdk_kod, i.sehir, e.dagitim_sirketi rakip, e.il,
+                COALESCE(t.tespit_gun, e.sozlesme_baslangic) ayrilis,
+                (t.tespit_gun IS NOT NULL) tarih_kesin,
+                e.sozlesme_baslangic
          FROM istasyonlar i
          JOIN baglanti_durum b ON b.istasyon_kod=i.istasyon_kod AND b.online=false
          JOIN bayiler_epdk e ON e.bayi_lisans_no=i.epdk_kod
-         WHERE e.lisans_durumu='ONAYLANDI' AND e.dagitim_sirketi NOT ILIKE '%TURGUT%'
-         ORDER BY i.ad`,
+         -- Aynı bayi için birden çok transfer kaydı olabilir → EN SON dağıtıcı
+         -- değişimi alınır (bizden ayrılışı en iyi temsil eden kayıt).
+         LEFT JOIN (
+           SELECT bayi_lisans_no, max(tespit_gun) tespit_gun
+           FROM transferler WHERE tip='dagitici_degisti'
+             AND eski_deger ILIKE '%TURGUT%'
+           GROUP BY bayi_lisans_no
+         ) t ON t.bayi_lisans_no=i.epdk_kod
+         ORDER BY COALESCE(t.tespit_gun, e.sozlesme_baslangic) DESC NULLS LAST, i.ad`,
       ),
     ]);
 

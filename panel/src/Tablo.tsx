@@ -11,7 +11,7 @@
 
 import { useDeferredValue, useId, useMemo, useState, type ReactNode } from 'react';
 import { KolonSecici, useKolonlar, type KolonTanim } from './KolonSecici.js';
-import { csvIndir, dugumMetni } from './disaAktar.js';
+import { csvIndir, xlsIndir, dugumMetni } from './disaAktar.js';
 
 /** Türkçe sıralama — collator SORT DIŞINDA bir kez kurulur (her karşılaştırmada
  *  opsiyon nesnesi vermek yeni Intl.Collator kurdurur; 30 bin öğede felaket). */
@@ -193,12 +193,32 @@ export function Tablo<T>({
    *  arama filtresi + sıralama (`sirali`) + kolon seçimi (`gorunur`) uygulanmış.
    *  Kademeli gösterim (`ilkGosterim`) UYGULANMAZ: "daha fazla"ya basmamış olsa da
    *  eşleşen TÜM satırlar iner — yarım dosya vermek sessiz veri kaybı olurdu. */
-  function csvAktar() {
+  /** Aktarılacak başlık + satır metni — CSV ve Excel AYNI kaynaktan üretilir
+   *  (iki ayrı yerde üretilse biri kolon eklemeyi kaçırır = sessiz eksik dosya). */
+  function aktarimVerisi() {
     const basliklar = gorunur.map((k) => k.ad);
     const satirMetni = sirali.map((satir) =>
       gorunur.map((k) => (k.metin ? k.metin(satir) : k.ara ? k.ara(satir) : dugumMetni(k.hucre(satir)))),
     );
-    csvIndir(dugumMetni(baslik) || 'tablo', basliklar, satirMetni);
+    return { basliklar, satirMetni, ad: dugumMetni(baslik) || 'tablo' };
+  }
+
+  function csvAktar() {
+    const { basliklar, satirMetni, ad } = aktarimVerisi();
+    csvIndir(ad, basliklar, satirMetni);
+  }
+
+  /** Excel (.xls) — logolu, biçimli rapor. Kullanıcı isteği 2026-08-26: her tablo
+   *  aynı kurumsal biçimde insin (önceden yalnız 3 ekranda vardı, genel Tablo'da yoktu).
+   *  `aciklama` prop'u varsa rapor notu olarak dosyaya taşınır — ekrandaki bağlam
+   *  (ör. "bu istasyonlar bize veri göndermiyor") dosyada da kalsın. */
+  function xlsAktar() {
+    const { basliklar, satirMetni, ad } = aktarimVerisi();
+    const not = dugumMetni(aciklama).replace(/\s+/g, ' ').trim();
+    xlsIndir(ad, basliklar, satirMetni, {
+      raporAdi: ad,
+      notlar: not ? [not] : undefined,
+    });
   }
 
   function basTikla(id: string) {
@@ -305,6 +325,22 @@ export function Tablo<T>({
               </button>
             );
           })()}
+          {/* EXCEL: logolu/biçimli rapor. CSV ham veri için kalıyor (başka
+              sisteme aktarma), Excel paylaşılacak rapor için.
+              ⚠️ Sunucu modunda GİZLİ: orada aktarım tüm sayfaları çağıran taraf
+              çekiyor; Tablo'nun elindeki tek sayfayı "rapor" diye indirmek
+              yarım dosya olurdu (CSV butonu bu yüzden sunucuCsv'ye devrediyor). */}
+          {!aktarGizle && !sunucu && sirali.length > 0 && (
+            <button
+              type="button"
+              className="aktar-btn"
+              onClick={xlsAktar}
+              title={`${sirali.length.toLocaleString('tr')} satır Excel raporu olarak inecek (logolu, biçimli)`}
+            >
+              <span aria-hidden="true">⭳ </span>Excel
+              <span className="sr-only"> raporu olarak indir, {sirali.length} satır</span>
+            </button>
+          )}
           {anahtar && (
             <KolonSecici tanimlar={kolonlar} gorunurMu={kol.gorunurMu} degistir={kol.degistir} />
           )}

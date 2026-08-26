@@ -239,3 +239,36 @@ ve 2.823 hayalet "ayrildi" kaydı üretebilirdi.
    Çekim sıfırdan yazdığı için silme kayıp değil.
 
 `core/db.ts` → `snapshotSil(gun)` eklendi.
+
+## Kaybedilen bayiler: "ne zaman gitti" (2026-08-26)
+
+Kullanıcı sordu: *"burada tarih gösterebiliyor muyuz, ne zaman gittiğini vs.?"*
+
+**Cevap: evet, ama tek bir kesin tarih YOK — iki kaynak var ve anlamları farklı.**
+
+| Kaynak | Ne demek | Kapsam |
+|---|---|---|
+| `transferler.tespit_gun` | **Bizim** tespit ettiğimiz gün (EPDK kaydı değişti) | KESİN ama 51 kayıptan yalnız **3**'ünde var |
+| `bayiler_epdk.sozlesme_baslangic` | Bayinin **rakiple** sözleşme başlangıcı | **51/51** dolu, derinlik 2021'e gidiyor |
+
+Panel `COALESCE(tespit_gun, sozlesme_baslangic)` ile birleştiriyor ve kaynağı
+`tarih_kesin` bayrağıyla TAŞIYOR. Ekranda tahmini olanlar `~` ile işaretli,
+Excel'de "(tahmini)" yazıyor. Tek bir "gidiş tarihi" gibi sunulmuyor.
+
+⚠️ **NEDEN `sozlesme_baslangic` kesin değil:** bayinin ŞU ANKİ dağıtıcısıyla imza
+tarihi. Bayi bizden ayrılıp araya başka bir dağıtıcı koyduysa bu tarih gerçek
+ayrılıştan SONRA olur → **"en erken bu tarihte gitmiş" ALT SINIRI**.
+
+⚠️ **Neden daha iyi kaynak yok:** `transferler` tablosu 2026-07-29'da başladı,
+`bayi_snapshot` ise 2026-08-17'de (ölçüldü: 10 gün, 51 bayinin yalnız 2'sini
+kanıtlıyor). Öncesi için EPDK kütüğündeki sözleşme tarihi tek veri.
+→ Zaman geçtikçe `tespit_gun` kapsamı büyüyecek, tahminler kesinleşecek.
+
+⚠️ **Transfer filtresi:** `eski_deger ILIKE '%TURGUT%'` şart. Bir bayinin
+`dagitici_degisti` kaydı olabilir ama BİZDEN değil başka dağıtıcıdan ayrılmış
+olabilir (ölçüldü: 4YOL'un kaydı TP PETROL'den ayrılış). Filtresiz alınsa
+yanlış tarih gösterilir.
+
+**Çıkarım (aksiyon için):** 51 kaybın **25'i 2026'da, 14'ü son 90 günde**.
+Yıl dağılımı: 2026:25 · 2025:14 · 2024:6 · 2023:1 · 2022:3 · 2021:2. Tablo
+varsayılan olarak EN YENİ ayrılıştan sıralı → taze kayıplar üstte.
