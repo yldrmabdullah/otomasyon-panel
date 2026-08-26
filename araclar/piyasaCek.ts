@@ -6,9 +6,14 @@
 // (o dağıtıcının bayisi yok / erişilemedi) atlanır, döngü durmaz. Bugünün snapshot'ı da yazılır.
 
 import { epdk } from '../core/epdkClient.js';
-import { dagiticilariKaydet, bayileriKaydet, transferleriTespitEt, snapshotSil, kapat } from '../core/db.js';
+import { dagiticilariKaydet, bayileriKaydet, transferleriTespitEt, snapshotSil,
+         snapshotPencereUygula, kapat } from '../core/db.js';
 
 // Bugünün günü (TR) — Node ortamında sabit değil, çalışma anına göre. Snapshot anahtarı.
+// Kaç GÜNLÜK snapshot saklanır (takvim aralığı değil, gün sayısı — cron kaçarsa
+// takvim penceresi yanlışlıkla karşılaştırma çiftini silerdi).
+const SNAPSHOT_PENCERE_GUN = 10;
+
 function bugunTr(): string {
   const tr = new Date(Date.now() + 3 * 3_600_000);
   return tr.toISOString().slice(0, 10);
@@ -103,6 +108,19 @@ async function main() {
     process.exit(2); // cron/CI bunu fark etsin — sessizce başarılı görünmesin
   }
   console.log(transfer > 0 ? `✔ ${transfer} transfer/değişim tespit edildi.` : 'Transfer tespiti: önceki gün yok ya da değişim yok.');
+
+  // SAKLAMA PENCERESİ — transfer tespitinden SONRA (önce silinirse karşılaştırma çifti bozulur).
+  // Snapshot günlük ~30.370 satır / ~6,8 MB yazıyor; sınırsız birikince Supabase 500 MB
+  // ücretsiz sınırı ~35 günde dolacaktı (2026-08-26 ölçümü: 29 günde 197 MB).
+  // Transfer tespiti yalnız son iki günü kıyasladığı için 10 gün fazlasıyla yeter.
+  // Temizlik BAŞARISIZ OLSA BİLE çekim başarılı sayılır: veri yazıldı, yalnız yer açılmadı.
+  try {
+    const silinen = await snapshotPencereUygula(SNAPSHOT_PENCERE_GUN);
+    if (silinen > 0)
+      console.log(`✔ Saklama penceresi: ${silinen} eski snapshot satırı silindi (son ${SNAPSHOT_PENCERE_GUN} gün tutulur).`);
+  } catch (e) {
+    console.error(`UYARI: snapshot temizliği başarısız (çekim etkilenmedi): ${e instanceof Error ? e.message : e}`);
+  }
 
   await kapat();
 }

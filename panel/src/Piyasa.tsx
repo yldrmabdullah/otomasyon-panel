@@ -112,7 +112,7 @@ function bayiKolonlari(sadeceBiz: boolean): TabloKolon<Bayi>[] {
 
 interface Ozet {
   dagitici_sayisi: number; toplam_bayi: number; aktif_bayi: number;
-  snapshot_gun_sayisi: number; aylik_transfer: number;
+  aylik_transfer: number;
 }
 interface DagiticiBayi { dagitim_sirketi: string; n: string }
 interface IlDagilim { il: string; n: string }
@@ -649,7 +649,6 @@ export function Piyasa() {
             <div className="kart"><div className="kart-deger">{veri.ozet.dagitici_sayisi}</div><div className="kart-baslik">Dağıtım Firması</div></div>
             <div className="kart"><div className="kart-deger">{Number(veri.ozet.toplam_bayi).toLocaleString('tr')}</div><div className="kart-baslik">Toplam Bayi</div></div>
             <div className="kart iyi"><div className="kart-deger">{Number(veri.ozet.aktif_bayi).toLocaleString('tr')}</div><div className="kart-baslik">Aktif Bayi</div></div>
-            <div className="kart"><div className="kart-deger">{veri.ozet.snapshot_gun_sayisi}</div><div className="kart-baslik">Snapshot Günü</div></div>
             <div className={`kart ${Number(veri.ozet.aylik_transfer) ? 'uyari' : ''}`}><div className="kart-deger">{veri.ozet.aylik_transfer}</div><div className="kart-baslik">30 Gün Transfer</div></div>
             {bizim && (
               <div className="kart vurgu-kart">
