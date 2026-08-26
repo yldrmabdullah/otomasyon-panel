@@ -222,3 +222,46 @@ Rakam panelde açıkça "tahmin" olarak sunulur.
 - İrsaliyesiz dolum: son 30 günde **%9,5** (280/2949). Bazı istasyonlarda %100.
 - Tankta su > 50 lt: **76 tank**.
 - Kalibrasyon değişimi: 100 kayıt (1240 sayılı karar: 24 saat içinde yedek zorunlu).
+
+## Bildirim kanalı CANLIYA ALINDI (2026-08-26)
+
+Kullanıcı isteği: bildirimlerde mail + WhatsApp kullanmak. **Mail açıldı, WhatsApp ertelendi.**
+
+### Yapılanlar
+1. `EKIP_MAIL` secret'ı `ahmetyildirim@parkoil.com.tr` olarak güncellendi
+   (öncesi: kişisel Gmail adresi).
+2. Kanal testi yapıldı → gelen kutusuna ulaştı (SPAM'e düşmedi, kullanıcı teyit etti).
+3. `BILDIRIM_KAPALI` variable'ı **1 → 0**.
+4. Job elle tetiklendi, canlı doğrulandı:
+   `DRY_RUN: 0` → `Job başladı. (CANLI bildirim)` → **`Bildirim: 2 mail / 2 alarm`**
+   DB'de `bildirim_sayisi=1` (istasyon 210228 + 210058, bağlantı kopuk).
+
+### Kritik ölçüm — açmadan önce yapılan risk analizi
+14 günde **8.141 alarm** birikmişti ve `bildirilen = 0` (hiç mail gitmemiş).
+Bu sayı ilk bakışta "açarsan 8 bin mail gider" gibi görünüyor. GERÇEK DEĞİL:
+
+| | Adet |
+|---|---|
+| Ham alarm (14 gün) | 8.141 |
+| 30 dk içinde kendiliğinden kapanan | 7.108 (%87) |
+| 3 saatlik bildirim eşiğini geçen | **99** |
+| Açıldığı anda AÇIK olan | 6 → bildirilen **2** |
+
+→ Gerçek bildirim hacmi **ayda ~200**, günde birkaç mail. Eşik (`BILDIRIM_TANK_ESIK_SAAT=3`)
+ve kademeli debounce (6/12/24 sa) gürültüyü doğru filtreliyor.
+
+### DRY_RUN kirlenmesi — kontrol edildi, temiz
+`son_bildirim` dolu 1.977 alarm var ama **hepsi KAPALI** (23 Tem – 4 Ağu, düzeltme
+öncesi dönem). Açık hiçbir alarm etkilenmiyor → ilk gerçek mail kaçmadı. Kontrol
+sorgusu: `SELECT count(*) FROM alarmlar WHERE kapandi IS NULL AND son_bildirim IS NOT NULL`
+→ 0 olmalı.
+
+### Durum
+| Kanal | Durum |
+|---|---|
+| **Mail** | ✅ CANLI — ekibe (`ahmetyildirim@parkoil.com.tr`) |
+| Bayiye mail/SMS | ❌ `BAYIYE_GONDER=0` — bilinçli kapalı, eşik izlenmeli |
+| SMS (Netgsm) | ❌ kod var, `NETGSM_*` secret YOK |
+| WhatsApp | ❌ hiç yok — bkz. `docs/bilgi/whatsapp-bildirim.md` |
+
+**Kapatma:** `gh variable set BILDIRIM_KAPALI --body 1` (kod değişmez, job susar).
