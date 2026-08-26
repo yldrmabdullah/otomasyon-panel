@@ -123,7 +123,6 @@ export async function piyasaVerisi(p: Pool) {
                  (SELECT count(*) FROM dagiticilar) dagitici_sayisi,
                  (SELECT count(*) FROM bayiler_epdk WHERE lisans_durumu='ONAYLANDI') aktif_bayi,
                  (SELECT count(*) FROM bayiler_epdk) toplam_bayi,
-                 (SELECT count(DISTINCT snapshot_gun) FROM bayi_snapshot) snapshot_gun_sayisi,
                  (SELECT count(*) FROM transferler WHERE tespit_gun > now()-interval '30 days') aylik_transfer`),
       // ANALİZ 1: DAĞITICI SÖZLEŞMESİ 6 ay içinde bitecek AKTİF bayiler
       // (bizimkiler yenileme takibi, rakipler hedef liste)

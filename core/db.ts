@@ -561,6 +561,44 @@ export async function snapshotSil(gun: string): Promise<number> {
   return r.rowCount ?? 0;
 }
 
+/**
+ * Snapshot SAKLAMA PENCERESİ — belirtilen gün sayısından eski snapshot günlerini siler.
+ *
+ * NEDEN (2026-08-26 ölçümü): `bayi_snapshot` her gün EPDK bayi kütüğünün TAM kopyasını
+ * yazıyor (~30.370 satır / ~6,8 MB). 29 günde 197 MB olmuştu — 257 MB'lık DB'nin %77'si.
+ * Supabase ücretsiz planı 500 MB; bu hızla ~35 gün sonra (≈29.09.2026) dolacak ve DB
+ * dolduğunda YAZMA DURUR: izleme, alarm ve mutabakat işlerinin hepsi kırılır.
+ *
+ * NEDEN GÜVENLİ — silinen veri türetilmiş sonucu BOZMAZ:
+ *  · `transferler` tablosu kendi kalıcı kaydını tutar (eski_deger/yeni_deger/tespit_gun).
+ *    Snapshot silinince geçmiş transferler DURUR, yeniden hesaplanmaz.
+ *  · Transfer tespiti yalnız SON İKİ günü karşılaştırır (bugün ⟷ bir önceki snapshot günü),
+ *    dolayısıyla 10 günlük pencere fazlasıyla yeter — bir cron kaçsa bile pay kalır.
+ *  · `bayi_snapshot`'a FK ile bağlı tablo YOK (doğrulandı).
+ *
+ * ⚠️ ÇAĞRI SIRASI: transfer tespitinden SONRA çağrılmalı. Önce silinirse o günün
+ * karşılaştırma çifti bozulur ve transfer üretilemez.
+ *
+ * Bugünün günü asla silinmez (pencere ne olursa olsun) — koşu sırasında kendini silmesin.
+ *
+ * Döner: silinen satır sayısı.
+ */
+export async function snapshotPencereUygula(gunSayisi = 10): Promise<number> {
+  // En yeni `gunSayisi` snapshot GÜNÜ korunur; kalanlar silinir. Gün sayısı esas alınır,
+  // takvim aralığı değil: cron kaçan günlerde takvim penceresi yanlışlıkla veri silerdi.
+  const r = await pool().query(
+    `DELETE FROM bayi_snapshot
+      WHERE snapshot_gun NOT IN (
+        SELECT snapshot_gun FROM (
+          SELECT DISTINCT snapshot_gun FROM bayi_snapshot
+           ORDER BY snapshot_gun DESC LIMIT $1
+        ) k
+      )`,
+    [gunSayisi],
+  );
+  return r.rowCount ?? 0;
+}
+
 export async function transferleriTespitEt(bugun: string): Promise<number> {
   const p = pool();
   // Bir önceki snapshot günü (bugünden önceki en yakın)
