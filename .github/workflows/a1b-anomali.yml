@@ -12,11 +12,17 @@ name: A1b Stok-Satış Anomali (günlük)
 # ⚠️ Playwright (POL Excel indirmesi) → Actions'ta koşar. Salt-okuma.
 
 on:
-  # Her gün 08:00 UTC (TR 11:00) — A1b bir önceki günün kapanışını içerir, sabah
-  # oturmuş olur. Fiyat takibinden (07:15) sonra: aynı anda iki Playwright işi
-  # POL'e yüklenmesin.
   schedule:
+    # Sabah 08:00 UTC (TR 11:00) — bir ÖNCEKİ günün kapanışı oturmuş olur.
+    # Fiyat takibinden (07:15) sonra: aynı anda iki Playwright işi POL'e yüklenmesin.
     - cron: '0 8 * * *'
+    # ⚠️ 2026-08-27 EKLENDİ: akşam 20:00 UTC (TR 23:00) — İKİNCİ tur.
+    # Sorun: sabah koşusu TR 11:41'de yapılıyor ve POL'de O GÜNÜN kapanışı henüz
+    # oluşmamış oluyor → cari gün BOŞ dönüyor. 26 Ağu koşusu 23–26 aralığını
+    # istedi ama DB'ye 25'e kadar yazıldı; panelde "26 Ağustos — çekim yok"
+    # göründü ve kullanıcı haklı olarak sordu. Gün sonuna yakın ikinci koşu o günü
+    # aynı gün içinde kapatır; 3 günlük pencere + upsert tekrarı zararsız kılar.
+    - cron: '0 20 * * *'
   workflow_dispatch:
     inputs:
       bas:

@@ -1,4 +1,4 @@
-name: Tank Uzlaştırma (aylık)
+name: Tank Uzlaştırma (haftalık + ay kapanışı)
 
 # POL Tank Uzlaştırma Raporu'nu (EPDK stok mutabakatı) bir tarih aralığı için indirip
 # bayi×ürün×tank bazında Fark=(A+B−C)−D hesaplar, Postgres'e yazar. Panel Mevzuat →
@@ -8,19 +8,28 @@ name: Tank Uzlaştırma (aylık)
 # mimari (cron-job.org tetikler; kota public repoda yenmez). Salt-okuma.
 
 on:
-  # Her ayın 3'ü 06:30 UTC — bir ÖNCEKİ ay kapanmış olur (araç varsayılanı geçen ay).
-  # A3 (ayın 2'si) ile çakışmasın diye 3'ü. Uzlaştırma A3'ten bağımsız (farklı POL raporu).
   schedule:
+    # ⚠️ 2026-08-27: ESKİDEN yalnız '30 6 3 * *' vardı (ayın 3'ü, KAPANMIŞ önceki ay).
+    # Sonuç: cari ay panelde HİÇ görünmüyordu — 27 Ağustos'ta en yeni dönem Temmuz'du
+    # ve kullanıcı "Ağustos neden yok" diye sordu. Ayrıca cron o güne dek hiç
+    # tetiklenmemişti; Ocak–Temmuz'un tamamı 12 Ağu'da ELLE çekilmişti.
+    #
+    # Artık iki ritim var:
+    #  1) Her pazartesi 06:30 UTC — CARİ ay (ayın 1'i → bugün). Ay içi kısmi veri,
+    #     her koşuda üzerine yazılır (araç dönemi DELETE+INSERT ediyor, idempotent).
+    - cron: '30 6 * * 1'
+    #  2) Her ayın 3'ü 06:30 UTC — KAPANIŞ koşusu: önceki ayın tamamı, POL geç gelen
+    #     düzeltmeleri de girsin diye. (A3 ayın 2'si; çakışmasın diye 3'ü.)
     - cron: '30 6 3 * *'
   # Elle VE dışarıdan (cron-job.org → GitHub API). Tarih aralığı seçilebilir.
   workflow_dispatch:
     inputs:
       bas:
-        description: "Başlangıç YYYY-MM-DD (boş: geçen ayın 1'i)"
+        description: "Başlangıç YYYY-MM-DD (boş: cron moduna göre cari/geçen ay)"
         required: false
         default: ''
       bit:
-        description: "Bitiş YYYY-MM-DD (boş: geçen ayın son günü)"
+        description: "Bitiş YYYY-MM-DD (boş: cron moduna göre cari/geçen ay)"
         required: false
         default: ''
 
@@ -52,9 +61,29 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      # Tarih verilmezse araç geçen ayı seçer. Boş dispatch/cron → geçen ay.
+      # Dönem, HANGİ CRON'un tetiklediğinden türetilir — takvim panele değil, işe
+      # gömülü olsun diye. Elle verilen bas/bit her şeyi ezer.
+      #   haftalık ('30 6 * * 1') → cari ay: ayın 1'i → bugün (ay içi kısmi)
+      #   kapanış  ('30 6 3 * *') → geçen ay: 1'i → son günü
+      #   dispatch (boş)          → cari ay (elle bakan kişi güncel ayı görmek ister)
+      # Araç dönemi DELETE+INSERT ile yazıyor → aynı ayı tekrar çekmek zararsız.
+      - name: Dönem belirle
+        id: donem
+        run: |
+          if [ -n "${{ github.event.inputs.bas }}" ]; then
+            BAS="${{ github.event.inputs.bas }}"; BIT="${{ github.event.inputs.bit }}"; MOD="elle"
+          elif [ "${{ github.event.schedule }}" = "30 6 3 * *" ]; then
+            BAS="$(date -u -d "$(date -u +%Y-%m-01) -1 month" +%F)"
+            BIT="$(date -u -d "$(date -u +%Y-%m-01) -1 day" +%F)"; MOD="kapanis"
+          else
+            BAS="$(date -u +%Y-%m-01)"; BIT="$(date -u +%F)"; MOD="cari"
+          fi
+          echo "bas=$BAS" >> "$GITHUB_OUTPUT"
+          echo "bit=$BIT" >> "$GITHUB_OUTPUT"
+          echo "::notice::Uzlaştırma modu=$MOD dönem=$BAS → $BIT"
+
       - name: Uzlaştırma çek
-        run: npm run uzlas -- ${{ github.event.inputs.bas }} ${{ github.event.inputs.bit }}
+        run: npm run uzlas -- ${{ steps.donem.outputs.bas }} ${{ steps.donem.outputs.bit }}
         env:
           POL_URL: ${{ secrets.POL_URL }}
           POL_KULLANICI: ${{ secrets.POL_KULLANICI }}
@@ -63,9 +92,11 @@ jobs:
 
       # Dış satış (A4) — uzlaştırmadan bağımsız, satış tarafını tamamlar. Uzlaştırma
       # başarısız olsa bile çekilsin (ayrı POL raporu).
+      # always() DEĞİL: "Dönem belirle" patlarsa bas/bit BOŞ gider ve araç sessizce
+      # kendi varsayılanına (geçen ay) düşerdi — yanlış dönemi çekmektense atla.
       - name: Dış satış (A4) çek
-        if: always()
-        run: npm run dissatis -- ${{ github.event.inputs.bas }} ${{ github.event.inputs.bit }}
+        if: always() && steps.donem.outputs.bas != ''
+        run: npm run dissatis -- ${{ steps.donem.outputs.bas }} ${{ steps.donem.outputs.bit }}
         env:
           POL_URL: ${{ secrets.POL_URL }}
           POL_KULLANICI: ${{ secrets.POL_KULLANICI }}

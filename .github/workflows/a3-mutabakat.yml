@@ -1,4 +1,4 @@
-name: A3 ↔ Logo Mutabakatı (aylık)
+name: A3 ↔ Logo Mutabakatı (haftalık + ay kapanışı)
 
 # POL "A3 Aylık Satış Kontrol" raporunu indirip Logo (BFF /dis/v1) ile karşılaştırır,
 # sonucu Postgres'e yazar (mutabakat_a3). Panel Mevzuat → "A3 ↔ Logo Mutabakatı" okur.
@@ -11,15 +11,20 @@ name: A3 ↔ Logo Mutabakatı (aylık)
 # (ASIS izleme/mutabakat-cek ile aynı mimari; cron-job.org tetikler, kota public'te yenmez).
 
 on:
-  # Her ayın 2'si 06:00 UTC — bir ÖNCEKİ ay kapanmış olur, o ay çekilir ('onceki').
-  # Cron ay-başında güvenli pay (ayın 1'i gece yarısı değil, 2'si sabah).
   schedule:
+    # ⚠️ 2026-08-27: ESKİDEN yalnız '0 6 2 * *' vardı (ayın 2'si, 'onceki' = KAPANMIŞ ay).
+    # Cari ay ancak ay bittikten sonra panele düşüyordu; üstelik cron o güne dek hiç
+    # tetiklenmemişti (Ocak–Ağustos'un tamamı 12 Ağu'da ELLE çekilmiş).
+    #
+    #  1) Her pazartesi 06:00 UTC — 'guncel' (POL'ün en yeni dönemi = cari ay).
+    - cron: '0 6 * * 1'
+    #  2) Her ayın 2'si 06:00 UTC — 'onceki': kapanan ayın nihai hali.
     - cron: '0 6 2 * *'
   # Elle VE dışarıdan (cron-job.org → GitHub API). Dönem seçilebilir.
   workflow_dispatch:
     inputs:
       donem:
-        description: "POL dönem kodu (boş: bir önceki ay · 18=2026 Tem · 19=Ağu · 'guncel': en yeni)"
+        description: "POL dönem kodu (boş: cari ay · 'onceki': geçen ay · 18=2026 Tem · 19=Ağu)"
         required: false
         default: ''
 
@@ -52,12 +57,20 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      # Dönem: workflow_dispatch girdisi > 'onceki' (cron varsayılanı = bir önceki ay).
-      # 'guncel' verilirse en yeni ay; boş dispatch/cron → 'onceki'.
+      # Dönem, hangi cron'un tetiklediğinden türetilir; elle girdi her şeyi ezer.
+      #   ayın 2'si  → 'onceki' (kapanan ay)
+      #   pazartesi / elle boş → 'guncel' (POL'ün en yeni dönemi = cari ay)
+      # Araç dönemi DELETE+INSERT ediyor → aynı dönemi tekrar çekmek zararsız.
       - name: A3 çek + Logo kıyas
-        run: npm run a3 -- "${DONEM:-onceki}"
+        run: |
+          if [ -n "$DONEM" ]; then SEC="$DONEM"
+          elif [ "$TETIK" = "0 6 2 * *" ]; then SEC="onceki"
+          else SEC="guncel"; fi
+          echo "::notice::A3 dönem seçimi=$SEC"
+          npm run a3 -- "$SEC"
         env:
           DONEM: ${{ github.event.inputs.donem }}
+          TETIK: ${{ github.event.schedule }}
           POL_URL: ${{ secrets.POL_URL }}
           POL_KULLANICI: ${{ secrets.POL_KULLANICI }}
           POL_SIFRE: ${{ secrets.POL_SIFRE }}
