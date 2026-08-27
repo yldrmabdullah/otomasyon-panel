@@ -82,19 +82,33 @@ export function Uzlastirma() {
     {
       id: 'fark', ad: 'Fark', varsayilan: true, sinif: 'sag mono', sirala: (b) => Math.abs(b.eFark),
       hucre: (b) => (b.eFark > 0 ? '+' : '') + b.eFark.toLocaleString('tr-TR', { maximumFractionDigits: 0 }),
-      hucreSinif: (b) => (b.durum === 'oran_asim' ? 'krit' : undefined),
+      // ⚠️ b.durum'a DEĞİL asimTank'a bak: 'dis_satis_agirlikli' etiketi oran_asim'i
+      // EZİYOR (panelSorgu: disAgirlikli ? ... : asim ? ...). Sapma varken hücreyi
+      // sönük göstermek "uyuyor" izlenimi verirdi — kullanıcı bunu sordu (2026-08-27).
+      hucreSinif: (b) => (b.asimTank > 0 ? 'krit' : undefined),
     },
     {
       id: 'oran', ad: 'Oran', varsayilan: true, sinif: 'sag mono', sirala: (b) => Math.abs(b.fOran ?? 0),
-      hucre: (b) => pct(b.fOran, b.cSatis), hucreSinif: (b) => (b.durum === 'oran_asim' ? 'krit' : undefined),
+      hucre: (b) => pct(b.fOran, b.cSatis), hucreSinif: (b) => (b.asimTank > 0 ? 'krit' : undefined),
     },
     {
-      id: 'durum', ad: 'Durum', varsayilan: true, sabit: true, sirala: (b) => (b.durum === 'oran_asim' ? 0 : 1),
+      // Sıralama da asimTank'a bakar: sapmalı bayi etiketi ne olursa olsun üstte.
+      id: 'durum', ad: 'Durum', varsayilan: true, sabit: true, sirala: (b) => (b.asimTank > 0 ? 0 : 1),
       hucre: (b) => {
         const d = DURUM[b.durum] ?? { ad: b.durum, sinif: '' };
-        return <span className={`durum-rozet ${d.sinif}`}>{b.asimTank > 0 ? `${b.asimTank} tank · ` : ''}{d.ad}</span>;
+        // "Dış satış ağırlıklı" TEK BAŞINA "uyuyor mu?" sorusunu cevapsız bırakıyordu.
+        // Etiket oran_asim'i ezdiği için sapmalı bayi sorunsuz görünüyordu (ölçüm
+        // 2026-08: 7 dış-satış bayisinin 2'sinde ±%3 aşan tank vardı). Aşım varsa
+        // rozet KIRMIZI ve metin ikisini birden söylüyor.
+        const asimVar = b.asimTank > 0;
+        const sinif = asimVar ? 'krit' : d.sinif;
+        const metin = asimVar && b.durum === 'dis_satis_agirlikli'
+          ? `${b.asimTank} tank ±%3 aşıldı · dış satış ağırlıklı`
+          : `${asimVar ? `${b.asimTank} tank · ` : ''}${d.ad}`;
+        return <span className={`durum-rozet ${sinif}`}>{metin}</span>;
       },
-      ara: (b) => DURUM[b.durum]?.ad ?? b.durum,
+      ara: (b) => (b.asimTank > 0 && b.durum === 'dis_satis_agirlikli'
+        ? `±%3 aşıldı dış satış ağırlıklı` : DURUM[b.durum]?.ad ?? b.durum),
     },
   ], []);
 
@@ -153,8 +167,17 @@ export function Uzlastirma() {
     const baslik = ['Bayi', 'EPDK', 'Bölge', 'Açılış Stok lt', 'Aldığı (Dolum) lt', 'Sattığı (Pompa) lt', 'Dış Satış lt', 'Kapanış Stok lt', 'Fark lt', 'Oran %', 'Sorunlu Tank', 'Durum'];
     const satir = bayiler.map((b) => [
       b.istasyon ?? '', b.epdk, b.bolge ?? '', String(Math.round(b.aBasi)), String(Math.round(b.bDolum)), String(Math.round(b.cSatis)),
-      String(Math.round(b.disSatis)), String(Math.round(b.dSonu)), String(Math.round(b.eFark)), b.fOran == null ? '' : String(b.fOran),
-      String(b.asimTank), DURUM[b.durum]?.ad ?? b.durum,
+      String(Math.round(b.disSatis)), String(Math.round(b.dSonu)), String(Math.round(b.eFark)),
+      // ⚠️ String(b.fOran) YAZMA: JS noktalı ondalık ("8.15") üretir ve TR Excel bunu
+      // TARİH sanıyor → hücrede "8.Nis" görünüyordu (kullanıcı yakaladı 2026-08-27).
+      // TR'de nokta binlik ayıracı; ondalık VİRGÜL olmalı. Ekrandaki pct() ile aynı
+      // biçim (yüzde işareti hariç — kolon başlığı zaten "Oran %").
+      b.fOran == null || b.cSatis < 288 ? '' : b.fOran.toLocaleString('tr-TR', { maximumFractionDigits: 2 }),
+      String(b.asimTank),
+      // Excel'de de aşım gizlenmesin (ekranla aynı kural).
+      b.asimTank > 0 && b.durum === 'dis_satis_agirlikli'
+        ? `${b.asimTank} tank ±%3 aşıldı · dış satış ağırlıklı`
+        : DURUM[b.durum]?.ad ?? b.durum,
     ]);
     const ad = `tank-uzlastirma-${ozet?.bas ?? 'aralik'}`;
     if (xls) xlsIndir(ad, baslik, satir); else csvIndir(ad, baslik, satir);
@@ -207,7 +230,7 @@ export function Uzlastirma() {
         kolonlar={bayiKolon}
         satirlar={veri?.bayiler ?? []}
         satirAnahtar={(b) => b.epdk}
-        satirSinif={(b) => (b.durum === 'oran_asim' ? 'satir-krit' : b.durum === 'dis_satis_agirlikli' ? 'satir-uyari' : undefined)}
+        satirSinif={(b) => (b.asimTank > 0 ? 'satir-krit' : b.durum === 'dis_satis_agirlikli' ? 'satir-uyari' : undefined)}
         satirTikla={(b) => setAcikBayi(acikBayi === b.epdk ? null : b.epdk)}
         yukleniyor={yukleniyor && !veri?.bayiler.length}
         aramaEtiket="Bayi / EPDK / bölge ara…"
