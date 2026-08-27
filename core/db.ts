@@ -495,13 +495,38 @@ export async function bayileriKaydet(
   kapsam: 'tum' | 'onaylandi' = 'tum',
 ): Promise<void> {
   const p = pool();
-  for (const b of bayiler) {
-    if (!b.bayiLisansNo) continue; // iptal/sonlanmış bazı bayilerde lisansNo boş → atla (PK null olamaz)
+  // ⚠️ 2026-08-27: ESKİDEN bayi başına İKİ ayrı `await p.query` vardı (satır-satır).
+  // 30.370 bayi × 2 = 60.740 gidiş-dönüş; ölçülen boş sorgu gecikmesi ~72 ms →
+  // yalnız ağ beklemesi ~73 DAKİKA. Gerçek koşu ~123 dk sürüyordu ve bir keresinde
+  // 120 dk timeout'una takılıp YARIM SNAPSHOT bırakmıştı (o da transfer tespitini
+  // bozar). `dolumlariKaydet`teki toplu-insert deseni buraya da uygulandı.
+  const gecerli = bayiler.filter((b) => b.bayiLisansNo); // lisansNo boş → PK null olamaz, atla
+  if (gecerli.length === 0) return;
+
+  // ⚠️ TEKİLLEŞTİR: aynı yanıtta aynı lisans no iki kez gelirse ON CONFLICT DO UPDATE
+  // "cannot affect row a second time" ile PATLAR (dolumlariKaydet'te yaşanmış hata).
+  const tekil = [...new Map(gecerli.map((b) => [b.bayiLisansNo, b])).values()];
+
+  const KOLON = 18;
+  const PARCA = 500; // 500×18 = 9.000 parametre (limit ~65.535)
+  for (let i = 0; i < tekil.length; i += PARCA) {
+    const grup = tekil.slice(i, i + PARCA);
+    const deger: unknown[] = [];
+    const satir = grup.map((b, j) => {
+      const o = j * KOLON;
+      deger.push(
+        b.bayiLisansNo, b.lisansSahibi, b.dagitimSirketi, dagiticiLisansNo, b.il, b.ilce,
+        b.tesisAdresi, b.vergiNo, b.kategori, b.altBaslik, b.lisansDurumu, b.kacakcilikIptal,
+        gun(b.lisansBaslangic), gun(b.lisansBitis), gun(b.sozlesmeBaslangic),
+        gun(b.sozlesmeBitis), gun(b.iptalTarihi), b.iptalAciklama,
+      );
+      return `(${Array.from({ length: KOLON }, (_, k) => `$${o + k + 1}`).join(',')},now())`;
+    });
     await p.query(
       `INSERT INTO bayiler_epdk (bayi_lisans_no, lisans_sahibi, dagitim_sirketi, dagitici_lisans_no, il, ilce,
          tesis_adresi, vergi_no, kategori, alt_baslik, lisans_durumu, kacakcilik_iptal, lisans_baslangic,
          lisans_bitis, sozlesme_baslangic, sozlesme_bitis, iptal_tarihi, iptal_aciklama, guncelleme)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18, now())
+       VALUES ${satir.join(',')}
        ON CONFLICT (bayi_lisans_no) DO UPDATE SET
          lisans_sahibi=EXCLUDED.lisans_sahibi, dagitim_sirketi=EXCLUDED.dagitim_sirketi,
          dagitici_lisans_no=EXCLUDED.dagitici_lisans_no, il=EXCLUDED.il, ilce=EXCLUDED.ilce,
@@ -511,16 +536,27 @@ export async function bayileriKaydet(
          lisans_bitis=EXCLUDED.lisans_bitis, sozlesme_baslangic=EXCLUDED.sozlesme_baslangic,
          sozlesme_bitis=EXCLUDED.sozlesme_bitis, iptal_tarihi=EXCLUDED.iptal_tarihi,
          iptal_aciklama=EXCLUDED.iptal_aciklama, guncelleme=now()`,
-      [b.bayiLisansNo, b.lisansSahibi, b.dagitimSirketi, dagiticiLisansNo, b.il, b.ilce, b.tesisAdresi,
-       b.vergiNo, b.kategori, b.altBaslik, b.lisansDurumu, b.kacakcilikIptal, gun(b.lisansBaslangic),
-       gun(b.lisansBitis), gun(b.sozlesmeBaslangic), gun(b.sozlesmeBitis), gun(b.iptalTarihi), b.iptalAciklama],
+      deger,
     );
+  }
+
+  const SKOLON = 6;
+  const SPARCA = 1000; // 1000×6 = 6.000 parametre
+  for (let i = 0; i < tekil.length; i += SPARCA) {
+    const grup = tekil.slice(i, i + SPARCA);
+    const deger: unknown[] = [];
+    const satir = grup.map((b, j) => {
+      const o = j * SKOLON;
+      deger.push(snapshotGun, b.bayiLisansNo, b.dagitimSirketi, b.lisansDurumu, b.il, kapsam);
+      return `(${Array.from({ length: SKOLON }, (_, k) => `$${o + k + 1}`).join(',')})`;
+    });
     await p.query(
       `INSERT INTO bayi_snapshot (snapshot_gun, bayi_lisans_no, dagitim_sirketi, lisans_durumu, il, kapsam)
-       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (snapshot_gun, bayi_lisans_no) DO UPDATE SET
+       VALUES ${satir.join(',')}
+       ON CONFLICT (snapshot_gun, bayi_lisans_no) DO UPDATE SET
          dagitim_sirketi=EXCLUDED.dagitim_sirketi, lisans_durumu=EXCLUDED.lisans_durumu,
          il=EXCLUDED.il, kapsam=EXCLUDED.kapsam`,
-      [snapshotGun, b.bayiLisansNo, b.dagitimSirketi, b.lisansDurumu, b.il, kapsam],
+      deger,
     );
   }
 }
