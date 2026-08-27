@@ -1,7 +1,7 @@
 // Sorun Tespiti modülü — POL/EPDK'nın yakaladığı anomalileri kendi verimizden bulur.
 // Kaynak: /api/sorun · Ayrıntılı iş bilgisi: docs/bilgi/epdk-modulu-a-tablolari.md
 //
-// ⚠️ DİL: buradaki hiçbir bulgu "kaçak" ya da "suç" DEĞİLDİR — İNCELENMESİ GEREKEN
+// <span aria-hidden="true">⚠</span> DİL: buradaki hiçbir bulgu "kaçak" ya da "suç" DEĞİLDİR — İNCELENMESİ GEREKEN
 // anomalidir. Çoğunun masum açıklaması olabilir (bir tanker iki bayiye boşaltmış,
 // veri gecikmesi, sistem çift kaydı). Panel "şüpheli" der, "suçlu" demez.
 import { useMemo } from 'react';
@@ -93,7 +93,7 @@ export function Sorun() {
       hucre: (r) => String(r.satir), sirala: (r) => r.satir,
     },
     {
-      // ⚠️ Bu hücre virgülle ayrılmış İSTASYON LİSTESİ — bir irsaliye 5 tesise
+      // <span aria-hidden="true">⚠</span> Bu hücre virgülle ayrılmış İSTASYON LİSTESİ — bir irsaliye 5 tesise
       // bölünmüşse 5 uzun unvan yan yana geliyor. `not-hucre` olmadan tek satırda
       // 2822px sürüyordu ve tabloyu 3279px'e çıkarıp diğer kolonları ekran dışına
       // itiyordu (ölçüldü 2026-08-13). not-hucre sarmalı + genişlik tavanı verir.
@@ -248,7 +248,7 @@ export function Sorun() {
               baslik={`Aynı irsaliye birden fazla istasyonda — ${veri.mukerrerTesis.length} adet`}
               aciklama={
                 <>
-                  ⚠️ <strong>Tek başına sorun değil</strong>: bir tanker iki bayiye boşaltabilir.
+                  <span aria-hidden="true">⚠</span> <strong>Tek başına sorun değil</strong>: bir tanker iki bayiye boşaltabilir.
                   İncelenmesi gereken <strong>3+ istasyona bölünmüş</strong> olanlar ve kural dışı
                   numarayla birleşenler.
                 </>
@@ -299,7 +299,7 @@ export function Sorun() {
                 <>
                   Dolum kaydedilmiş ama tank seviyesi <strong>aynı kalmış ya da düşmüş</strong>.
                   <br />
-                  ⚠️ <strong>KAPSAM SINIRLI:</strong> bu kontrol yalnız seviye bilgisi olan
+                  <span aria-hidden="true">⚠</span> <strong>KAPSAM SINIRLI:</strong> bu kontrol yalnız seviye bilgisi olan
                   kayıtlarda yapılabiliyor — son {esik.pencereGun} günde{' '}
                   <strong>{sayi(esik.seviyeVar)} / {sayi(esik.dolumToplam)}</strong> dolum
                   (<strong>%{esik.seviyeKapsamYuzde}</strong>). Alan 29.07.2026'da eklendi,

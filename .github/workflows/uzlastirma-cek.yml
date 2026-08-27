@@ -67,11 +67,12 @@ jobs:
       #   kapanış  ('30 6 3 * *') → geçen ay: 1'i → son günü
       #   dispatch (boş)          → cari ay (elle bakan kişi güncel ayı görmek ister)
       # Araç dönemi DELETE+INSERT ile yazıyor → aynı ayı tekrar çekmek zararsız.
+      # ⚠️ GÜVENLİK 2026-08-27: girdiler env üzerinden (bkz. fiyat-takip.yml notu).
       - name: Dönem belirle
         id: donem
         run: |
-          if [ -n "${{ github.event.inputs.bas }}" ]; then
-            BAS="${{ github.event.inputs.bas }}"; BIT="${{ github.event.inputs.bit }}"; MOD="elle"
+          if [ -n "$G_BAS" ]; then
+            BAS="$G_BAS"; BIT="$G_BIT"; MOD="elle"
           elif [ "${{ github.event.schedule }}" = "30 6 3 * *" ]; then
             BAS="$(date -u -d "$(date -u +%Y-%m-01) -1 month" +%F)"
             BIT="$(date -u -d "$(date -u +%Y-%m-01) -1 day" +%F)"; MOD="kapanis"
@@ -81,9 +82,12 @@ jobs:
           echo "bas=$BAS" >> "$GITHUB_OUTPUT"
           echo "bit=$BIT" >> "$GITHUB_OUTPUT"
           echo "::notice::Uzlaştırma modu=$MOD dönem=$BAS → $BIT"
+        env:
+          G_BAS: ${{ github.event.inputs.bas }}
+          G_BIT: ${{ github.event.inputs.bit }}
 
       - name: Uzlaştırma çek
-        run: npm run uzlas -- ${{ steps.donem.outputs.bas }} ${{ steps.donem.outputs.bit }}
+        run: npm run uzlas -- "${{ steps.donem.outputs.bas }}" "${{ steps.donem.outputs.bit }}"
         env:
           POL_URL: ${{ secrets.POL_URL }}
           POL_KULLANICI: ${{ secrets.POL_KULLANICI }}
@@ -96,7 +100,7 @@ jobs:
       # kendi varsayılanına (geçen ay) düşerdi — yanlış dönemi çekmektense atla.
       - name: Dış satış (A4) çek
         if: always() && steps.donem.outputs.bas != ''
-        run: npm run dissatis -- ${{ steps.donem.outputs.bas }} ${{ steps.donem.outputs.bit }}
+        run: npm run dissatis -- "${{ steps.donem.outputs.bas }}" "${{ steps.donem.outputs.bit }}"
         env:
           POL_URL: ${{ secrets.POL_URL }}
           POL_KULLANICI: ${{ secrets.POL_KULLANICI }}

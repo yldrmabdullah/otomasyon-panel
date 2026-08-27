@@ -46,6 +46,10 @@ CREATE TABLE IF NOT EXISTS bayiler_epdk (
 );
 CREATE INDEX IF NOT EXISTS ix_bayi_dagitim ON bayiler_epdk (dagitim_sirketi);
 CREATE INDEX IF NOT EXISTS ix_bayi_il ON bayiler_epdk (il);
+-- ⚠️ 2026-08-27: `kayipBayileriUzlastir` (core/db.ts) bu kolonla süzüyor ve çekim
+-- başına dağıtıcı sayısı kadar (32) çağrılıyor. İndekssiz her çağrı 30.370 satırı
+-- baştan sona tarıyordu (EXPLAIN: Seq Scan, Rows Removed by Filter: 30370).
+CREATE INDEX IF NOT EXISTS ix_bayi_dagitici_lisans ON bayiler_epdk (dagitici_lisans_no);
 
 -- ⭐ SÖZLEŞME/LİSANS BİTİŞ SORGULARI İÇİN (2026-08-04, EXPLAIN ile ölçüldü).
 --

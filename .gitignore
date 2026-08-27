@@ -33,4 +33,10 @@ panel/public/api/
 .*.txt
 _*.txt
 _*.mjs
+# ⚠️ 2026-08-27: desen `.mts`/`.ts` uzantısını KAÇIRIYORDU. Denetim sırasında canlı bayi
+# ve fatura sorguları içeren izlenmeyen bir `_denetim.mts` çalışma ağacında duruyordu —
+# tek bir `git add .` ile PUBLIC repoya girerdi. Aynı gerekçe, aynı koruma.
+_*.mts
+_*.ts
+.*.mts
 .k

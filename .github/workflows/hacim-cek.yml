@@ -56,9 +56,14 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
+      # ⚠️ GÜVENLİK 2026-08-27: girdi ARTIK doğrudan `run:` içine gömülmüyor.
+      # Tırnaksız `${{ github.event.inputs.x }}` kabuğa aynen yazılır; repo PUBLIC ve
+      # aynı job'ın env'inde DATABASE_URL/POL_SIFRE/BFF_API_KEY var → `a; curl ...`
+      # gibi bir girdi sırları dışarı sızdırabilirdi. env ile geçir, kabukta tırnakla.
       - name: EPDK hacim çekimi
-        run: npm run hacim -- ${{ github.event.inputs.hedef }}
+        run: npm run hacim -- $HEDEF
         env:
+          HEDEF: ${{ github.event.inputs.hedef }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
       # hacimCek.ts dönem başına hata yakalar ve epdk_hacim_kosu'ya yazar; dizin
       # sayfası hiç ayrıştırılamazsa (EPDK sayfa yapısı değişti) job KIRILIR —

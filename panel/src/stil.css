@@ -642,6 +642,14 @@ th.sirali.sag .th-btn { justify-content: flex-end; }
 .th-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover td { background: var(--panel-2); }
+/* ⚠️ 2026-08-27: `.soluk` YALNIZ `td.soluk` olarak tanımlıydı — element-bağlı seçici.
+   `<span className="soluk">` / `<div className="soluk">` hiç sönükleşmiyordu (Grafik,
+   Harita, Operasyon, Piyasa, Sorun, Yonetim, Kullanicilar, Anomali'de 14 kullanım):
+   ikincil bilgi birincil metinle AYNI ağırlıkta çıkıyor, görsel hiyerarşi düzleşiyordu.
+   Tablo tuzak #1'in (td.krit/td.uyari span'de eşleşmiyor) birebir tekrarı.
+   Element-bağımsız kural önce gelir; `td.soluk` ve aşağıdaki satır-içi override'lar
+   daha yüksek özgüllükle onu yenmeye devam eder. */
+.soluk { color: var(--soluk); }
 td.soluk { color: var(--soluk); }
 /* Ad hücresi (ilk kolon DIŞINDA): tek satır + ellipsis. */
 .ad-hucre { font-weight: 500; max-width: min(280px, 32vw); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1591,6 +1599,9 @@ td.uyari-metin, .uyari-metin { color: var(--uyari); font-weight: 600; }
 .durum-rozet.iyi { background: var(--iyi-bg); color: var(--iyi); }
 .durum-rozet.uyari { background: var(--uyari-bg); color: var(--uyari); }
 .durum-rozet.krit { background: var(--krit-bg); color: var(--krit); }
+/* `satis_yok` rozeti `soluk` varyantı istiyordu ama karşılığı yoktu → zeminsiz düz
+   metin olarak çıkıyor, diğer dört rozet renkliyken tek başına farklı görünüyordu. */
+.durum-rozet.soluk { background: var(--panel-3); color: var(--soluk-2); }
 
 /* Özet kartındaki birim (lt) ve alt not */
 .kart-birim { font-size: var(--t-md); font-weight: 600; color: var(--metin-2); margin-left: 2px; }

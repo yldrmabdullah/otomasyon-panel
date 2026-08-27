@@ -152,7 +152,7 @@ export function Harita({
             </span>
           </>
         ) : (
-          <span className="soluk">Bir il üzerine gelin ya da Tab ile gezin.</span>
+          <span className="soluk">Bir il üzerine gelin — tüm sayılar aşağıdaki tabloda.</span>
         )}
       </p>
     </section>

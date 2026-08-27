@@ -62,14 +62,18 @@ jobs:
 
       # Günlük koşuda içinde bulunulan ay yeniden çekilir (upsert) — gün içinde
       # kesilen/iptal edilen faturalar da güncellenir. Geri dolum elle tetiklenir.
+      # ⚠️ GÜVENLİK 2026-08-27: girdiler env üzerinden (bkz. fiyat-takip.yml notu).
       - name: Satış faturası çekimi
         run: |
-          if [ -n "${{ github.event.inputs.aylar }}" ]; then
-            npm run satis:fatura -- --aylar "${{ github.event.inputs.aylar }}"
+          if [ -n "$AYLAR" ]; then
+            npm run satis:fatura -- --aylar "$AYLAR"
           else
-            npm run satis:fatura -- ${{ github.event.inputs.bas }} ${{ github.event.inputs.bit }}
+            npm run satis:fatura -- $BAS $BIT
           fi
         env:
+          AYLAR: ${{ github.event.inputs.aylar }}
+          BAS: ${{ github.event.inputs.bas }}
+          BIT: ${{ github.event.inputs.bit }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           BFF_URL: ${{ secrets.BFF_URL }}
           BFF_API_KEY: ${{ secrets.BFF_API_KEY }}

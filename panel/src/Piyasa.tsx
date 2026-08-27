@@ -705,7 +705,7 @@ export function Piyasa() {
               <div className="kart vurgu-kart">
                 <div className="kart-deger">{bizim.sayi}</div>
                 <div className="kart-baslik">
-                  <span className="marka-rozet">PARKOIL</span>
+                  <span className="marka-rozet"><span className="sr-only">Parkoil bayisi: </span>PARKOIL</span>
                   {bizim.sira}. sıra
                 </div>
               </div>
@@ -737,7 +737,7 @@ export function Piyasa() {
                           }))}
                           olcu="bizim"
                           baslik="Bayi Dağılımı — Harita"
-                          altBaslik="Koyu renk = çok bayimiz · bir il üzerine gelin ya da Tab ile gezin"
+                          altBaslik="Koyu renk = çok bayimiz · bir il üzerine gelin — tüm sayılar aşağıdaki tabloda"
                         />
                       )}
 
@@ -1189,10 +1189,10 @@ function HacimBolumu({ hacim }: { hacim?: HacimVeri }) {
           <div className="kart vurgu-kart" key={b.urun_grubu}>
             <div className="kart-deger">%{Number(b.pazar_payi ?? 0).toFixed(3)}</div>
             <div className="kart-baslik">
-              <span className="marka-rozet">PARKOIL</span>
+              <span className="marka-rozet"><span className="sr-only">Parkoil bayisi: </span>PARKOIL</span>
               {b.urun_grubu === 'motorin' ? 'Motorin' : 'Benzin'} · {b.sira}/{b.toplam_dagitici}. sıra
             </div>
-            <div className="kart-alt">{litre(b.toplam_litre)} litre</div>
+            <div className="kart-alt-not">{litre(b.toplam_litre)} litre</div>
           </div>
         ))}
       </section>

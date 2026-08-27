@@ -73,7 +73,7 @@ export function CubukYatay<T>({
             <div key={ad(x)} className={atlama ? 'cubuk-satir atlamali' : 'cubuk-satir'}>
               <span className="cubuk-sira mono">{sira}</span>
               <span className={`cubuk-ad${biz ? ' biz' : ''}`} title={ad(x)}>
-                {biz && <span className="marka-rozet">PARKOIL</span>}
+                {biz && <span className="marka-rozet"><span className="sr-only">Parkoil bayisi: </span>PARKOIL</span>}
                 {ad(x)}
               </span>
               <div className="cubuk-yol">

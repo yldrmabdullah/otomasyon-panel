@@ -4,7 +4,7 @@
 // NEDEN AYRI MODÜL: Piyasa modülü DIŞ dünyayı anlatıyor (EPDK, rakip, tüm bayiler).
 // Burası İÇ ticaret: kendi bayimiz bizden ne kadar aldı. Ölçü litre + TL.
 //
-// ⚠️ Toplamlar İPTAL HARİÇ (sunucu tarafında filtreli). İptal sayısı "Veri kapsamı"
+// <span aria-hidden="true">⚠</span> Toplamlar İPTAL HARİÇ (sunucu tarafında filtreli). İptal sayısı "Veri kapsamı"
 //    satırında görünür — sessizce yok sayılmıyor.
 import { useMemo, useState } from 'react';
 import { Tablo, type TabloKolon } from './Tablo.js';
@@ -98,7 +98,10 @@ export function Yonetim() {
     return [...m.entries()].map(([ay, litre]) => ({ ay, litre })).sort((x, y) => x.ay.localeCompare(y.ay));
   }, [veri?.aylik]);
 
-  if (hata) return <Bos />;
+  // <span aria-hidden="true">⚠</span> 2026-08-27: burada `return <Bos />` vardı — API 500 verdiğinde kullanıcı tek bir
+  // tire görüp "bu dönemde alım yok" sanıyordu. Panelin ilkesi: "veri yok" ile "sistem
+  // bozuk" ayırt edilebilmeli. Diğer 10 modüldeki desenle aynı.
+  if (hata) return <div className="hata" role="alert"><span aria-hidden="true">⚠ </span>{hata}</div>;
 
   const ozet = veri?.ozet;
   const kapsam = veri?.kapsam;
@@ -162,7 +165,7 @@ export function Yonetim() {
           <div className="analiz-not">
             Veri aralığı: <b>{trTarih(kapsam?.veri_bas)}</b> – <b>{trTarih(kapsam?.veri_bit)}</b>
             {n(kapsam?.iptal_satir) > 0 && <> · {kapsam?.iptal_satir} iptal satırı toplamlara DAHİL DEĞİL</>}
-            {n(kapsam?.grupsuz_satir) > 0 && <> · ⚠️ {kapsam?.grupsuz_satir} satır ürün grubuna eşlenemedi</>}
+            {n(kapsam?.grupsuz_satir) > 0 && <> · <span aria-hidden="true">⚠</span> {kapsam?.grupsuz_satir} satır ürün grubuna eşlenemedi</>}
             {kapsam?.son_kosu && <> · son çekim {trTarih(kapsam.son_kosu)}</>}
           </div>
 

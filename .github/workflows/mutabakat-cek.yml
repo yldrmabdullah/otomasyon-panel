@@ -105,8 +105,14 @@ jobs:
       # Seviye başarısız olsa bile satış çekilsin (bağımsız kalemler).
       - name: Pompa satışı özet (C)
         if: always()
-        run: npm run satis -- ${{ github.event.inputs.satis_bas }} ${{ github.event.inputs.satis_bit }}
+      # ⚠️ GÜVENLİK 2026-08-27: girdi ARTIK doğrudan `run:` içine gömülmüyor.
+      # Tırnaksız `${{ github.event.inputs.x }}` kabuğa aynen yazılır; repo PUBLIC ve
+      # aynı job'ın env'inde DATABASE_URL/POL_SIFRE/BFF_API_KEY var → `a; curl ...`
+      # gibi bir girdi sırları dışarı sızdırabilirdi. env ile geçir, kabukta tırnakla.
+        run: npm run satis -- $SATIS_BAS $SATIS_BIT
         env:
+          SATIS_BAS: ${{ github.event.inputs.satis_bas }}
+          SATIS_BIT: ${{ github.event.inputs.satis_bit }}
           ASIS_GATEWAY: ${{ secrets.ASIS_GATEWAY }}
           ASIS_GUID_KEY: ${{ secrets.ASIS_GUID_KEY }}
           ASIS_DAGITICI_KOD: ${{ secrets.ASIS_DAGITICI_KOD }}
