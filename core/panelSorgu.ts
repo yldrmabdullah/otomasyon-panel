@@ -139,7 +139,11 @@ export async function piyasaVerisi(p: Pool) {
                 (dagitim_sirketi=$1) bizim
          FROM bayiler_epdk
          WHERE lisans_durumu='ONAYLANDI' AND sozlesme_bitis IS NOT NULL
-           AND sozlesme_bitis > now() AND sozlesme_bitis < now()+interval '180 days'
+           -- ⚠️ 2026-08-27: onceki hali > now() idi. sozlesme_bitis bir DATE (gece yarisina genisler),
+           -- now() ise gün ortası → BUGÜN biten sözleşme panelde HİÇ görünmüyordu, ama mail
+           -- sorgusu (current_date ile) onu gönderiyordu. Ölçüm: bugün biten 8 aktif bayi;
+           -- panel 0, mail 8 diyordu. İki taraf artık aynı sözleşmeyi konuşuyor.
+           AND sozlesme_bitis::date >= current_date AND sozlesme_bitis::date < current_date+180
          ORDER BY sozlesme_bitis ASC LIMIT 2000`,
         [BIZ],
       ),
@@ -150,7 +154,7 @@ export async function piyasaVerisi(p: Pool) {
                 (dagitim_sirketi=$1) bizim
          FROM bayiler_epdk
          WHERE lisans_durumu='ONAYLANDI' AND lisans_bitis IS NOT NULL
-           AND lisans_bitis > now() AND lisans_bitis < now()+interval '180 days'
+           AND lisans_bitis::date >= current_date AND lisans_bitis::date < current_date+180
          ORDER BY lisans_bitis ASC LIMIT 2000`,
         [BIZ],
       ),
@@ -211,6 +215,14 @@ export async function piyasaVerisi(p: Pool) {
              AND eski_deger ILIKE '%TURGUT%'
            GROUP BY bayi_lisans_no
          ) t ON t.bayi_lisans_no=i.epdk_kod
+         -- ⚠️ 2026-08-27: BU İKİ ŞART YOKTU. Üstteki yorum "EPDK'da başka dağıtıcıda AKTİF"
+         -- diyordu ama SQL bunu hiç uygulamıyordu → liste 91 satır dönüyordu ve içinde
+         -- 33 KENDİ bayimiz (3'ü hâlâ ONAYLANDI+aktif, sadece o an offline) ile 37 kapanmış
+         -- bayi vardı. "Kaybedilen" listesi kendi aktif bayimizi kaybedilmiş gösteriyordu.
+         -- Doğru sayı 51 (rakipte ONAYLANDI) — kapanmış bayi rekabet kaybı DEĞİLDİR.
+         WHERE e.dagitim_sirketi IS NOT NULL
+           AND e.dagitim_sirketi NOT ILIKE '%TURGUT%'
+           AND e.lisans_durumu = 'ONAYLANDI'
          ORDER BY COALESCE(t.tespit_gun, e.sozlesme_baslangic) DESC NULLS LAST, i.ad`,
       ),
     ]);
@@ -263,6 +275,16 @@ export async function durumVerisi(p: Pool) {
     p.query(`SELECT b.istasyon_kod, b.online, b.kayitli_aktif, b.son_veri_zamani, b.ip, b.guncelleme,
                CASE
                  WHEN b.online THEN 'online'
+                 -- ⚠️ 2026-08-27 KRİTİK DÜZELTME: kayitli_aktif IS FALSE -> kapandi dalı
+                 -- BURADA, EPDK dallarının ÜSTÜNDEYDİ. Bayi rakibe geçtiğinde ASIS kütüğünde
+                 -- de pasife çekildiği için ikisi HEP BİRLİKTE oluyor → 'rakibe' dalı hiç
+                 -- çalışmıyordu. ÖLÇÜM: kayitli_aktif=false 98 noktanın 51'i EPDK'da RAKİPTE
+                 -- ONAYLANDI (SAATLILAR→TERMOPET, ELİNT→TECO, YSK KARPET→SİYAM...) ama panel
+                 -- "Rakibe geçti: 0" gösteriyordu — rekabet kaybı tamamen görünmezdi.
+                 -- Sıra artık: EPDK gerçeği önce, ASIS kütük bayrağı en son fallback.
+                 WHEN e.dagitim_sirketi IS NOT NULL AND e.dagitim_sirketi NOT ILIKE '%TURGUT%'
+                      AND e.lisans_durumu = 'ONAYLANDI' THEN 'rakibe'
+                 WHEN e.lisans_durumu IN ('IPTAL_EDILDI','SONLANDIRILDI') THEN 'kapandi'
                  WHEN b.kayitli_aktif IS FALSE THEN 'kapandi'
                  WHEN e.dagitim_sirketi ILIKE '%TURGUT%' AND e.lisans_durumu='ONAYLANDI' THEN 'kopuk'
                  -- EPDK_DE_YOK: kayıt EPDK yanıtından tamamen çıkmış (bkz. kayipBayileriUzlastir).
@@ -270,8 +292,6 @@ export async function durumVerisi(p: Pool) {
                  -- dağıtıcı adını bilmiyoruz ama "kaybettik" bilgisi kesin. 'bilinmiyor'a
                  -- düşerse kayıp sessizce gizlenirdi; 'rakibe' doğru kova.
                  WHEN e.lisans_durumu = 'EPDK_DE_YOK' THEN 'rakibe'
-                 WHEN e.lisans_durumu IN ('IPTAL_EDILDI','SONLANDIRILDI') THEN 'kapandi'
-                 WHEN e.dagitim_sirketi IS NOT NULL AND e.dagitim_sirketi NOT ILIKE '%TURGUT%' THEN 'rakibe'
                  ELSE 'bilinmiyor'
                END kategori,
                e.dagitim_sirketi rakip, e.iptal_aciklama, e.iptal_tarihi,
@@ -586,11 +606,16 @@ export async function operasyonVerisi(p: Pool) {
       // 1) Kalan gün — İKİ TARAF da istasyon+ürün bazında toplanır (yukarıdaki tuzak a)
       p.query(
         `WITH tuketim AS (
-           SELECT istasyon_kod, urun, sum(dolum_miktari) / $1::numeric gunluk
+           -- ⚠️ 2026-08-27: burada HAM dolum_miktari vardı, mutabakat ise NET kullanıyor
+           -- (satır 855). İki modül aynı kavramı farklı ölçüyordu: son 30 günde ham
+           -- 21.912.730 lt / net 21.632.039 lt → %1,28 fark. Bu, günlük tüketimi yüksek
+           -- gösterip "kalan gün"ü kısaltıyordu. Kazara ayrışma (net kolon 2.596 kaydın
+           -- HEPSİNDE dolu, fallback hiç devreye girmiyor) — mutabakatla hizalandı.
+           SELECT istasyon_kod, urun, sum(coalesce(dolum_miktari_net, dolum_miktari)) / $1::numeric gunluk
            FROM tank_dolum
            WHERE dolum_baslama >= now() - ($1 || ' days')::interval
            GROUP BY 1, 2
-           HAVING sum(dolum_miktari) > 0),
+           HAVING sum(coalesce(dolum_miktari_net, dolum_miktari)) > 0),
          stok AS (
            SELECT istasyon_kod, urun, sum(mevcut_lt) mevcut, count(*) tank,
                   sum(kapasite_lt) kapasite, max(son_olcum_zamani) son_olcum
