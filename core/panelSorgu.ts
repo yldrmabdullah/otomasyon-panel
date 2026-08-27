@@ -619,7 +619,14 @@ export async function operasyonVerisi(p: Pool) {
          stok AS (
            SELECT istasyon_kod, urun, sum(mevcut_lt) mevcut, count(*) tank,
                   sum(kapasite_lt) kapasite, max(son_olcum_zamani) son_olcum
+           -- ⚠️ 2026-08-27: TAZELİK SÜZGECİ YOKTU. tanklariKaydet saf upsert; ASIS artık
+           -- göndermediği tank kaydına HİÇ dokunmuyor → kayıt son ölçümüyle DONUP KALIYOR
+           -- ve panelde CANLI STOK gibi görünüyor. Ölçüm: 23 kayıt 2 günden eski
+           -- (en eskisi 35 gün), toplam 61.094 lt hayalet stok. İçlerinde YSK KARPET ve
+           -- ELİNT gibi RAKİBE GEÇMİŞ bayiler var — bir daha hiç veri göndermeyecekler.
+           -- Bayat stok "kalan gün" hesabını da kirletiyordu.
            FROM tank_durum WHERE kapasite_lt > 0
+             AND guncelleme > now() - interval '2 days'
            GROUP BY 1, 2)
          SELECT s.istasyon_kod, i.ad istasyon_ad, i.sehir, s.urun, s.tank,
                 round(s.mevcut) mevcut_lt, round(s.kapasite) kapasite_lt,
@@ -711,7 +718,10 @@ export async function operasyonVerisi(p: Pool) {
                 t.son_olcum_zamani
          FROM tank_durum t
          LEFT JOIN istasyonlar i ON i.istasyon_kod = t.istasyon_kod
-         WHERE t.su_lt > $1 ORDER BY t.su_lt DESC LIMIT 100`,
+         -- Bayat kayıt sulu-tank listesini de kirletiyordu: 35 gün önceki ölçümle
+         -- "bu tankta su var" demek, bugün müdahale gerektiren tankla aynı kovada.
+         WHERE t.su_lt > $1 AND t.guncelleme > now() - interval '2 days'
+         ORDER BY t.su_lt DESC LIMIT 100`,
         [SU_ESIK_LT],
       ),
     ]);
