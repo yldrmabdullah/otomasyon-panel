@@ -20,7 +20,7 @@ on:
   # yeni rapor çıktığı gibi yakalanır. Aynı dönem tekrar çekilirse upsert →
   # EPDK bildirim DÜZELTMESİ yapmışsa değer güncellenir (bu istenen davranış).
   schedule:
-    - cron: '20 6 5,20 * *'
+    - cron: '20 1 5,20 * *'
   workflow_dispatch:
     inputs:
       hedef:

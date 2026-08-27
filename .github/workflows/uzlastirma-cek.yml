@@ -17,10 +17,10 @@ on:
     # Artık iki ritim var:
     #  1) Her pazartesi 06:30 UTC — CARİ ay (ayın 1'i → bugün). Ay içi kısmi veri,
     #     her koşuda üzerine yazılır (araç dönemi DELETE+INSERT ediyor, idempotent).
-    - cron: '30 6 * * 1'
+    - cron: '30 1 * * 1'
     #  2) Her ayın 3'ü 06:30 UTC — KAPANIŞ koşusu: önceki ayın tamamı, POL geç gelen
     #     düzeltmeleri de girsin diye. (A3 ayın 2'si; çakışmasın diye 3'ü.)
-    - cron: '30 6 3 * *'
+    - cron: '30 1 3 * *'
   # Elle VE dışarıdan (cron-job.org → GitHub API). Tarih aralığı seçilebilir.
   workflow_dispatch:
     inputs:

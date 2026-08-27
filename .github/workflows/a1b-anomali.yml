@@ -13,10 +13,12 @@ name: A1b Stok-Satış Anomali (günlük)
 
 on:
   schedule:
-    # Sabah 08:00 UTC (TR 11:00) — bir ÖNCEKİ günün kapanışı oturmuş olur.
-    # Fiyat takibinden (07:15) sonra: aynı anda iki Playwright işi POL'e yüklenmesin.
-    - cron: '0 8 * * *'
-    # ⚠️ 2026-08-27 EKLENDİ: akşam 20:00 UTC (TR 23:00) — İKİNCİ tur.
+    # ⚠️ 2026-08-27: SAATLER GECEYE ÇEKİLDİ — kullanıcı sabah panele baktığında veri
+    # HAZIR olsun diye (eskiden TR 11:00'de koşuyordu, yani mesai içinde).
+    # 03:00 UTC (TR 06:00) — bir ÖNCEKİ günün kapanışı POL'de oturmuş olur.
+    # Fiyat takibinden (02:15) sonra: aynı anda iki Playwright işi POL'e yüklenmesin.
+    - cron: '0 3 * * *'
+    # Akşam 20:00 UTC (TR 23:00) — İKİNCİ tur.
     # Sorun: sabah koşusu TR 11:41'de yapılıyor ve POL'de O GÜNÜN kapanışı henüz
     # oluşmamış oluyor → cari gün BOŞ dönüyor. 26 Ağu koşusu 23–26 aralığını
     # istedi ama DB'ye 25'e kadar yazıldı; panelde "26 Ağustos — çekim yok"

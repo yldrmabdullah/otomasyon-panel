@@ -12,7 +12,7 @@ on:
   # Her gün 07:15 UTC (TR 10:15) — akaryakıt zammı genelde gece yarısı geçerli olur,
   # sabah bayi fiyatları oturmuş olur. Referans JSON da sabah güncellenir.
   schedule:
-    - cron: '15 7 * * *'
+    - cron: '15 2 * * *'
   workflow_dispatch:
     inputs:
       bas:

@@ -20,11 +20,11 @@ on:
     # Bu yüzden sabah maili 08:00 UTC'ye alındı (en geç çekimden ~2 saat sonra).
 
     # Sabah 11:00 TR (08:00 UTC) — bizim sözleşme bitecekler.
-    - cron: '0 8 * * *'
+    - cron: '0 4 * * *'
     # Akşam 20:00 TR (17:00 UTC) — o günün transferleri.
     - cron: '0 17 * * *'
     # Pazartesi 11:30 TR (08:30 UTC) — rakip sözleşme bitişleri (haftalık fırsat).
-    - cron: '30 8 * * 1'
+    - cron: '30 4 * * 1'
   workflow_dispatch:
     inputs:
       mod:

@@ -17,9 +17,9 @@ on:
     # tetiklenmemişti (Ocak–Ağustos'un tamamı 12 Ağu'da ELLE çekilmiş).
     #
     #  1) Her pazartesi 06:00 UTC — 'guncel' (POL'ün en yeni dönemi = cari ay).
-    - cron: '0 6 * * 1'
+    - cron: '0 1 * * 1'
     #  2) Her ayın 2'si 06:00 UTC — 'onceki': kapanan ayın nihai hali.
-    - cron: '0 6 2 * *'
+    - cron: '0 1 2 * *'
   # Elle VE dışarıdan (cron-job.org → GitHub API). Dönem seçilebilir.
   workflow_dispatch:
     inputs:

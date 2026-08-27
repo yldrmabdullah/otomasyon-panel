@@ -19,7 +19,7 @@ on:
   # Günlük 05:40 UTC (TR 08:40) — bir önceki günün faturaları kesilmiş olur.
   # Diğer BFF'e dokunan iş (a3-mutabakat) ile aynı saate denk gelmesin.
   schedule:
-    - cron: '40 5 * * *'
+    - cron: '40 0 * * *'
   workflow_dispatch:
     inputs:
       bas:
