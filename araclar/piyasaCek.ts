@@ -7,7 +7,7 @@
 
 import { epdk } from '../core/epdkClient.js';
 import { dagiticilariKaydet, bayileriKaydet, transferleriTespitEt, snapshotSil,
-         snapshotPencereUygula, kapat } from '../core/db.js';
+         snapshotPencereUygula, kayipBayileriUzlastir, DURUM_EPDK_DE_YOK, kapat } from '../core/db.js';
 
 // Bugünün günü (TR) — Node ortamında sabit değil, çalışma anına göre. Snapshot anahtarı.
 // Kaç GÜNLÜK snapshot saklanır (takvim aralığı değil, gün sayısı — cron kaçarsa
@@ -80,6 +80,10 @@ async function main() {
   // 2) Her dağıtıcının bayileri
   let toplamBayi = 0;
   let hataliDagitici = 0;
+  // Uzlaştırma YALNIZ çekimi BAŞARILI dağıtıcılar için yapılır. Hata alan dağıtıcının
+  // bayileri snapshot'a yazılmadığı için hepsi "kaybolmuş" görünürdü — arızayı piyasa
+  // olayına çevirmek en tehlikeli sessiz bozulma.
+  const cekimiBasarili: string[] = [];
   for (let i = 0; i < dagiticilar.length; i++) {
     const d = dagiticilar[i];
     if (!d.lisansNo) continue; // lisansNo'su boş dağıtıcı (iptal/iade) → bayi sorgulanamaz, atla
@@ -89,6 +93,7 @@ async function main() {
         // Kapsam snapshot'a yazılır → farklı kapsamdaki günler karşılaştırılmasın.
         await bayileriKaydet(bayiler, d.lisansNo, snapshotGun, tumDurumlar ? 'tum' : 'onaylandi');
         toplamBayi += bayiler.length;
+        cekimiBasarili.push(d.lisansNo);
       }
       console.log(`  [${i + 1}/${dagiticilar.length}] ${d.unvan.slice(0, 32)} → ${bayiler.length} bayi (toplam ${toplamBayi})`);
     } catch (e: any) {
@@ -96,6 +101,20 @@ async function main() {
       console.warn(`  [${i + 1}/${dagiticilar.length}] ${d.unvan.slice(0, 32)} → HATA: ${e?.message ?? e}`);
     }
   }
+
+  // 2b) KAYIP BAYİ UZLAŞTIRMASI — saf upsert'in kör noktası (bkz. core/db.ts).
+  // EPDK yanıtından tamamen çıkan bayi, dokunulmadığı için 'ONAYLANDI' kalıyordu:
+  // 2026-08-27'de panel 167 bayi sayarken canlı EPDK 165 diyordu (KONSOPA Düzce+Bolu
+  // başka dağıtıcıya geçmişti). Artık her koşuda snapshot'la uzlaştırılıyor.
+  let kapatilan = 0;
+  let uzlasmaAtlandi = 0;
+  for (const lisansNo of cekimiBasarili) {
+    const n = await kayipBayileriUzlastir(lisansNo, snapshotGun);
+    if (n < 0) uzlasmaAtlandi++;
+    else kapatilan += n;
+  }
+  if (kapatilan > 0) console.log(`✔ Kayıp-bayi uzlaştırması: ${kapatilan} kayıt '${DURUM_EPDK_DE_YOK}' olarak kapatıldı.`);
+  if (uzlasmaAtlandi > 0) console.warn(`⚠ ${uzlasmaAtlandi} dağıtıcıda uzlaştırma emniyet kapısına takıldı (yukarı bak).`);
 
   console.log(`\n✔ Çekim bitti. ${dagiticilar.length} dağıtıcı, ${toplamBayi} bayi, ${hataliDagitici} hatalı.`);
 

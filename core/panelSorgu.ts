@@ -265,6 +265,11 @@ export async function durumVerisi(p: Pool) {
                  WHEN b.online THEN 'online'
                  WHEN b.kayitli_aktif IS FALSE THEN 'kapandi'
                  WHEN e.dagitim_sirketi ILIKE '%TURGUT%' AND e.lisans_durumu='ONAYLANDI' THEN 'kopuk'
+                 -- EPDK_DE_YOK: kayıt EPDK yanıtından tamamen çıkmış (bkz. kayipBayileriUzlastir).
+                 -- Bizde kayıtlıyken kaybolmanın olağan sebebi BAŞKA DAĞITICIYA GEÇİŞ — yeni
+                 -- dağıtıcı adını bilmiyoruz ama "kaybettik" bilgisi kesin. 'bilinmiyor'a
+                 -- düşerse kayıp sessizce gizlenirdi; 'rakibe' doğru kova.
+                 WHEN e.lisans_durumu = 'EPDK_DE_YOK' THEN 'rakibe'
                  WHEN e.lisans_durumu IN ('IPTAL_EDILDI','SONLANDIRILDI') THEN 'kapandi'
                  WHEN e.dagitim_sirketi IS NOT NULL AND e.dagitim_sirketi NOT ILIKE '%TURGUT%' THEN 'rakibe'
                  ELSE 'bilinmiyor'

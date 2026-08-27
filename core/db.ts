@@ -529,6 +529,75 @@ export async function bayileriKaydet(
  *  kalırsa YARIM kabul edilir ve karşılaştırma yapılmaz. */
 const SNAPSHOT_BUTUNLUK_ORANI = 0.9;
 
+/** EPDK yanıtından KAYBOLAN bayiye yazılan durum.
+ *  'SONLANDIRILDI' DEĞİL: o, EPDK'nın kendi verdiği bir lisans durumu. Burada olan
+ *  farklı bir olay — kayıt yanıttan tamamen çıktı (çoğunlukla başka dağıtıcıya geçiş).
+ *  İkisini aynı kovaya atmak "lisansı bitti" ile "rakibe gitti"yi karıştırırdı. */
+export const DURUM_EPDK_DE_YOK = 'EPDK_DE_YOK';
+
+/** Kaybolan-bayi uzlaştırması için emniyet eşiği: bir koşuda dağıtıcının bayilerinin
+ *  bu oranından fazlası kaybolduysa YAZILMAZ. EPDK yanıtı boş/yarım geldiğinde tüm
+ *  bayileri "kayboldu" işaretlemek veriyi topluca bozardı. */
+const KAYIP_EMNIYET_ORANI = 0.1;
+
+/**
+ * "Gördüklerimi damgala, görmediklerimi kapat" — saf upsert'in kör noktasını kapatır.
+ *
+ * ⚠️ 2026-08-27, canlı doğrulandı: `bayileriKaydet` saf upsert. EPDK yanıtında olan
+ * kayıt güncellenir; yanıtta OLMAYAN kayda HİÇ dokunulmaz → eski 'ONAYLANDI' durumu
+ * sonsuza kadar kalır. KONSOPA'nın 2 lisansı (Düzce+Bolu) EPDK'dan tamamen kalktığı
+ * halde panel onları saymaya devam etti: panel 167, canlı EPDK 165. Bayi kaybettikçe
+ * fark BÜYÜR, çünkü kaybedilen hiç düşülmüyordu.
+ *
+ * Taban: bugünün snapshot'ı (o koşuda EPDK'nın GERÇEKTEN döndürdüğü liste). Snapshot'ta
+ * olmayıp güncel tabloda hâlâ aktif görünen kayıtlar `DURUM_EPDK_DE_YOK`a çekilir.
+ *
+ * Döner: kapatılan kayıt sayısı · emniyet kapısı devredeyse -1 (çağıran uyarır).
+ */
+export async function kayipBayileriUzlastir(
+  dagiticiLisansNo: string,
+  snapshotGun: string,
+): Promise<number> {
+  const p = pool();
+  // Aday: güncel tabloda bu dağıtıcıya bağlı, hâlâ "canlı" görünen ama BUGÜNÜN
+  // snapshot'ında adı geçmeyen kayıtlar. (Snapshot = EPDK'nın o koşudaki gerçek yanıtı.)
+  const aday = await p.query<{ bayi_lisans_no: string }>(
+    `SELECT b.bayi_lisans_no FROM bayiler_epdk b
+      WHERE b.dagitici_lisans_no = $1
+        AND b.lisans_durumu NOT IN ('SONLANDIRILDI', $3)
+        AND NOT EXISTS (
+          SELECT 1 FROM bayi_snapshot s
+           WHERE s.snapshot_gun = $2 AND s.bayi_lisans_no = b.bayi_lisans_no)`,
+    [dagiticiLisansNo, snapshotGun, DURUM_EPDK_DE_YOK],
+  );
+  if (aday.rows.length === 0) return 0;
+
+  // EMNİYET: yanıt yarım geldiyse toplu "kayboldu" damgası veriyi bozar.
+  const canliR = await p.query<{ n: string }>(
+    `SELECT count(*) n FROM bayiler_epdk
+      WHERE dagitici_lisans_no = $1 AND lisans_durumu NOT IN ('SONLANDIRILDI', $2)`,
+    [dagiticiLisansNo, DURUM_EPDK_DE_YOK],
+  );
+  const canli = Number(canliR.rows[0]?.n ?? 0);
+  if (canli > 0 && aday.rows.length > canli * KAYIP_EMNIYET_ORANI) {
+    console.warn(
+      `⚠ Kayıp-bayi uzlaştırması ATLANDI (${dagiticiLisansNo}) — ` +
+        `${aday.rows.length}/${canli} kayıt birden kaybolmuş görünüyor (eşik %${KAYIP_EMNIYET_ORANI * 100}).
+` +
+        `   Bu oranda toplu kayıp piyasa olayı değil, YARIM EPDK yanıtıdır. Kayıtlara dokunulmadı.`,
+    );
+    return -1;
+  }
+
+  const nolar = aday.rows.map((r) => r.bayi_lisans_no);
+  await p.query(
+    `UPDATE bayiler_epdk SET lisans_durumu = $2, guncelleme = now()
+      WHERE bayi_lisans_no = ANY($1::text[])`,
+    [nolar, DURUM_EPDK_DE_YOK],
+  );
+  return nolar.length;
+}
+
 /**
  * Transfer tespiti: bugünün snapshot'ını en son ÖNCEKİ snapshot günüyle karşılaştırır.
  * Dağıtıcı değişen (transfer), yeni görülen (yeni_bayi), kaybolan (ayrildi), durum değişen
