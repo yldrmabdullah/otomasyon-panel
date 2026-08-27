@@ -124,6 +124,8 @@ interface Transfer {
   sozlesme_yas_gun?: number | null;
   lisans_yas_gun?: number | null;
   dagitim_sirketi?: string | null;
+  /** Bayinin YENİ dağıtıcıyla sözleşme başlangıcı = GERÇEK geçiş tarihi (EPDK kütüğü). */
+  sozlesme_baslangic?: string | null;
 }
 /** Sözleşme ve lisans tablolarının ortak alanları (kolon şablonu bunu ister). */
 interface BitisSatiri {
@@ -564,9 +566,29 @@ export function Piyasa() {
       hucre: (t) => (t.yeni_deger ? <span title={t.yeni_deger}>{t.yeni_deger}</span> : <Bos />),
     },
     {
+      // ⚠️ 2026-08-27 (kullanıcı yakaladı): burada YALNIZ `tespit_gun` gösteriliyordu —
+      // yani BİZİM fark ettiğimiz gün, transferin GERÇEKLEŞTİĞİ gün değil. KONSOPA'nın
+      // KADOOĞLU'na geçişi 25 Ağustos'ta olmuş ama tabloda "bugün" (27 Ağustos)
+      // yazıyordu. Cron bir gün kaçarsa fark daha da büyür.
+      //
+      // Gerçek tarih EPDK kütüğünde ZATEN VAR: `sozlesme_baslangic` = bayinin yeni
+      // dağıtıcıyla imza tarihi. Sorgu bunu döndürüyordu, arayüz kullanmıyordu.
+      // (İzleme modülü aynı kararı doğru vermiş — bkz. panelSorgu.ts:298.)
+      // Sözleşme tarihi yoksa tespit gününe düşülür ve "~" ile işaretlenir.
       id: 'tarih', ad: 'Tarih', varsayilan: true, sinif: 'sag soluk',
-      sirala: (t) => new Date(t.tespit_gun).getTime(),
-      hucre: (t) => <time dateTime={t.tespit_gun}>{gunFark(t.tespit_gun)}</time>,
+      sirala: (t) => new Date(t.sozlesme_baslangic ?? t.tespit_gun).getTime(),
+      hucre: (t) => {
+        const kesin = !!t.sozlesme_baslangic;
+        const g = t.sozlesme_baslangic ?? t.tespit_gun;
+        return (
+          <time dateTime={g.slice(0, 10)} title={kesin
+            ? `Sözleşme başlangıcı (EPDK): ${trTarih(g)} · bizim tespitimiz: ${trTarih(t.tespit_gun)}`
+            : `Sözleşme tarihi yok — bizim tespit günümüz: ${trTarih(t.tespit_gun)}`}>
+            {trTarih(g)}{kesin ? '' : ' ~'}
+          </time>
+        );
+      },
+      metin: (t) => trTarih(t.sozlesme_baslangic ?? t.tespit_gun),
     },
   ], []);
 
@@ -599,8 +621,8 @@ export function Piyasa() {
       hucre: (k) =>
         k.ayrilis ? (
           <span title={k.tarih_kesin
-            ? 'Bizim tespit ettiğimiz gün (EPDK kaydı değişti)'
-            : 'Rakiple sözleşme başlangıcı — bizden ayrılış EN ERKEN bu tarih'}>
+            ? 'Rakiple sözleşme başlangıcı (EPDK kütüğü) — gerçek geçiş tarihi'
+            : 'Sözleşme tarihi yok → bizim tespit günümüz (gerçek geçiş DAHA ÖNCE olabilir)'}>
             <time dateTime={k.ayrilis}>{trTarih(k.ayrilis)}</time>
             {!k.tarih_kesin && <span className="soluk"> ~</span>}
           </span>

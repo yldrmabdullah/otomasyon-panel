@@ -201,8 +201,14 @@ export async function piyasaVerisi(p: Pool) {
       // ile TAŞINIR ve panelde etiketlenir; tek bir "gidiş tarihi" gibi sunulmaz.
       p.query(
         `SELECT i.ad, i.epdk_kod, i.sehir, e.dagitim_sirketi rakip, e.il,
-                COALESCE(t.tespit_gun, e.sozlesme_baslangic) ayrilis,
-                (t.tespit_gun IS NOT NULL) tarih_kesin,
+                -- ⚠️ 2026-08-27 SIRA DEĞİŞTİ: önce tespit_gun'e bakılıyordu, yani BİZİM
+                -- fark ettiğimiz gün "kesin tarih" sayılıyordu. Oysa tespit günü cron'un
+                -- ne zaman koştuğuna bağlı (KONSOPA: gerçek geçiş 25 Ağu, tespit 27 Ağu).
+                -- GERÇEK olay tarihi rakiple sözleşme başlangıcıdır; tespit günü yalnız
+                -- o yoksa kullanılır. İzleme modülü (satır ~298) bu kararı zaten böyle
+                -- vermişti — iki modül artık aynı tarihi söylüyor.
+                COALESCE(e.sozlesme_baslangic::date, t.tespit_gun) ayrilis,
+                (e.sozlesme_baslangic IS NOT NULL) tarih_kesin,
                 e.sozlesme_baslangic
          FROM istasyonlar i
          JOIN baglanti_durum b ON b.istasyon_kod=i.istasyon_kod AND b.online=false
@@ -223,7 +229,7 @@ export async function piyasaVerisi(p: Pool) {
          WHERE e.dagitim_sirketi IS NOT NULL
            AND e.dagitim_sirketi NOT ILIKE '%TURGUT%'
            AND e.lisans_durumu = 'ONAYLANDI'
-         ORDER BY COALESCE(t.tespit_gun, e.sozlesme_baslangic) DESC NULLS LAST, i.ad`,
+         ORDER BY COALESCE(e.sozlesme_baslangic::date, t.tespit_gun) DESC NULLS LAST, i.ad`,
       ),
     ]);
 
