@@ -13,7 +13,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Sıra önemli: schema.sql temel tabloları (istasyonlar vb.) kurar,
 // schema_piyasa.sql onlara referans verebilir.
-const DOSYALAR = ['schema.sql', 'schema_piyasa.sql', 'schema_mutabakat.sql', 'schema_fiyat.sql', 'schema_hacim.sql'];
+const DOSYALAR = ['schema.sql', 'schema_piyasa.sql', 'schema_mutabakat.sql', 'schema_fiyat.sql', 'schema_hacim.sql', 'schema_urun_analiz.sql'];
 
 async function main() {
   const p = pool();

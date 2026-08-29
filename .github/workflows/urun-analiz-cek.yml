@@ -1,0 +1,80 @@
+name: İstasyon Günlük Ürün Analizi (POL, günlük)
+
+# İstasyon × ürün × gün GERÇEKLEŞEN pompa satışını (litre + tutar + fiş adedi)
+# POL'den çeker → istasyon_urun_analiz.
+#
+# Zincir: POL OtomasyonModulu/UrunRaporlari/IstasyonAnaliz.aspx (Excel, tek tık)
+#         → araclar/urunAnalizCek.ts → Postgres
+#
+# NE İŞE YARAR: bayinin BİZDEN aldığı (satis_fatura) ile İSTASYONDA SATTIĞI'nı
+# karşılaştırma; istasyon performans takibi. EPDK kodu her satırda dolu geliyor
+# (ilk çekimde 324/324 doğrulandı) → bayi eşlemesi güvenilir.
+#
+# Salt-okuma: POL'e hiçbir yazma yok.
+
+on:
+  # Günlük 04:20 UTC (TR 07:20) — bir önceki günün pompa satışı kapanmış olur.
+  # Diğer POL işleriyle (a1b 03:00, uzlaştırma vb.) aynı saate denk gelmesin:
+  # eşzamanlı POL oturumu gereksiz yük ve oturum çakışması riski.
+  schedule:
+    - cron: '20 4 * * *'
+  workflow_dispatch:
+    inputs:
+      bas:
+        description: 'Başlangıç YYYY-MM-DD (boş: son 3 gün telafi penceresi)'
+        required: false
+        default: ''
+      bit:
+        description: 'Bitiş YYYY-MM-DD (boş: bugün)'
+        required: false
+        default: ''
+
+concurrency:
+  group: urun-analiz-cek
+  cancel-in-progress: false
+
+jobs:
+  urun-analiz:
+    runs-on: ubuntu-latest
+    # a1b-anomali notu: Playwright chromium kurulumu runner yüküne göre 20 dk'yı
+    # aşabiliyor ve o günün verisi eksik kalıyor. Aynı pay burada da bırakılıyor.
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Bağımlılıklar
+        run: npm ci
+
+      - name: Playwright chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Şema (idempotent)
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # TELAFİ PENCERESİ: elle tarih verilmediyse SON 3 GÜN çekilir (yalnız dün değil).
+      # Bir gün koşu kaçarsa boşluk KALICI olurdu (a1b'de 19.08'de yaşandı); 3 günlük
+      # pencere ertesi gün kendini onarır. Araç aralığı önce siliyor → tekrar çekmek
+      # zararsız (idempotent).
+      # ⚠️ GÜVENLİK: girdiler env üzerinden geçiyor (script injection önlemi).
+      - name: Ürün analizi çek
+        run: |
+          if [ -n "$BAS" ]; then
+            npm run urun:analiz -- "$BAS" "$BIT"
+          else
+            npm run urun:analiz -- "$(date -u -d '3 days ago' +%F)" "$(date -u +%F)"
+          fi
+        env:
+          BAS: ${{ github.event.inputs.bas }}
+          BIT: ${{ github.event.inputs.bit }}
+          POL_URL: ${{ secrets.POL_URL }}
+          POL_KULLANICI: ${{ secrets.POL_KULLANICI }}
+          POL_SIFRE: ${{ secrets.POL_SIFRE }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

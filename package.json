@@ -25,6 +25,7 @@
     "kolon:test": "tsx araclar/kolonMenuTest.ts",
     "fiyat": "tsx araclar/fiyatKiyas.mts",
     "a1b": "tsx araclar/a1bCek.mts",
+    "urun:analiz": "tsx araclar/urunAnalizCek.ts",
     "hacim": "tsx araclar/hacimCek.ts",
     "satis:fatura": "tsx araclar/satisFaturaCek.ts"
   },
