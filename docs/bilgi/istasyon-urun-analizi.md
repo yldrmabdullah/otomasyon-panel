@@ -67,8 +67,37 @@ sağlanıyor → aynı aralık tekrar çekilince çiftlemez.
 - ⚠️ Kaçak/sızıntı analizi için **UE-4D/UE-4T daha zengin** (tank bazlı) — bkz.
   `pol-harita.md` "iş değeri notları".
 
+## Portala aktarım (b2b İstasyon → Satış sekmesi)
+
+Bu veri **b2b portalına da gönderiliyor** (kullanıcı isteği 2026-08-29: İstasyon ekranına
+"Satış" sekmesi). Zincir:
+
+```
+POL Excel → urunAnalizCek.ts → (1) panel Postgres   [istasyon_urun_analiz]
+                             → (2) POST /dis/v1/otomasyon/gunluk-satis
+                                    → ParkB2B otomasyon.GunlukUrunSatislari
+                                    → GET /bayiler/{id}/satis-ozeti → portal
+```
+
+⚠️ **POL SAF-HTTP OTURUM VERMİYOR** (2026-08-29 ölçümü). `login.aspx` + `CheckLogin`
+`error=0` dönse bile rapor sayfası 302 ile `Giris.aspx`'e, oradan tekrar `login.aspx`'e
+atıyor → Excel için **gerçek tarayıcı (Playwright) şart**. BFF ise IIS'te x86
+self-contained koşuyor (Logo COM zorunluluğu) ve oraya Chromium konulmadı. Bu yüzden
+**BFF çekmiyor, panel gönderiyor**.
+
+- Gerekli secret'lar: `BFF_URL`, `BFF_API_KEY` (workflow'da tanımlı). Boşsa araç panel
+  DB'sine yazar, portala **göndermez** ve uyarı basar.
+- BFF ucu **idempotent** (bayi+gün+istasyon+ürün benzersiz) → 3 günlük telafi
+  penceresiyle aynı günü tekrar göndermek çiftlemez. Doğrulandı: 2. koşuda
+  "0 yeni, 322 güncel".
+- **Bayi eşlemesi EPDK no ile.** İlk gerçek gönderimde 324 satırın **322'si eşleşti**,
+  2'si eşleşmedi (o EPDK kodu portalda tanımlı değil — canlıda 212 aktif bayinin
+  204'ünde kod var). Eşleşmeyenler yanıtta sayı+örnek olarak döner, sessiz geçilmez.
+- Yakıt eşlemesi: Mtrn→motorin, K95→benzin **%100** eşleşti. LPG/AdBlue portal
+  katalogunda olmadığı için `YakitId` null kalır ama ham `UrunKod` saklanır.
+
 ## Sonraki adım (yapılmadı)
 
-Panelde ekran yok. Veri birikince `panel/` altına bir modül eklenebilir; yetki için
-`core/ekranlar.ts`'e yeni ekran kodu tanımlanmalı (menüden gizlemek yetki değildir —
-sunucu kapısı `korumali(handler, { ekran: '...' })` ile kurulur).
+**Panelin kendi ekranı yok** — veri panel DB'sinde duruyor ama `panel/` altında modül
+yok. Eklenirse yetki için `core/ekranlar.ts`'e yeni ekran kodu tanımlanmalı (menüden
+gizlemek yetki değildir — sunucu kapısı `korumali(handler, { ekran: '...' })`).

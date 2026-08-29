@@ -25,6 +25,7 @@ import { mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pool, kapat } from '../core/db.js';
+import { config } from '../core/config.js';
 
 /** Ortam değişkeni oku — BOŞ STRING de "yok" sayılır (fiyatKiyas.mts tuzağı, 2026-08-13). */
 const cevre = (ad: string, varsayilan: string): string => {
@@ -285,6 +286,60 @@ async function yaz(satirlar: UrunAnalizSatir[], bas: string, bit: string): Promi
 
 // ───────────────────────── ANA ─────────────────────────
 
+/**
+ * Portala (BFF) gönder — İstasyon ekranındaki "Satış" sekmesi bu veriyi gösterir.
+ *
+ * NEDEN BFF ÇEKMİYOR DA BİZ GÖNDERİYORUZ (2026-08-29 ölçümü): POL saf-HTTP oturum VERMİYOR.
+ * login.aspx + CheckLogin (error=0) başarılı olsa bile rapor sayfası 302 ile Giris.aspx'e,
+ * oradan tekrar login.aspx'e atıyor → Excel için gerçek tarayıcı şart. BFF ise IIS'te x86
+ * self-contained koşuyor (Logo COM) ve oraya Chromium konulmadı. Biz zaten Playwright'lıyız.
+ *
+ * BFF ucu İDEMPOTENT (bayi+gün+istasyon+ürün benzersiz) → 3 günlük telafi penceresiyle
+ * aynı günü tekrar göndermek çiftlemez, üzerine yazar.
+ *
+ * BFF yapılandırılmamışsa SESSİZ GEÇİLİR (yerel çalıştırmada BFF gerekmesin) ama
+ * uyarı basılır — canlı cron'da eksik ayar fark edilsin.
+ */
+async function bffeGonder(satirlar: UrunAnalizSatir[]): Promise<void> {
+  if (satirlar.length === 0) return;
+  if (!config.bff.gecerli) {
+    log('  ⚠️ BFF yapılandırılmamış (BFF_URL / BFF_API_KEY) — portala GÖNDERİLMEDİ');
+    return;
+  }
+
+  const govde = {
+    satirlar: satirlar.map((s) => ({
+      tarih: s.tarih,
+      epdkKod: s.epdkKod,
+      istasyonKod: s.istKod,
+      urunKod: s.urun,
+      litre: s.litre,
+      tutar: s.tutar,
+      adet: s.adet,
+    })),
+  };
+
+  const url = config.bff.url.replace(/\/$/, '') + '/dis/v1/otomasyon/gunluk-satis';
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Api-Key': config.bff.apiKey },
+    body: JSON.stringify(govde),
+  });
+  const metin = await r.text();
+  if (!r.ok) throw new Error(`BFF ${r.status}: ${metin.slice(0, 300)}`);
+
+  const y = JSON.parse(metin) as {
+    eklenen?: number; guncellenen?: number; eslesmeyenSatir?: number; eslesmeyenOrnek?: string[];
+  };
+  log(`  portala yazıldı: ${y.eklenen ?? 0} yeni, ${y.guncellenen ?? 0} güncel`);
+  // Eşleşmeyen satır SESSİZ GEÇİLMEZ: EPDK kodu eksik bayi varsa fark edilmeli
+  // (canlıda 212 aktif bayinin 204'ünde kod var → 8 bayi kodsuz).
+  if (y.eslesmeyenSatir) {
+    log(`  ⚠️ ${y.eslesmeyenSatir} satır bayiyle EŞLEŞMEDİ (EPDK kodu eksik olabilir)`);
+    if (y.eslesmeyenOrnek?.length) log(`     örnek: ${y.eslesmeyenOrnek.slice(0, 5).join(', ')}`);
+  }
+}
+
 async function ana(): Promise<void> {
   const bas = process.argv[2] || dun();
   const bit = process.argv[3] || bas;
@@ -306,7 +361,16 @@ async function ana(): Promise<void> {
   }
 
   const yazilan = await yaz(satirlar, bas, bit);
-  log(`  DB'ye yazılan: ${yazilan}`);
+  log(`  panel DB'ye yazılan: ${yazilan}`);
+
+  // Portal (BFF) — İstasyon ekranı "Satış" sekmesi. Hatası panel yazımını GERİ ALMAZ:
+  // veri panelde durur, sonraki koşuda portala tekrar denenir.
+  try {
+    await bffeGonder(satirlar);
+  } catch (e) {
+    log(`  ⚠️ portala gönderim başarısız: ${e instanceof Error ? e.message : e}`);
+  }
+
   await kapat();
 }
 

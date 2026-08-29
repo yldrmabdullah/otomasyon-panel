@@ -78,3 +78,7 @@ jobs:
           POL_KULLANICI: ${{ secrets.POL_KULLANICI }}
           POL_SIFRE: ${{ secrets.POL_SIFRE }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          # PORTALA GÖNDERİM (b2b İstasyon > Satış sekmesi). Bunlar boşsa araç panel
+          # DB'sine yazar ama portala GÖNDERMEZ ve uyarı basar — sessizce eksik kalmasın.
+          BFF_URL: ${{ secrets.BFF_URL }}
+          BFF_API_KEY: ${{ secrets.BFF_API_KEY }}
