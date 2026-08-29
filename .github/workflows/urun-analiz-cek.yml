@@ -59,7 +59,9 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      # TELAFİ PENCERESİ: elle tarih verilmediyse SON 3 GÜN çekilir (yalnız dün değil).
+      # TELAFİ PENCERESİ: elle tarih verilmediyse SON 3 GÜN + BUGÜN çekilir.
+      # Bugün DAHİL: POL gün içi veriyi de veriyor, bayi "şu ana kadarki satışı" görsün
+      # (kullanıcı 2026-08-29'da bildirdi: POL'de bugünün satırları var, portalda yoktu).
       # Bir gün koşu kaçarsa boşluk KALICI olurdu (a1b'de 19.08'de yaşandı); 3 günlük
       # pencere ertesi gün kendini onarır. Araç aralığı önce siliyor → tekrar çekmek
       # zararsız (idempotent).

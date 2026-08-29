@@ -47,11 +47,11 @@ const trTarih = (iso: string): string => {
   return `${Number(d)}/${m}/${y}`;
 };
 
-/** Dün (Europe/Istanbul) — POL tarihleri TR yerel saatte. */
-function dun(): string {
+/** Bir günü ISO'ya çevirir (Europe/Istanbul) — POL tarihleri TR yerel saatte. */
+function trGun(gunFarki = 0): string {
   const now = new Date();
   const tr = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
-  tr.setDate(tr.getDate() - 1);
+  tr.setDate(tr.getDate() + gunFarki);
   return `${tr.getFullYear()}-${String(tr.getMonth() + 1).padStart(2, '0')}-${String(tr.getDate()).padStart(2, '0')}`;
 }
 
@@ -341,8 +341,11 @@ async function bffeGonder(satirlar: UrunAnalizSatir[]): Promise<void> {
 }
 
 async function ana(): Promise<void> {
-  const bas = process.argv[2] || dun();
-  const bit = process.argv[3] || bas;
+  // VARSAYILAN: DÜN → BUGÜN. Eskiden yalnız dündü ve BUGÜNÜN satışı hiç gelmiyordu
+  // (kullanıcı bildirdi 2026-08-29: POL'de 29.08 satırları var, portalda yok).
+  // POL gün içi veriyi de veriyor; bugünü de çekmek "şu ana kadarki satış"ı gösterir.
+  const bas = process.argv[2] || trGun(-1);
+  const bit = process.argv[3] || trGun(0);
 
   if (!POL_KADI || !POL_SIFRE) throw new Error('POL_KULLANICI / POL_SIFRE tanımlı değil (.env)');
 
