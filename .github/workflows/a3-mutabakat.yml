@@ -64,7 +64,7 @@ jobs:
       - name: A3 çek + Logo kıyas
         run: |
           if [ -n "$DONEM" ]; then SEC="$DONEM"
-          elif [ "$TETIK" = "0 6 2 * *" ]; then SEC="onceki"
+          elif [ "$TETIK" = "0 1 2 * *" ]; then SEC="onceki"
           else SEC="guncel"; fi
           echo "::notice::A3 dönem seçimi=$SEC"
           npm run a3 -- "$SEC"
