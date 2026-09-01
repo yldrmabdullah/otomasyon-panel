@@ -44,6 +44,16 @@ CREATE TABLE IF NOT EXISTS mutabakat_a3_donem (
   cekim_zamani  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Mutabakat maili DEBOUNCE (araclar/mutabakatMail.ts). Veri haftalık/aylık çekilir
+-- (a3-mutabakat.yml: Pazartesi + ayın 2'si) ama mail günlük kontrol edilir — aynı
+-- çekimden aynı sorunlu liste günlerce tekrar gönderilmesin, yalnız YENİ çekimde
+-- (mutabakat_a3_donem.cekim_zamani ilerlediğinde) mail atılsın.
+CREATE TABLE IF NOT EXISTS mutabakat_bildirim (
+  donem            TEXT PRIMARY KEY,
+  son_cekim_zamani TIMESTAMPTZ NOT NULL,
+  bildirildi       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ── TANK UZLAŞTIRMA (EPDK stok mutabakatı) — POL Tank Uzlaştırma Raporu ──────
 -- Formül (POL ekranı + Excel ile doğrulandı 2026-08-11): Fark = (A + B − C) − D,
 -- Oran = (Fark/C)*100. A=Dönem Başı Stok, B=Dolum, C=Pompa Satış, D=Dönem Sonu Stok.

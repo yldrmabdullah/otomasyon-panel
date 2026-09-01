@@ -22,6 +22,7 @@
     "satis": "tsx araclar/satisCek.ts",
     "seviye": "tsx araclar/seviyeCek.ts",
     "piyasa:mail": "tsx araclar/piyasaMail.ts",
+    "mutabakat:mail": "tsx araclar/mutabakatMail.ts",
     "kolon:test": "tsx araclar/kolonMenuTest.ts",
     "fiyat": "tsx araclar/fiyatKiyas.mts",
     "a1b": "tsx araclar/a1bCek.mts",

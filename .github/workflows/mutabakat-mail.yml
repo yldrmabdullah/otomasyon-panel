@@ -1,0 +1,62 @@
+name: A3 ↔ Logo Mutabakatı Maili (günlük, yalnız yeni veri)
+
+# Mevzuat → "A3 ↔ Logo Mutabakatı" ekranındaki uyuşmayan (durum≠'tam') faturaları
+# ekibe mail atar. a3-mutabakat.yml'den AYRI: o veriyi ÇEKER (haftalık + ay kapanışı),
+# bu GÜNLÜK kontrol eder ama DEBOUNCE'lu — aynı çekim için tekrar mail atmaz, yalnız
+# mutabakat_a3_donem.cekim_zamani bir öncekinden ilerlediğinde (yeni çekim olduğunda)
+# gönderir (bkz. araclar/mutabakatMail.ts, mutabakat_bildirim tablosu).
+#
+# ⚠️ BOŞSA MAİL GİTMEZ: sorunlu fatura 0 ise atlanır (piyasaMail.ts ile aynı prensip).
+
+on:
+  schedule:
+    # Sabah 09:00 TR (06:00 UTC) — a3-mutabakat.yml'in cron'larından (Pazartesi 01:00 UTC,
+    # ayın 2'si 01:00 UTC) sonra, günün ilerleyen saatinde okur.
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      zorla:
+        description: 'Debounce + boş listeyi atla (kanal testi)'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: mutabakat-mail
+  cancel-in-progress: false
+
+jobs:
+  mail:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # ⭐ BİLDİRİM KAPALIYSA HİÇ KOŞMA — repo variable BILDIRIM_KAPALI=1 (piyasa-mail.yml ile aynı).
+    if: github.event_name == 'workflow_dispatch' || vars.BILDIRIM_KAPALI != '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Bağımlılıklar
+        run: npm ci
+
+      - name: Şema (idempotent)
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Mutabakat maili
+        run: npm run mutabakat:mail -- ${{ github.event.inputs.zorla == 'true' && '--zorla' || '' }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          EKIP_MAIL: ${{ secrets.EKIP_MAIL }}
+          BAYIYE_GONDER: '0'
+          DRY_RUN: '0'
