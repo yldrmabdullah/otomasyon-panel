@@ -38,6 +38,12 @@ concurrency:
 jobs:
   izleme:
     runs-on: ubuntu-latest
+    # ⏱️ ZAMAN AŞIMI ŞART (2026-09-01 denetimi): 12 iş akışı içinde sınırı olmayan TEK iş
+    # buydu. POL/ASIS yanıt vermeyip TCP'yi açık tutarsa fetch süresiz asılır, koşu GitHub'ın
+    # 6 saatlik tavanına kadar sürer ve `cancel-in-progress: false` yüzünden sonraki
+    # cron'lar ATLANIR → bağlantı/tank alarmları saatlerce hiç üretilmez, kimse de fark etmez.
+    # 15 dk normal koşunun (~2-3 dk) çok üstünde, asılmayı yakalamaya yeter.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
