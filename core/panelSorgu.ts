@@ -1352,6 +1352,39 @@ export async function fiyatVerisi(p: Pool, gun?: string) {
 }
 
 /**
+ * Fiyat Takibi — REFERANS ÜSTÜ (pahalı) bayiler, mail bildirimi için.
+ * En güncel VERİSİ OLAN gün alınır (fiyatVerisi ile aynı seçim mantığı).
+ * Kaynak: bayi_fiyat, durum='pahali'. Boşsa satirlar boş döner (mail atlanır).
+ */
+export async function fiyatReferansUstu(p: Pool) {
+  const gun = await p.query(
+    `SELECT max(gun)::date gun FROM bayi_fiyat`,
+  );
+  const g = (v: unknown): string => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
+  const sG = gun.rows[0]?.gun ? g(gun.rows[0].gun) : null;
+  if (!sG) return { gun: null, satirlar: [] as Array<{
+    epdk: string; istKod: string; istasyon: string; bolge: string; il: string;
+    urun: string; urunHam: string; bayiFiyat: number; refFiyat: number; fark: number;
+  }> };
+
+  const satirlar = await p.query(
+    `SELECT epdk_kod, ist_kod, istasyon, bolge, il, urun, urun_ham,
+            bayi_fiyat, ref_fiyat, fark
+     FROM bayi_fiyat WHERE gun = $1 AND durum = 'pahali'
+     ORDER BY fark DESC NULLS LAST, istasyon`,
+    [sG],
+  );
+  return {
+    gun: sG,
+    satirlar: satirlar.rows.map((r) => ({
+      epdk: r.epdk_kod, istKod: r.ist_kod, istasyon: r.istasyon, bolge: r.bolge, il: r.il,
+      urun: r.urun, urunHam: r.urun_ham,
+      bayiFiyat: Number(r.bayi_fiyat), refFiyat: Number(r.ref_fiyat), fark: Number(r.fark),
+    })),
+  };
+}
+
+/**
  * A1b stok-satış anomali verisi (Mevzuat → Stok-Satış Anomali sekmesi).
  *
  * Gün listesi Fiyat Takibi'ndeki desenle aynı: SON 60 TAKVİM GÜNÜ (yalnız kayıt

@@ -4,10 +4,12 @@
 // alarm turu (bağlantı/tank). Bunlar günlük/haftalık piyasa istihbaratı —
 // aciliyeti farklı, ritmi farklı, alıcısı ileride farklı olabilir.
 //
-// Üç mod:
-//   --sozlesme-bizim   günlük sabah · bizim bayiler, 30 gün penceresi
-//   --sozlesme-rakip   haftalık     · rakip bayiler, 7 gün penceresi (fırsat)
-//   --transfer         günlük akşam · YALNIZ o günün transferleri
+// Dört mod:
+//   --sozlesme-bizim       günlük sabah · bizim bayiler, 30 gün penceresi
+//   --sozlesme-rakip       haftalık     · rakip bayiler, 7 gün penceresi (fırsat)
+//   --transfer             günlük akşam · YALNIZ o günün transferleri
+//   --fiyat-referans-ustu  günlük       · Fiyat Takibi'nde referans üstü (pahalı) bayiler
+//                          (fiyat-takip.yml çekiminden SONRA koşmalı, aynı gündeki veriyi okur)
 //
 // ⚠️ BOŞSA MAİL GÖNDERİLMEZ (kullanıcı kararı + ölçüm): bizim sözleşme
 // penceresi çoğu gün boş (30 günde 0 bayi). "Bugün bir şey yok" maili
@@ -18,6 +20,7 @@
 //   npm run piyasa:mail -- --sozlesme-bizim
 //   npm run piyasa:mail -- --transfer
 //   npm run piyasa:mail -- --sozlesme-rakip
+//   npm run piyasa:mail -- --fiyat-referans-ustu
 //   ... --kuru   (göndermeden ekrana bas)
 
 import { config } from '../core/config.js';
@@ -27,6 +30,7 @@ import {
   sozlesmeBitecekBizim,
   sozlesmeBitecekRakip,
   gunlukTransferler,
+  fiyatReferansUstu,
 } from '../core/panelSorgu.js';
 
 const ARG = process.argv.slice(2);
@@ -238,16 +242,56 @@ async function transfer(): Promise<void> {
   );
 }
 
+// ── 4) FİYAT TAKİBİ — REFERANS ÜSTÜ (günlük, fiyat çekiminden sonra) ─────────
+async function fiyatUstu(): Promise<void> {
+  const { gun, satirlar } = await fiyatReferansUstu(pool());
+  console.log(`Fiyat referans üstü (${gun ?? 'veri yok'}): ${satirlar.length} bayi`);
+  if (!satirlar.length && !zorla) {
+    console.log('  → boş, mail gönderilmedi');
+    return;
+  }
+
+  const satir = (x: (typeof satirlar)[number]) => `
+    <tr>
+      <td style="${S.acil}">+${x.fark.toFixed(2)} ₺</td>
+      <td style="${S.td}"><b>${kac(x.istasyon)}</b><br>
+        <span style="${S.kucuk}">${kac(x.epdk)}</span></td>
+      <td style="${S.td}">${kac(x.il)}${x.bolge ? ` / ${kac(x.bolge)}` : ''}</td>
+      <td style="${S.td}">${kac(x.urunHam)}</td>
+      <td style="${S.td}">${x.bayiFiyat.toFixed(2)} ₺</td>
+      <td style="${S.td}">${x.refFiyat.toFixed(2)} ₺</td>
+    </tr>`;
+
+  const govde = `
+    <p><b>Referansın üstünde satan bayiler</b> — ${gun ? TR_TARIH(gun) : ''}</p>
+    <p style="${S.kucuk}">Bayi pompa fiyatı (POL A5) ↔ parkoil.com.tr il referans fiyatı (Petrol
+    Ofisi). Referansın 0,20 ₺ üstünde satan bayi işaretlenir — <b>rekabet göstergesidir,
+    EPDK yasal tavan ihlali DEĞİLDİR.</b></p>
+    <table style="${S.tablo}">
+      <tr><th style="${S.th}">Fark</th><th style="${S.th}">Bayi</th>
+          <th style="${S.th}">İl / Bölge</th><th style="${S.th}">Ürün</th>
+          <th style="${S.th}">Bayi Fiyatı</th><th style="${S.th}">Referans</th></tr>
+      ${satirlar.map(satir).join('')}
+    </table>`;
+
+  await gonder(
+    `[Parkoil] Fiyat takibi — ${satirlar.length} bayi referans üstü${gun ? ` (${TR_TARIH(gun)})` : ''}`,
+    govde,
+    `Parkoil: ${satirlar.length} bayi referans fiyatin ustunde satiyor.`,
+  );
+}
+
 async function main(): Promise<void> {
   const modlar = [
     ['--sozlesme-bizim', sozlesmeBizim],
     ['--sozlesme-rakip', sozlesmeRakip],
     ['--transfer', transfer],
+    ['--fiyat-referans-ustu', fiyatUstu],
   ] as const;
 
   const secili = modlar.filter(([bayrak]) => ARG.includes(bayrak));
   if (!secili.length) {
-    console.error('Kullanım: piyasaMail.ts --sozlesme-bizim | --sozlesme-rakip | --transfer');
+    console.error('Kullanım: piyasaMail.ts --sozlesme-bizim | --sozlesme-rakip | --transfer | --fiyat-referans-ustu');
     console.error('  ek: --kuru (göndermeden bas) · --zorla (boş olsa da gönder)');
     process.exit(1);
   }

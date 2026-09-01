@@ -25,13 +25,17 @@ on:
     - cron: '0 17 * * *'
     # Pazartesi 11:30 TR (08:30 UTC) — rakip sözleşme bitişleri (haftalık fırsat).
     - cron: '30 4 * * 1'
+    # Sabah 06:30 TR (03:30 UTC) — Fiyat Takibi referans üstü bayiler.
+    # fiyat-takip.yml cron'u '15 2 * * *' (02:15 UTC); GH Actions gecikmesi + Playwright
+    # süresi için ~75 dk pay bırakıldı (bkz. piyasa-cek.yml/piyasa-mail.yml sıralama notu).
+    - cron: '30 3 * * *'
   workflow_dispatch:
     inputs:
       mod:
         description: 'Hangi mail? (bos = saate gore otomatik)'
         required: false
         type: choice
-        options: ['', 'sozlesme-bizim', 'sozlesme-rakip', 'transfer']
+        options: ['', 'sozlesme-bizim', 'sozlesme-rakip', 'transfer', 'fiyat-referans-ustu']
       zorla:
         description: 'Bos olsa da gonder (kanal testi)'
         required: false
@@ -73,11 +77,12 @@ jobs:
             echo "bayrak=--$SEC" >> "$GITHUB_OUTPUT"
           else
             case "${{ github.event.schedule }}" in
-              "0 8 * * *")  echo "bayrak=--sozlesme-bizim" >> "$GITHUB_OUTPUT" ;;
+              "0 4 * * *")  echo "bayrak=--sozlesme-bizim" >> "$GITHUB_OUTPUT" ;;
               "0 17 * * *") echo "bayrak=--transfer"       >> "$GITHUB_OUTPUT" ;;
-              "30 8 * * 1") echo "bayrak=--sozlesme-rakip" >> "$GITHUB_OUTPUT" ;;
-              # Elle tetiklendi ve seçim yok → günlük ikisini birden gönder.
-              *) echo "bayrak=--sozlesme-bizim --transfer" >> "$GITHUB_OUTPUT" ;;
+              "30 4 * * 1") echo "bayrak=--sozlesme-rakip" >> "$GITHUB_OUTPUT" ;;
+              "30 3 * * *") echo "bayrak=--fiyat-referans-ustu" >> "$GITHUB_OUTPUT" ;;
+              # Elle tetiklendi ve seçim yok → günlük olanları birden gönder.
+              *) echo "bayrak=--sozlesme-bizim --transfer --fiyat-referans-ustu" >> "$GITHUB_OUTPUT" ;;
             esac
           fi
 
