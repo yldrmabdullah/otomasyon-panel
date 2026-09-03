@@ -1,5 +1,6 @@
 // Sorun Tespiti modülü — POL/EPDK'nın yakaladığı anomalileri kendi verimizden bulur.
-// Kaynak: /api/sorun · Ayrıntılı iş bilgisi: docs/bilgi/epdk-modulu-a-tablolari.md
+// Kaynak: /api/piyasa?tip=sorun (2026-09-03: Vercel Hobby 12-fonksiyon limiti için piyasa.ts
+// ile birleştirildi, bkz api/piyasa.ts XML doc) · Ayrıntılı iş bilgisi: docs/bilgi/epdk-modulu-a-tablolari.md
 //
 // <span aria-hidden="true">⚠</span> DİL: buradaki hiçbir bulgu "kaçak" ya da "suç" DEĞİLDİR — İNCELENMESİ GEREKEN
 // anomalidir. Çoğunun masum açıklaması olabilir (bir tanker iki bayiye boşaltmış,
@@ -69,7 +70,11 @@ function IstasyonHucre({ ad, kod, sehir }: { ad: string | null; kod: string; seh
 }
 
 export function Sorun() {
-  const { veri, hata, yukleniyor, yenile } = useVeri<SorunVeri>('/api/sorun', sorunDogrula, 120_000);
+  const { veri, hata, yukleniyor, yenile } = useVeri<SorunVeri>(
+    '/api/piyasa?tip=sorun',
+    sorunDogrula,
+    120_000
+  );
   const esik = veri?.esik;
 
   const irsaliyeKolon: TabloKolon<UydurmaSatir>[] = [
