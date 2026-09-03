@@ -106,3 +106,17 @@ jobs:
           POL_KULLANICI: ${{ secrets.POL_KULLANICI }}
           POL_SIFRE: ${{ secrets.POL_SIFRE }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # UE2 Kontrol (2026-09-02, Dorse Durum Kontrol Sistemi) — Evrak Durum (Kapali/Acik/
+      # Kullanilmamis) mutabakat_irsaliye'yi besler, plaka A4 importundan (yukarıdaki adım)
+      # gelir. ⚠️ POL_SAYFA_YOLU DOĞRULANMADI — bkz ue2Cek.mts başındaki not; canlı ekranda
+      # teyit edilene kadar bu adım BAŞARISIZ olabilir, workflow'u KIRMAMASI için always().
+      - name: UE2 Kontrol çek
+        if: always() && steps.donem.outputs.bas != ''
+        continue-on-error: true
+        run: npm run ue2 -- "${{ steps.donem.outputs.bas }}" "${{ steps.donem.outputs.bit }}"
+        env:
+          POL_URL: ${{ secrets.POL_URL }}
+          POL_KULLANICI: ${{ secrets.POL_KULLANICI }}
+          POL_SIFRE: ${{ secrets.POL_SIFRE }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

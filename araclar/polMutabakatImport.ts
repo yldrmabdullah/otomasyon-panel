@@ -68,8 +68,9 @@ async function dosyaIsle(yol: string): Promise<{ eklenen: number; atlanan: numbe
       `INSERT INTO mutabakat_irsaliye (
          irsaliye_no, irsaliye_tarihi, epdk_no, istasyon_ad, urun, fatura_no, birim_fiyat,
          fatura_miktar, istasyon_dolum, kalan_miktar, koy_pompasi, tanker, dis_satis,
-         dagiticiya_iade, fark_yuzde, evrak_durum, bolge, mintika, kaynak_dosya, guncelleme)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19, now())
+         dagiticiya_iade, fark_yuzde, evrak_durum, bolge, mintika, plaka_dorse, plaka_cekici,
+         kaynak_dosya, guncelleme)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21, now())
        ON CONFLICT (irsaliye_no, irsaliye_tarihi, urun) DO UPDATE SET
          epdk_no=EXCLUDED.epdk_no, istasyon_ad=EXCLUDED.istasyon_ad,
          fatura_no=EXCLUDED.fatura_no, birim_fiyat=EXCLUDED.birim_fiyat,
@@ -78,6 +79,7 @@ async function dosyaIsle(yol: string): Promise<{ eklenen: number; atlanan: numbe
          tanker=EXCLUDED.tanker, dis_satis=EXCLUDED.dis_satis,
          dagiticiya_iade=EXCLUDED.dagiticiya_iade, fark_yuzde=EXCLUDED.fark_yuzde,
          evrak_durum=EXCLUDED.evrak_durum, bolge=EXCLUDED.bolge, mintika=EXCLUDED.mintika,
+         plaka_dorse=EXCLUDED.plaka_dorse, plaka_cekici=EXCLUDED.plaka_cekici,
          kaynak_dosya=EXCLUDED.kaynak_dosya, guncelleme=now()`,
       [
         irsNo, tarih, epdkNo(r[KOLON.lisansNo]), r[KOLON.istasyonAd] ?? null,
@@ -85,7 +87,9 @@ async function dosyaIsle(yol: string): Promise<{ eklenen: number; atlanan: numbe
         sayi(r[KOLON.birimFiyat]), sayi(r[KOLON.faturaMiktar]), sayi(r[KOLON.istasyonDolum]),
         sayi(r[KOLON.kalanMiktar]), sayi(r[KOLON.koyPompasi]), sayi(r[KOLON.tanker]),
         sayi(r[KOLON.disSatis]), sayi(r[KOLON.dagiticiyaIade]), sayi(r[KOLON.farkYuzde]),
-        r[KOLON.evrakDurum] ?? null, r[KOLON.bolge] ?? null, r[KOLON.mintika] ?? null, kaynak,
+        r[KOLON.evrakDurum] ?? null, r[KOLON.bolge] ?? null, r[KOLON.mintika] ?? null,
+        (r[KOLON.plakaDorse] ?? '').trim() || null, (r[KOLON.plakaCekici] ?? '').trim() || null,
+        kaynak,
       ],
     );
     eklenen++;

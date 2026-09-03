@@ -131,3 +131,45 @@ export function korumali(
 export function sirUret(): string {
   return randomBytes(32).toString('hex');
 }
+
+// ── DIŞ API (2026-09-02, Dorse Durum Kontrol Sistemi) ──────────────────────────────────
+//
+// BFF (Parkoil.Bff.Api/Controllers/DisMutabakatController.cs, /dis/v1/...) LOGODATA'yı
+// otomasyon-panel'e X-Api-Key ile açıyor (panel Vercel'de, Logo VPN arkasında). Burası
+// TERS yöndeki simetrik uç: otomasyon-panel kendi Postgres'ini (mutabakat_irsaliye —
+// UE2/A4 Excel importlarından, plaka dahil) BFF'ye X-Api-Key ile açar (BFF Postgres'e
+// YENİ bir bağımlılık/connection string EKLEMEZ — mimari CLAUDE.md'nin "BFF x86 + COM"
+// kısıtından bağımsız kalır).
+//
+// korumali() ile KARIŞTIRILMAMALI: o çerez tabanlı KULLANICI oturumu (panel arayüzü),
+// bu makine-makine (BFF sunucusu) erişimi. İkisi ayrı tehdit modeli, ayrı fonksiyon.
+function disApiSir(): string {
+  const s = process.env.DIS_API_ANAHTARI;
+  if (!s || s.length < 32)
+    throw new Error('DIS_API_ANAHTARI tanımlı değil veya 32 karakterden kısa.');
+  return s;
+}
+
+/**
+ * Dış (BFF) endpoint sarmalayıcısı — `X-Api-Key` başlığı sabit-zamanlı karşılaştırılır.
+ * Anahtar yanlışsa/eksikse 401, handler HİÇ çalışmaz (DB'ye sorgu bile gitmez).
+ */
+export function disApiKorumali(
+  handler: (req: any, res: any) => Promise<void>,
+): (req: any, res: any) => Promise<void> {
+  return async (req, res) => {
+    const gelen = req?.headers?.['x-api-key'];
+    let dogru: string;
+    try {
+      dogru = disApiSir();
+    } catch (e) {
+      res.status(500).json({ hata: e instanceof Error ? e.message : String(e) });
+      return;
+    }
+    if (typeof gelen !== 'string' || !esitMi(gelen, dogru)) {
+      res.status(401).json({ hata: 'Geçersiz veya eksik X-Api-Key.' });
+      return;
+    }
+    await handler(req, res);
+  };
+}

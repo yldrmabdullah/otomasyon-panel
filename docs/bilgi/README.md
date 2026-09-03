@@ -20,7 +20,7 @@ sıfırdan başlamasın.
 | `baglanti-tank-izleme.md` | Bağlantı/tank izleme iş mantığı ve eşikler | Başlangıç dolu |
 | `epdk-mutabakat.md` | EPDK mutabakat mevzuatı ve süreci | İskelet (ileride) |
 | `a1a-a1b.md` | A1A / A1B bildirimleri | İskelet (ileride) |
-| `bayi-ozel-durumlar.md` | Bayi bazlı istisnalar/notlar | Boş (geldikçe) |
+| `bayi-ozel-durumlar.md` | Bayi bazlı istisnalar/notlar | HAKYEMEZ taşıyıcı çakışması (2026-09-02) |
 
 ## Yazım kuralı
 

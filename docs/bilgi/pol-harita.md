@@ -181,6 +181,55 @@ Kolonlar (20): Saat- 1 · Saat-2 · Geliş Zamanı · EPDK Kodu · İst. Kod · 
 
 Filtreler: dtp_Tarih_dtp_Tarih_Date1, dtp_Tarih_dtp_Tarih_Date1Time1, dtp_Tarih_dtp_Tarih_Date2, dtp_Tarih_dtp_Tarih_Date2Time1, ddlOtomasyonFirmasi_ddlOtomasyonFirmasiFilter_ddlOtomasyonFirmasiFiltercmbAlt, clbEpdkIstasyon_clbEpdkIstasyon_cblAjaxSearch, clbEpdkIstasyon_clbEpdkIstasyon_selectInDiv, clbEpdkIstasyon_clbEpdkIstasyon_chktumu_chc, chcUrun_chcUrun_chktumu_chc, chcUrun_chcUrun_chk0_chc, chcUrun_chcUrun_chk1_chc, chcUrun_chcUrun_chk2_chc, chcUrun_chcUrun_chk3_chc, chcUrun_chcUrun_chk4_chc, chcUrun_chcUrun_chk5_chc, chcUrun_chcUrun_chk6_chc, chcUrun_chcUrun_chk7_chc, chcUrun_chcUrun_chk8_chc, chcUrun_chcUrun_chk9_chc, chcUrun_chcUrun_chk10_chc
 
+### ⭐⭐ (Eski) UE2 Kontrol — Aylık Satış Takip — CANLI DOĞRULANDI + OTOMATİKLEŞTİRİLDİ (2026-09-02)
+
+✅ **Gerçek yol**: `EpdkModulu/Epdk2020/Raporlar/UE2Kontrol.aspx` (menü kodu 0822, etiket
+"(Eski) UE2 Kontrol"). İlk tahmin (`Epdk2011`) YANLIŞTI — canlı POL menü taramasıyla düzeltildi.
+Tarih filtresi `dtpTarih_Date1/Date2` (A4 ile aynı desen), indirme butonu **`ReportButton1`**
+(A4'teki `AsisButton1`'den FARKLI).
+
+⚠️ **Dosya formatı**: `.xlsx` uzantılı ama gerçek OOXML zip DEĞİL — SpreadsheetML XML
+(`polExcelImport.ts`'in okuduğu eski format). Kullanıcının paylaştığı ilk örnek muhtemelen
+Excel'de "farklı kaydet" ile gerçek .xlsx'e çevrilmişti. `araclar/ue2Cek.mts` kendi
+SpreadsheetML parser'ını kullanır (core/xlsx.js'in zip-tabanlı `xlsxOku` DEĞİL).
+
+⚠️ **ss:Index 1-tabanlı, ilk sütun boş** — ham kolon indeksleri 1'den başlar (İrsaliye
+Tarihi=1, EPDK Kodu=2, ...), 0-tabanlı DEĞİL. Tarih hücreleri ISO string
+(`"2026-08-31T00:00:00.000"`), Excel serial değil.
+
+✅ **Otomatik çekim canlı test edildi**: `araclar/ue2Cek.mts` (2026-09-02, Ağustos 2026 dönemi)
+→ 1.556 irsaliye satırı `mutabakat_irsaliye` tablosuna yazıldı, ~2 dakikada tamamlandı.
+`.github/workflows/uzlastirma-cek.yml`'e `continue-on-error: true` ile eklendi (haftalık +
+ay kapanışı cron, `dissatisCek.mts`/A4 adımından hemen sonra).
+
+`Tesis Dolum` (Epdk2011/IstasyonDisSatis.aspx, bkz [[epdk-mutabakat]] §4e) ile AYNI temel
+veriyi taşıyor, farklı kolon sırası ve iki ekstra kimlik kolonuyla (EPDK Kodu + İst. Kod +
+ERPKod aynı satırda — Tesis Dolum'da yalnız Lisans No var).
+
+Kolonlar (23): İrsaliye Tarihi · EPDK Kodu · İst. Kod · ERPKod · İstasyon Ad · Bölge ·
+Mıntıka · Ürün · Dagitici Sevk İrsaliye No · Fatura Satış Miktarı · İstasyon Dolum ·
+Köy Pompası · Tanker · Belgelenen Dış Satış Miktarı · İade Miktarı · Açıklama · Fatura No ·
+Satis Tip · Kalan · Fark Yüzde · **Evrak Durum** · Muteahhit · Sorumlu Kullanıcı
+
+⚠️ **Plaka YOK burada** (Tesis Dolum'daki `Plaka Dorse`/`Plaka Çekici` kolonları bu export'ta
+yok) — plaka için hâlâ Tesis Dolum ya da A3/A4 export'u gerekir.
+
+**`Evrak Durum` üç değer alıyor** — dorse/dış-satış kontrol sisteminin aradığı sinyal
+neredeyse hazır halde:
+- `Kapali` — Kalan/Fark Yüzde küçük (~%0-2), normal kapanmış işlem.
+- `Acik` — Kalan büyük, eşleşme henüz tamamlanmamış (örnek: %54-71 arası görülen kayıtlar).
+- `Kullanilmamis` — **İstasyon Dolum = 0**, tüm fatura miktarı hâlâ kalan — yakıt bu istasyona
+  hiç girmemiş görünüyor (30 satırlık örnekte 9/30 bu durumda).
+
+Bu üç değer, Dorse Durum Kontrol dokümanındaki 4 duruma yakın bir POL karşılığı:
+`Kapali`≈YÜKLEMEYE UYGUN, `Acik`≈KONTROL GEREKLİ/OLASI DIŞ SATIŞ, `Kullanilmamis`≈en riskli
+sinyal (bkz proje planı `~/.claude/plans/encapsulated-whistling-perlis.md`).
+
+**Yapıldı**: `mutabakat_irsaliye`'ye `plaka_dorse`/`plaka_cekici` kolonları eklendi (Dorse
+Durum Kontrol Sistemi için — irsaliye_no üzerinden A4/Tesis Dolum importuyla birleşir, UE2
+bu iki kolona DOKUNMAZ, ezmez). BFF tarafı bu tabloyu `api/dis-v1-dorse-hareketleri.ts`
+(X-Api-Key korumalı dış API) üzerinden okur — bkz plan `~/.claude/plans/encapsulated-whistling-perlis.md`.
+
 ### E-2 Bayi Köy/Demiryolu Pompası Bilgisi
 `EpdkModulu/Epdk2015/BilgiSistemi/E2KPBilgisi.aspx`
 

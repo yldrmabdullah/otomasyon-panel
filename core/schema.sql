@@ -187,6 +187,12 @@ CREATE TABLE IF NOT EXISTS mutabakat_irsaliye (
 CREATE INDEX IF NOT EXISTS ix_mut_epdk ON mutabakat_irsaliye (epdk_no);
 CREATE INDEX IF NOT EXISTS ix_mut_tarih ON mutabakat_irsaliye (irsaliye_tarihi DESC);
 
+-- Plaka (Dorse Durum Kontrol Sistemi, 2026-09-02). "(Eski) UE2 Kontrol" export'unda YOK,
+-- A4/Tesis Dolum export'unda VAR — irsaliye_no üzerinden aynı satıra yazılır (bkz ue2Cek.mts
+-- ve dissatisCek.mts/a3Kiyas.mts, ikisi de aynı PRIMARY KEY'e upsert eder).
+ALTER TABLE mutabakat_irsaliye ADD COLUMN IF NOT EXISTS plaka_dorse TEXT;
+ALTER TABLE mutabakat_irsaliye ADD COLUMN IF NOT EXISTS plaka_cekici TEXT;
+
 -- tank_dolum: ASIS'te VAR olup çekilmeyen alanlar (2026-07-29, §4g).
 -- eslesme_miktari = POL "Eşleşen Tank Dolum" → MUTABAKATTA KULLANILAN değer
 --   (dolum_miktari "algılanan"dır; RAHA Temmuz'da fark 2.820 lt).
