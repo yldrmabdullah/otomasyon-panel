@@ -29,7 +29,8 @@
     "a1b": "tsx araclar/a1bCek.mts",
     "urun:analiz": "tsx araclar/urunAnalizCek.ts",
     "hacim": "tsx araclar/hacimCek.ts",
-    "satis:fatura": "tsx araclar/satisFaturaCek.ts"
+    "satis:fatura": "tsx araclar/satisFaturaCek.ts",
+    "nabiz:uyar": "tsx araclar/nabizUyar.ts"
   },
   "dependencies": {
     "fast-xml-parser": "^5.10.1",

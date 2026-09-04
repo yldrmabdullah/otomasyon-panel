@@ -1,0 +1,119 @@
+name: Canlı Nabız (BFF ayakta mı)
+
+# ⚠️ NEDEN VAR (2026-09-04 canlı arızası): reportapi.parkoil.com.tr'nin TAMAMI sonsuz
+# 307 redirect döngüsüne girdi — portal girişi ve dış sipariş API'si dahil HİÇBİR ŞEY
+# çalışmadı. Arızayı biz değil MÜŞTERİ (Murat) fark etti, saatler sonra.
+#
+# Sentry NEDEN SUSTU: ortada exception yoktu. Uygulama çökmüyordu, "düzgünce" 307
+# dönüyordu — yani middleware tasarlandığı gibi çalışıyordu. Sentry "uygulama hata
+# verdi mi" sorusunu yanıtlar; "sistem dışarıdan çalışıyor mu" sorusunu YANITLAMAZ.
+# Bu ikisi ayrı sorular ve ikincisini soran hiçbir mekanizmamız yoktu.
+#
+# Deploy workflow'undaki (api/.github/workflows/deploy.yml) /saglik kontrolü de
+# yetmez: o YALNIZ deploy anında koşar. Arıza deploy'dan bağımsız çıkarsa (Cloudflare
+# ayarı, IIS, sertifika süresi, DB) kimse görmez. Bu iş onu sürekli hale getirir.
+#
+# NE YAPAR: dışarıdan üç ucu çağırır, biri bile bozuksa EKIP_MAIL'e mail atar.
+# Bayiye ASLA gitmez (yalnız ekip) — yanlış alarm bayiyi yorar (CLAUDE.md kuralı).
+# Salt-okuma: hiçbir yere yazmaz, sipariş/tahsilat akışına dokunmaz.
+
+on:
+  schedule:
+    # 15 dakikada bir. Daha sık gerekmiyor: bu bir kesinti alarmı, saniye hassasiyeti
+    # aranmıyor; 15 dk hem hızlı haber verir hem Actions kotasını yormaz.
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: canli-nabiz
+  cancel-in-progress: true
+
+jobs:
+  nabiz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── ÖLÇÜM ───────────────────────────────────────────────────────────────────
+      # Üç ayrı soru soruluyor, çünkü biri sağlamken diğeri bozulabilir:
+      #  1) /saglik 200 mü          → uygulama ayakta mı
+      #  2) olmayan yol 404 mü      → 307 DÖNGÜSÜ geri geldi mi (bu arızanın imzası)
+      #  3) dış API 200 mü          → Murat'ın kullandığı uç gerçekten veri dönüyor mu
+      #
+      # ⚠️ 2) OLMADAN OLMAZ: döngü sırasında /saglik'in kendisi de 307 dönüyordu.
+      # Artık /saglik yönlendirmeden MUAF (Program.cs) — yani döngü geri gelse bile
+      # /saglik 200 döner ve 1. kontrol arızayı KAÇIRIR. Olmayan bir yolun 404 yerine
+      # 30x dönmesi, döngünün tek güvenilir işareti.
+      - name: Nabız ölç
+        id: olc
+        run: |
+          set +e
+          BASE="https://reportapi.parkoil.com.tr"
+          SORUN=""
+
+          SAGLIK=$(curl -sS -o /tmp/saglik.json -w '%{http_code}' --max-time 25 "$BASE/saglik")
+          [ "$SAGLIK" != "200" ] && SORUN="${SORUN}- /saglik ${SAGLIK} döndü (200 bekleniyordu) — uygulama ayakta değil.\n"
+
+          # -o /dev/null + REDİRECT TAKİP ETME (-L YOK): 30x'i olduğu gibi görmek istiyoruz.
+          YOK=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 25 "$BASE/nabiz-olmayan-yol")
+          case "$YOK" in
+            30*) SORUN="${SORUN}- Olmayan yol ${YOK} döndü (404 bekleniyordu) — 307 REDIRECT DÖNGÜSÜ GERİ GELDİ. Muhtemel sebep: Cloudflare SSL modu Flexible + origin'de HTTPS yönlendirmesi açılmış (Guvenlik:HttpsYonlendir).\n" ;;
+          esac
+
+          # Dış sipariş API'si — Murat'ın çağırdığı uç. Anahtar secret'tan; yoksa atlanır
+          # (iş kırmasın, ama log'da görünsün).
+          if [ -n "$BFF_API_KEY" ]; then
+            ARA=$(curl -sS -o /tmp/ara.json -w '%{http_code}' --max-time 60 \
+              -X POST "$BASE/dis/v1/siparisler/ara" \
+              -H "X-Api-Key: $BFF_API_KEY" -H 'Content-Type: application/json' -d '{}')
+            [ "$ARA" != "200" ] && SORUN="${SORUN}- POST /dis/v1/siparisler/ara ${ARA} döndü (200 bekleniyordu) — dış sistem sipariş çekemiyor.\n"
+          else
+            echo "::warning::BFF_API_KEY secret'ı yok — dış API kontrolü ATLANDI."
+            ARA="atlandi"
+          fi
+
+          echo "::notice::nabız: saglik=$SAGLIK olmayan-yol=$YOK dis-api=$ARA"
+          {
+            echo "saglik=$SAGLIK"
+            echo "yok=$YOK"
+            echo "ara=$ARA"
+            echo "sorun<<EOF"
+            printf '%b' "$SORUN"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+        env:
+          BFF_API_KEY: ${{ secrets.BFF_API_KEY }}
+
+      - uses: actions/setup-node@v4
+        if: steps.olc.outputs.sorun != ''
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Bağımlılıklar
+        if: steps.olc.outputs.sorun != ''
+        run: npm ci
+
+      # Mevcut mail altyapısını kullanır (core/bildirim/mail.ts, nodemailer + SMTP).
+      # YALNIZ EKIP_MAIL — bayiye gitmez.
+      - name: Ekibe uyarı maili
+        if: steps.olc.outputs.sorun != ''
+        run: npm run nabiz:uyar
+        env:
+          SORUN: ${{ steps.olc.outputs.sorun }}
+          # ⚠️ İsimler core/config.ts ile BİREBİR: SMTP_* (MAIL_* DEĞİL).
+          EKIP_MAIL: ${{ secrets.EKIP_MAIL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+
+      # İş KIRMIZI bitsin — Actions sayfasında ve mail'de görünür olsun.
+      - name: Sorun varsa başarısız ol
+        if: steps.olc.outputs.sorun != ''
+        run: |
+          printf '%b' "${{ steps.olc.outputs.sorun }}"
+          exit 1
