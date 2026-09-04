@@ -1201,13 +1201,21 @@ function HacimBolumu({ hacim }: { hacim?: HacimVeri }) {
   const donem = hacim.donem.etiket;
   const litre = (v: string | null) => Number(v ?? 0).toLocaleString('tr', { maximumFractionDigits: 0 });
   // Ürün grubu bazında ayrı sıralama — benzin ve motorin listesi farklı.
-  const gruplar = [...new Set(hacim.dagitici.map((d) => d.urun_grubu))];
+  // MOTORİN ÖNCE (2026-09-04, kullanıcı isteği): Parkoil motorin ağırlıklı bir dağıtıcı
+  // (hacimde motorin %0,89 · benzin %0,14 — bkz. bu dosyadaki HACİM notu), yani bizi
+  // ilgilendiren asıl tablo motorin. Sıra veriden geliyordu ve benzin başa düşüyordu.
+  const GRUP_SIRA = ['motorin', 'benzin'];
+  const gruplar = [...new Set(hacim.dagitici.map((d) => d.urun_grubu))].sort(
+    (a, b) => GRUP_SIRA.indexOf(a) - GRUP_SIRA.indexOf(b),
+  );
 
   return (
     <>
       {/* Bizim konumumuz — ürün grubu başına bir kart. */}
       <section className="kartlar">
-        {hacim.bizim.map((b) => (
+        {[...hacim.bizim]
+          .sort((a, b) => GRUP_SIRA.indexOf(a.urun_grubu) - GRUP_SIRA.indexOf(b.urun_grubu))
+          .map((b) => (
           <div className="kart vurgu-kart" key={b.urun_grubu}>
             <div className="kart-deger">%{Number(b.pazar_payi ?? 0).toFixed(3)}</div>
             <div className="kart-baslik">

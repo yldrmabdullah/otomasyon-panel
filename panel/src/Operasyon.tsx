@@ -21,6 +21,9 @@ interface KronikSatir {
   istasyon_kod: string; istasyon_ad: string | null; sehir: string | null;
   alarm_sayisi: number; acik: number; ort_dk: string; en_uzun_saat: string;
   yanip_sonme: boolean; son_alarm: string;
+  // Alarm tipi kırılımı — bir istasyonda ikisi birden olabilir (bağlantı kopunca
+  // tank verisi de gelmez), o yüzden tek alan değil iki sayaç.
+  baglanti_alarm: number; tank_alarm: number;
 }
 interface IrsaliyeSatir {
   istasyon_kod: string; istasyon_ad: string | null; sehir: string | null;
@@ -70,6 +73,20 @@ function operasyonDogrula(d: unknown): OperasyonVeri {
   if (!x?.ozet || !Array.isArray(x?.stok) || !Array.isArray(x?.kronik))
     throw new Error('Operasyon verisi beklenen biçimde değil (sunucu şeması değişmiş olabilir).');
   return x;
+}
+
+/**
+ * Bu istasyonda hangi alarm tipi(leri) var — "Bağlantı alarmı", "Tank alarmı" ya da ikisi.
+ *
+ * İkisi birden olabilir: bağlantı koptuğunda tank verisi de gelmez, ikisi ayrı alarm açar.
+ * Tek tip yazmak hangisinin asıl sorun olduğu konusunda yanıltır → varsa ikisi de yazılır.
+ * Sayaçlar 0 ise (eski kayıt / tanınmayan tip) tire.
+ */
+function alarmTipiMetni(k: { baglanti_alarm: number; tank_alarm: number }): string {
+  const p: string[] = [];
+  if (k.baglanti_alarm > 0) p.push('Bağlantı alarmı');
+  if (k.tank_alarm > 0) p.push('Tank alarmı');
+  return p.length ? p.join(' + ') : '—';
 }
 
 /** İstasyon adı + kod + şehir — dört tabloda aynı gösterim. */
@@ -163,14 +180,22 @@ export function Operasyon() {
       id: 'tip', ad: 'Değerlendirme', varsayilan: true,
       // ⚠️ Bu kolon modülün en önemli bilgisi: "66 alarm" diye üstte duran istasyon
       // aslında eşik ayarı sorunu olabilir. Ayrım yapılmazsa ekip boşa saha gezer.
-      hucre: (k) =>
-        k.yanip_sonme ? (
-          <span className="rozet uyari">Eşik ayarı</span>
-        ) : (
-          <span className="rozet krit">Gerçek arıza</span>
-        ),
+      // ALARM TİPİ (2026-09-04, kullanıcı isteği): değerlendirmenin ALTINDA hangi
+      // alarm(lar) olduğu yazar — bağlantı mı tank mı. İkisi birden varsa İKİSİ de
+      // yazılır (bağlantı kopunca tank verisi de gelmez; tek tip yazmak yanıltırdı).
+      hucre: (k) => (
+        <>
+          {k.yanip_sonme ? (
+            <span className="rozet uyari">Eşik ayarı</span>
+          ) : (
+            <span className="rozet krit">Gerçek arıza</span>
+          )}
+          <div className="alt-satir soluk">{alarmTipiMetni(k)}</div>
+        </>
+      ),
       sirala: (k) => (k.yanip_sonme ? 1 : 0),
-      ara: (k) => (k.yanip_sonme ? 'eşik ayarı yanıp sönme' : 'gerçek arıza'),
+      ara: (k) =>
+        `${k.yanip_sonme ? 'eşik ayarı yanıp sönme' : 'gerçek arıza'} ${alarmTipiMetni(k)}`,
     },
     {
       id: 'sayi', ad: 'Alarm', varsayilan: true, sinif: 'sag',
@@ -197,28 +222,6 @@ export function Operasyon() {
     },
   ];
 
-  const irsaliyeKolon: TabloKolon<IrsaliyeSatir>[] = [
-    {
-      id: 'istasyon', ad: 'İstasyon', varsayilan: true, sabit: true,
-      hucre: (r) => <IstasyonHucre ad={r.istasyon_ad} kod={r.istasyon_kod} sehir={r.sehir} />,
-      sirala: (r) => r.istasyon_ad ?? r.istasyon_kod,
-      ara: (r) => `${r.istasyon_ad ?? ''} ${r.istasyon_kod} ${r.sehir ?? ''}`,
-    },
-    {
-      id: 'yuzde', ad: 'Eksik %', varsayilan: true, sinif: 'sag',
-      hucre: (r) => <strong>%{r.yuzde}</strong>,  // TR yazımı: % önde
-      hucreSinif: (r) => (Number(r.yuzde) >= 100 ? 'krit' : Number(r.yuzde) >= 50 ? 'uyari' : ''),
-      sirala: (r) => Number(r.yuzde),
-    },
-    {
-      id: 'eksik', ad: 'İrsaliyesiz', varsayilan: true, sinif: 'sag',
-      hucre: (r) => sayi(r.irsaliyesiz), sirala: (r) => r.irsaliyesiz,
-    },
-    {
-      id: 'dolum', ad: 'Toplam dolum', varsayilan: true, sinif: 'sag',
-      hucre: (r) => sayi(r.dolum), sirala: (r) => r.dolum,
-    },
-  ];
 
   const kalibrasyonKolon: TabloKolon<KalibrasyonSatir>[] = [
     {
@@ -368,24 +371,11 @@ export function Operasyon() {
         sayi: veri.irsaliyeIstasyon.length + veri.su.length,
         icerik: () => (
           <>
-            <Tablo
-              anahtar="op-irsaliye"
-              kolonlar={irsaliyeKolon}
-              satirlar={veri.irsaliyeIstasyon}
-              satirAnahtar={(r) => r.istasyon_kod}
-              aramaEtiket="İstasyon / şehir ara"
-              kaydirmaEsigi={20}
-              ilkGosterim={30}
-              baslik={`İrsaliyesiz dolum — ${veri.irsaliyeIstasyon.length} istasyon`}
-              aciklama={
-                <>
-                  Son {esik.pencereGun} günde dolum kaydı var ama irsaliye numarası ASIS'e
-                  akmamış. Genel oran: <strong>%{o.irsaliyesizYuzde}</strong> ({sayi(o.irsaliyesiz)} /{' '}
-                  {sayi(o.dolumToplam)} dolum). Otomasyon arızası göstergesi.
-                </>
-              }
-              bosMesaj="İrsaliyesiz dolum yok."
-            />
+            {/* "İrsaliyesiz dolum" tablosu KALDIRILDI (2026-09-04, kullanıcı kararı).
+                Oran %51,8 (1.404/2.708) — yani neredeyse her iki dolumdan biri listede.
+                Bu haliyle ayırt edici değil: 50 istasyonun tamamı %100 görünüyor, hangi
+                istasyona bakılacağını söylemiyor. Sayaç (özet kartı) KALIYOR — genel
+                gösterge olarak anlamlı; kaldırılan yalnız istasyon kırılımı tablosu. */}
             <Tablo
               anahtar="op-su"
               kolonlar={suKolon}

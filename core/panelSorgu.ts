@@ -674,6 +674,12 @@ export async function operasyonVerisi(p: Pool) {
                 -- kısa süreli + çok tekrar → eşik sorunu, arıza değil
                 (avg(extract(epoch FROM (coalesce(a.kapandi, now()) - a.acildi)) / 60) < $1
                  AND count(*) >= $2) yanip_sonme,
+                -- ALARM TİPİ KIRILIMI (2026-09-04, kullanıcı isteği): "bağlantı alarmı mı
+                -- tank alarmı mı" ekranda görünsün. Bir istasyonda İKİ TİP DE olabilir
+                -- (bağlantı kopunca tank verisi de gelmez) → tek tip yazmak yanıltıcı
+                -- olurdu; ikisi ayrı sayılır, UI hangileri varsa onu gösterir.
+                count(*) FILTER (WHERE a.tip = 'baglanti_kopuk')::int baglanti_alarm,
+                count(*) FILTER (WHERE a.tip = 'tank_veri_yok')::int tank_alarm,
                 max(a.acildi) son_alarm
          FROM alarmlar a
          LEFT JOIN istasyonlar i ON i.istasyon_kod = a.istasyon_kod
