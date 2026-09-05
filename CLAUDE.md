@@ -14,7 +14,7 @@ Parkoil otomasyon ekibinin işini otomatikleştiren **izleme + alarm + (ileride)
 platformu. Kaynak sistem: **ASIS POL** (`pol.parkoil.tr`) — istasyon otomasyon merkezi.
 
 **İlk hedef (MVP):**
-1. Bağlantısı kopuk istasyonları tespit (>3 saat veri yok) → mail + SMS (ekip + bayi).
+1. Bağlantısı kopuk istasyonları tespit (>6 saat veri yok, 2026-09-05: 3→6 saat) → mail + SMS (ekip + bayi).
 2. Veri göndermeyen tankları tespit (>~35 dk; tank verisi 30 dk periyotlu) → mail + SMS.
 3. Otomasyon ekibinin bakacağı izleme paneli.
 

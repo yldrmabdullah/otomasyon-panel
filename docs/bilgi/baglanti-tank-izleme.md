@@ -71,8 +71,11 @@ tekillik doğrulanır, çakışma sessizce veri kaybına dönüşür.
 İstasyon POL'e hiç veri göndermiyor (offline). Belirti: `IstasyonOnlineDurum` → offline
 veya `SonVeriTarihi` çok eski.
 
-- **Eşik (varsayılan):** son veri > **3 saat** önce → kopuk say (env: `KOPUK_ESIK_SAAT`).
+- **Eşik (varsayılan):** son veri > **6 saat** önce → kopuk say (env: `KOPUK_ESIK_SAAT`).
   > (2026-07-23, kullanıcı) "örnek olarak 3-4 saati geçmiş kullanıcılar" → 3 saat başlangıç.
+  > **GÜNCELLEME (2026-09-05, kullanıcı kararı):** 3 saat → 6 saate çıkarıldı (yanlış
+  > alarm azaltmak için); `bildirimTankSaat` + `tekrarBildirimSaat` de tutarlılık için
+  > birlikte güncellendi (aşağıya bkz).
 - **Kaynak:** `GetStationList.SonTarih`.
   > **DÜZELTME 2026-07-29:** Eskiden buraya "IstasyonOnlineDurum boş dönüyor" yazılıydı;
   > **yanlıştı** — metot çalışıyor (179 kayıt), sorun parametre adıydı (`<Key>` şart).
@@ -103,8 +106,10 @@ AÇIK var + eşik hâlâ aşılı    → tekrar-bildirim aralığı geçtiyse ha
 AÇIK var + durum düzeldi      → alarm KAPAT, "düzeldi" bildirimi (opsiyonel)
 ```
 
-- **Debounce:** Aynı açık alarm için varsayılan **6 saatte bir** hatırlatma
-  (env: `TEKRAR_BILDIRIM_SAAT`). Her job turunda spam ATMA.
+- **Debounce:** Aynı açık alarm için varsayılan **12 saatte bir** hatırlatma
+  (env: `TEKRAR_BILDIRIM_SAAT`, 2026-09-05: 6→12 saat — kopukSaat 6'ya çıkınca alarm
+  ilk açıldığında hemen ardından tekrar mail atılmasın diye kopukSaat'in üstünde tutuldu).
+  Her job turunda spam ATMA.
 
 ## Bildirim kanalları
 
@@ -151,7 +156,7 @@ Not: `workflow_dispatch` ile ELLE tetikleme kısıtlanmıyor — dışarıdan te
 
 | GitHub Secret (sır) | GitHub Variable (sır değil) |
 |---|---|
-| `ASIS_GATEWAY`, `ASIS_GUID_KEY`, `ASIS_DAGITICI_KOD`, `DATABASE_URL` | `KOPUK_ESIK_SAAT=3`, `TANK_VERI_ESIK_DK=35`, `TEKRAR_BILDIRIM_SAAT=6`, `PASIF_ESIK_GUN=7` |
+| `ASIS_GATEWAY`, `ASIS_GUID_KEY`, `ASIS_DAGITICI_KOD`, `DATABASE_URL` | `KOPUK_ESIK_SAAT=6`, `TANK_VERI_ESIK_DK=35`, `BILDIRIM_TANK_ESIK_SAAT=6`, `TEKRAR_BILDIRIM_SAAT=12`, `PASIF_ESIK_GUN=7` (2026-09-05 güncellendi — `gh variable set` ile hem kod varsayılanı hem GitHub Variable birlikte değiştirildi) |
 | `SMTP_*`, `NETGSM_*`, `EKIP_MAIL`, `EKIP_TELEFON` | |
 
 Eşikleri variable yapmak, değiştirmek için kod/deploy gerektirmemesini sağlar.
@@ -247,8 +252,8 @@ Bu sayı ilk bakışta "açarsan 8 bin mail gider" gibi görünüyor. GERÇEK DE
 | 3 saatlik bildirim eşiğini geçen | **99** |
 | Açıldığı anda AÇIK olan | 6 → bildirilen **2** |
 
-→ Gerçek bildirim hacmi **ayda ~200**, günde birkaç mail. Eşik (`BILDIRIM_TANK_ESIK_SAAT=3`)
-ve kademeli debounce (6/12/24 sa) gürültüyü doğru filtreliyor.
+→ Gerçek bildirim hacmi **ayda ~200**, günde birkaç mail. Eşik (o tarihte `BILDIRIM_TANK_ESIK_SAAT=3`,
+2026-09-05'te `6`'ya çıkarıldı) ve kademeli debounce (6/12/24 sa) gürültüyü doğru filtreliyor.
 
 ### DRY_RUN kirlenmesi — kontrol edildi, temiz
 `son_bildirim` dolu 1.977 alarm var ama **hepsi KAPALI** (23 Tem – 4 Ağu, düzeltme
