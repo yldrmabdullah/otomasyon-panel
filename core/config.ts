@@ -38,9 +38,14 @@ export const config = {
     },
   },
   esik: {
-    kopukSaat: sayi('KOPUK_ESIK_SAAT', 3),
+    // 2026-09-05 kullanıcı kararı: 3 saat → 6 saate çıkarıldı (daha az yanlış alarm,
+    // gerçek kopukluk hâlâ aynı gün içinde yakalanıyor). Aşağıdaki bildirimTankSaat +
+    // tekrarBildirimSaat bu değişiklikle TUTARLI kalacak şekilde orantılı güncellendi.
+    kopukSaat: sayi('KOPUK_ESIK_SAAT', 6),
     tankVeriDk: sayi('TANK_VERI_ESIK_DK', 35),
-    tekrarBildirimSaat: sayi('TEKRAR_BILDIRIM_SAAT', 6),
+    // kopukSaat'in katı (6 saat açık alarma en az bir tekrar payı bırakır) — alarm ilk
+    // açıldığında hemen ardından bir daha mail atılmasın diye kopukSaat'ten YÜKSEK tutulur.
+    tekrarBildirimSaat: sayi('TEKRAR_BILDIRIM_SAAT', 12),
 
     // ⭐ BİLDİRİM EŞİĞİ — ALARM EŞİĞİNDEN AYRI (2026-08-04, ölçülerek belirlendi).
     //
@@ -53,13 +58,12 @@ export const config = {
     //     eşik 35 dk → 1.915 alarm  (≈274/gün — kabul edilemez)
     //     eşik  1 sa →    ~33/gün
     //     eşik  2 sa →   192 (≈27/gün — hâlâ fazla)
-    //     eşik  3 sa →    49 (≈7/gün, 44 tekil tank) ← SEÇİLDİ
-    //     eşik  6 sa →    39 (fark küçük, ama 2 saat daha kör kalınır)
-    // 3 saat flapping'i eliyor ama gerçek olayları kaçırmıyor. Bağlantı alarmı
-    // zaten 3 saatlik eşikte (24 saatte 1 alarm) — ikisi tutarlı oldu.
-    //
-    // Alarm yine 35 dk'da AÇILIR ve panelde görünür; yalnız bildirim beklemeli.
-    bildirimTankSaat: sayi('BILDIRIM_TANK_ESIK_SAAT', 3),
+    //     eşik  3 sa →    49 (≈7/gün, 44 tekil tank)
+    //     eşik  6 sa →    39 (fark küçük, ama 2 saat daha kör kalınır) ← SEÇİLDİ (2026-09-05)
+    // 2026-09-05: kopukSaat 3→6 saate çıkınca ikisinin tutarlılığı ("bağlantı alarmı ile
+    // aynı eşikte") korunmak için bildirimTankSaat de 6'ya çekildi — ilk ölçümde zaten
+    // 6 saatlik seçenek değerlendirilmiş ve makul bulunmuştu (39 alarm/7 gün).
+    bildirimTankSaat: sayi('BILDIRIM_TANK_ESIK_SAAT', 6),
     // Son bu kadar günden daha eski veri gönderen istasyon "pasif/ölü" sayılır → alarm atlamaz.
     // (Aylardır/yıllardır veri göndermeyen kayıtlar gerçek kopukluk değil.)
     pasifGun: sayi('PASIF_ESIK_GUN', 7),
