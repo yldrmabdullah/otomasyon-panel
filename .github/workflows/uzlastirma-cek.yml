@@ -40,7 +40,7 @@ concurrency:
 jobs:
   uzlastirma:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -61,33 +61,66 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      # Dönem, HANGİ CRON'un tetiklediğinden türetilir — takvim panele değil, işe
-      # gömülü olsun diye. Elle verilen bas/bit her şeyi ezer.
-      #   haftalık ('30 6 * * 1') → cari ay: ayın 1'i → bugün (ay içi kısmi)
-      #   kapanış  ('30 6 3 * *') → geçen ay: 1'i → son günü
-      #   dispatch (boş)          → cari ay (elle bakan kişi güncel ayı görmek ister)
+      # Dönem, TAKVİM GÜNÜNDEN türetilir. Elle verilen bas/bit her şeyi ezer.
+      #   ayın 3'ü → kapanış: geçen ayın tamamı (1'i → son günü)
+      #   diğer    → cari ay: ayın 1'i → bugün (ay içi kısmi)
       # Araç dönemi DELETE+INSERT ile yazıyor → aynı ayı tekrar çekmek zararsız.
+      #
+      # ⚠️ 2026-09-18: BURADA `github.event.schedule` STRING KIYASI VARDI ve cron
+      # '30 1 3 * *' iken "30 6 3 * *" ile karşılaştırıyordu → HİÇ eşleşmedi, kapanış
+      # koşusu bir kez bile çalışmadı (kanıt: 3 Eylül run 33721116384 "modu=cari").
+      # Ağustos'un nihai hali hiç çekilmedi. Aynı hata A3'te de çıkmıştı (08f5bf8).
+      # Kök sebep: cron saati değişince kıyas string'i sessizce bayatlıyor. Artık
+      # SAATE DEĞİL AYIN GÜNÜNE bakılıyor → cron saati serbestçe değişebilir.
       # ⚠️ GÜVENLİK 2026-08-27: girdiler env üzerinden (bkz. fiyat-takip.yml notu).
       - name: Dönem belirle
         id: donem
         run: |
           if [ -n "$G_BAS" ]; then
             BAS="$G_BAS"; BIT="$G_BIT"; MOD="elle"
-          elif [ "${{ github.event.schedule }}" = "30 6 3 * *" ]; then
+          elif [ "$(date -u +%d)" = "03" ] && [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
             BAS="$(date -u -d "$(date -u +%Y-%m-01) -1 month" +%F)"
             BIT="$(date -u -d "$(date -u +%Y-%m-01) -1 day" +%F)"; MOD="kapanis"
           else
             BAS="$(date -u +%Y-%m-01)"; BIT="$(date -u +%F)"; MOD="cari"
           fi
+          # GERİYE DÖNÜK PENCERE (⭐ 2026-09-18). Kapanış koşusunda yalnız kapanan ay
+          # değil, SON $GERI AY yeniden çekilir: POL'de sonradan düzeltilen eski aylar
+          # panele böyle yansır. Yazım DELETE+INSERT (uzlasCek.mts:161) → idempotent.
+          # Elle bas/bit verilmişse pencere UYGULANMAZ (kullanıcı ne istediğini biliyor).
+          AYLAR=""
+          if [ "$MOD" = "kapanis" ]; then
+            for i in $(seq 1 "${GERI:-6}"); do
+              AB="$(date -u -d "$(date -u +%Y-%m-01) -$i month" +%Y-%m-01)"
+              AE="$(date -u -d "$AB +1 month -1 day" +%F)"
+              AYLAR="$AYLAR $AB:$AE"
+            done
+          else
+            AYLAR="$BAS:$BIT"
+          fi
           echo "bas=$BAS" >> "$GITHUB_OUTPUT"
           echo "bit=$BIT" >> "$GITHUB_OUTPUT"
-          echo "::notice::Uzlaştırma modu=$MOD dönem=$BAS → $BIT"
+          echo "aylar=$(echo $AYLAR | xargs)" >> "$GITHUB_OUTPUT"
+          echo "::notice::Uzlaştırma modu=$MOD dönem=$BAS → $BIT · pencere:$AYLAR"
         env:
           G_BAS: ${{ github.event.inputs.bas }}
           G_BIT: ${{ github.event.inputs.bit }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GERI: ${{ vars.UZLASTIRMA_GERI_AY || '6' }}
 
+      # Pencere içindeki her ay ayrı çekilir. Bir ay patlarsa DİĞERLERİ DEVAM EDER
+      # (tek bozuk ay tüm tazelemeyi iptal ederse geri kalan aylar bayat kalır),
+      # sonunda topluca raporlanıp iş KIRMIZI biter.
       - name: Uzlaştırma çek
-        run: npm run uzlas -- "${{ steps.donem.outputs.bas }}" "${{ steps.donem.outputs.bit }}"
+        run: |
+          HATA=""
+          for AY in ${{ steps.donem.outputs.aylar }}; do
+            AB="${AY%%:*}"; AE="${AY##*:}"
+            echo "::group::Uzlaştırma $AB → $AE"
+            if ! npm run uzlas -- "$AB" "$AE"; then HATA="$HATA $AB"; echo "::warning::$AB çekilemedi"; fi
+            echo "::endgroup::"
+          done
+          if [ -n "$HATA" ]; then echo "::error::Çekilemeyen aylar:$HATA"; exit 1; fi
         env:
           POL_URL: ${{ secrets.POL_URL }}
           POL_KULLANICI: ${{ secrets.POL_KULLANICI }}
@@ -100,7 +133,15 @@ jobs:
       # kendi varsayılanına (geçen ay) düşerdi — yanlış dönemi çekmektense atla.
       - name: Dış satış (A4) çek
         if: always() && steps.donem.outputs.bas != ''
-        run: npm run dissatis -- "${{ steps.donem.outputs.bas }}" "${{ steps.donem.outputs.bit }}"
+        run: |
+          HATA=""
+          for AY in ${{ steps.donem.outputs.aylar }}; do
+            AB="${AY%%:*}"; AE="${AY##*:}"
+            echo "::group::Dış satış $AB → $AE"
+            if ! npm run dissatis -- "$AB" "$AE"; then HATA="$HATA $AB"; echo "::warning::$AB çekilemedi"; fi
+            echo "::endgroup::"
+          done
+          if [ -n "$HATA" ]; then echo "::error::Çekilemeyen aylar:$HATA"; exit 1; fi
         env:
           POL_URL: ${{ secrets.POL_URL }}
           POL_KULLANICI: ${{ secrets.POL_KULLANICI }}

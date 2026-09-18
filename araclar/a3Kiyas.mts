@@ -57,7 +57,7 @@ interface A3Kayit { faturaNo: string; irsaliyeNo: string; epdk: string; ist: str
 interface LogoKayit { faturaNo: string; cariKod: string; urun: string | null; litre: number; cikisTesisi: string | null; iptal: boolean; }
 
 // ── 1) POL'e giriş + A3 Excel indir ─────────────────────────────────────────
-async function a3Indir(donemKodu: string): Promise<{ yol: string; donemAd: string; donemKod: string }> {
+async function a3Indir(donemKodu: string): Promise<{ yol: string; donemAd: string; donemKod: string; tumDonemler: { v: string; t: string }[] }> {
   const browser = await chromium.launch({ headless: true });
   const ctx = await browser.newContext({ acceptDownloads: true });
   const page = await ctx.newPage();
@@ -102,11 +102,20 @@ async function a3Indir(donemKodu: string): Promise<{ yol: string; donemAd: strin
     });
     // Seçim: 'onceki' → listenin 2. sırası (bir önceki ay) · 'guncel'/'' → en güncel (ilk) ·
     // sayısal kod → o dönem. POL combo en yeni ayı başa koyuyor.
-    const secili = donemKodu === 'onceki'
-      ? (donemler[1] ?? donemler[0])
-      : (donemKodu === '' || donemKodu === 'guncel')
-        ? donemler[0]
-        : (donemler.find(d => d.v === donemKodu) ?? donemler[0]);
+    //
+    // ⚠️ 2026-09-18: BİLİNMEYEN KOD ARTIK SESSİZCE CARİ AYA DÜŞMÜYOR. Eskiden
+    // `?? donemler[0]` vardı: yanlış kod verilince iş YEŞİL bitiyor ama hedef ay
+    // tazelenmemiş oluyordu (kimse fark etmiyordu). Artık hata fırlatılır.
+    let secili: { v: string; t: string } | undefined;
+    if (donemKodu === 'onceki') secili = donemler[1] ?? donemler[0];
+    else if (donemKodu === '' || donemKodu === 'guncel') secili = donemler[0];
+    else {
+      secili = donemler.find(d => d.v === donemKodu);
+      if (!secili) {
+        const mevcut = donemler.map(d => `${d.v}=${d.t}`).join(', ');
+        throw new Error(`POL'de '${donemKodu}' dönem kodu YOK. Mevcut dönemler: ${mevcut}`);
+      }
+    }
     if (!secili) throw new Error('POL dönem listesi okunamadı');
     log(`Dönem: ${secili.t} (kod ${secili.v})`);
 
@@ -129,7 +138,7 @@ async function a3Indir(donemKodu: string): Promise<{ yol: string; donemAd: strin
     const yol = `${IND_DIR}/a3-${secili.v}.xlsx`;
     await dl.saveAs(yol);
     log('  indirildi:', dl.suggestedFilename());
-    return { yol, donemAd: secili.t, donemKod: secili.v };
+    return { yol, donemAd: secili.t, donemKod: secili.v, tumDonemler: donemler };
   } finally {
     await browser.close();
   }
@@ -180,9 +189,9 @@ async function logoCek(donem: string): Promise<Map<string, LogoKayit>> {
 }
 
 // ── 4) Kıyasla + Postgres'e yaz ──────────────────────────────────────────────
-async function main() {
-  const donemKodu = process.argv[2] ?? '';
-  const { yol, donemAd } = await a3Indir(donemKodu);
+/** TEK dönemi çeker, kıyaslar ve yazar. Dönüş: POL'ün tüm dönem listesi (loop için). */
+async function tekDonem(donemKodu: string): Promise<{ v: string; t: string }[]> {
+  const { yol, donemAd, tumDonemler } = await a3Indir(donemKodu);
   const { kayitlar: a3, donem } = a3Oku(yol);
   log(`A3: ${a3.size} fatura, dönem ${donem}`);
   const logo = await logoCek(donem);
@@ -248,6 +257,64 @@ async function main() {
   log(`   A3 ${Math.round(a3Top).toLocaleString('tr-TR')} lt · Logo ${Math.round(logoTop).toLocaleString('tr-TR')} lt · fark ${Math.round(logoTop - a3Top).toLocaleString('tr-TR')} lt`);
   const sorunTipleri = satirlar.filter(s => s.durum !== 'tam').reduce((a: Record<string, number>, s) => { a[s.durum as string] = (a[s.durum as string] || 0) + 1; return a; }, {});
   if (Object.keys(sorunTipleri).length) log('   sorun dağılımı:', JSON.stringify(sorunTipleri));
+  return tumDonemler;
+}
+
+/**
+ * Giriş noktası. Tek dönem VEYA geriye dönük toplu tazeleme.
+ *
+ * ⭐ 2026-09-18 — NEDEN `son:N` VAR: cron yalnız cari ay + geçen ayı tazeliyordu.
+ * Kaynak sistemde (POL/Logo) sonradan DÜZELTİLEN eski aylar panele hiç yansımıyordu;
+ * kullanıcı panelde çözülmüş bir sorunu haftalarca "sorunlu" görüyordu (2026 Ocak
+ * verisi 12 Ağustos'tan beri donmuştu). Yazım DELETE+INSERT olduğu için eski ayı
+ * yeniden çekmek zararsız → kayan pencereyle her ay kendini tazeliyor.
+ *
+ *   npm run a3                 → cari ay (eski davranış, DEĞİŞMEDİ)
+ *   npm run a3 -- onceki       → geçen ay (eski davranış, DEĞİŞMEDİ)
+ *   npm run a3 -- 12           → POL kodu 12 (2026 Ocak)
+ *   npm run a3 -- son:6        → POL'deki EN YENİ 6 dönem, yeniden eskiye
+ *   npm run a3 -- son:hepsi    → POL'ün sunduğu TÜM dönemler
+ */
+async function main() {
+  const arg = process.argv[2] ?? '';
+
+  if (!arg.startsWith('son:')) {
+    await tekDonem(arg);
+    await kapat();
+    return;
+  }
+
+  // Kaç dönem? POL listesini öğrenmek için önce cari ayı çekiyoruz (zaten tazelenmeli).
+  const ham = arg.slice(4);
+  const hepsi = ham === 'hepsi';
+  const adet = hepsi ? Infinity : Number(ham);
+  if (!hepsi && (!Number.isFinite(adet) || adet < 1))
+    throw new Error(`Geçersiz 'son:N' — N pozitif tam sayı olmalı veya 'son:hepsi'. Verilen: ${ham}`);
+
+  log(`\n═══ TOPLU TAZELEME: ${hepsi ? 'tüm dönemler' : `son ${adet} dönem`} ═══`);
+  const donemler = await tekDonem('guncel');           // 1. dönem = en güncel
+  const hedefler = (hepsi ? donemler : donemler.slice(0, adet)).slice(1); // ilki çekildi
+
+  const basarisiz: string[] = [];
+  for (const d of hedefler) {
+    log(`\n─── ${d.t} (kod ${d.v}) ───`);
+    try {
+      await tekDonem(d.v);
+    } catch (e) {
+      // ⚠️ Bir dönem patlarsa DİĞERLERİ DEVAM ETSİN — tek bozuk ay tüm tazelemeyi
+      // iptal ederse geri kalan aylar yine bayat kalır. Sonunda topluca raporlanır.
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`  ⚠️ ${d.t} ÇEKİLEMEDİ: ${msg}`);
+      basarisiz.push(`${d.t} (kod ${d.v}): ${msg}`);
+    }
+  }
+
+  log(`\n═══ TAZELEME BİTTİ: ${hedefler.length + 1 - basarisiz.length}/${hedefler.length + 1} dönem yazıldı ═══`);
   await kapat();
+  if (basarisiz.length) {
+    console.error(`\n${basarisiz.length} dönem çekilemedi:`);
+    for (const b of basarisiz) console.error(`  · ${b}`);
+    process.exit(1);   // iş KIRMIZI bitsin — sessiz kısmi başarısızlık olmasın
+  }
 }
 main().catch(async e => { console.error('HATA:', e.message); await kapat().catch(() => {}); process.exit(1); });

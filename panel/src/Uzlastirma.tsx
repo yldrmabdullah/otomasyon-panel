@@ -9,7 +9,7 @@ import { Tablo, type TabloKolon } from './Tablo.js';
 import { Bos, Kart, useVeri } from './ortak.js';
 import { csvIndir, xlsIndir } from './disaAktar.js';
 
-interface Aralik { bas: string; bit: string; ad: string | null; bayiSayisi: number; sorunluBayi: number; }
+interface Aralik { bas: string; bit: string; ad: string | null; bayiSayisi: number; sorunluBayi: number; cekimZamani: string | null; }
 interface Ozet {
   bas: string; bit: string; ad: string | null; bayiSayisi: number; tankSayisi: number; sorunluBayi: number;
   toplamDolum: number; toplamSatis: number; cekimZamani: string;
@@ -43,6 +43,23 @@ const lt = (v: number | null | undefined) => v == null ? '—' : v.toLocaleStrin
  *  Durum sınıflandırması zaten |fark|>288 şartı arıyor; bu yalnız GÖSTERİM düzeltmesi. */
 const pct = (v: number | null | undefined, satis?: number) =>
   v == null || (satis != null && satis < 288) ? '—' : '%' + v.toLocaleString('tr-TR', { maximumFractionDigits: 2 });
+
+/**
+ * Dönemin ÖLÇÜM YAŞI. Bkz. Mutabakat.tsx'teki ikizi — aynı gerekçe: açılır listede
+ * "temiz / N sorunlu" yazıyordu ama o rakamın NE ZAMAN ölçüldüğü yazmıyordu.
+ * Uzlaştırmada risk daha büyüktü: kapanış koşusu cron string uyuşmazlığı yüzünden
+ * HİÇ çalışmamıştı (2026-09-18'de düzeltildi), yani geçmiş aylar hiç tazelenmiyordu.
+ */
+function olcumYasi(cekim: string | null | undefined): string {
+  if (!cekim) return 'ölçülmedi';
+  const t = new Date(cekim).getTime();
+  if (!Number.isFinite(t)) return 'ölçülmedi';
+  const gun = Math.floor((Date.now() - t) / 86_400_000);
+  if (gun <= 0) return 'bugün ölçüldü';
+  if (gun === 1) return 'dün ölçüldü';
+  if (gun < 30) return `${gun} gün önce ölçüldü`;
+  return `${new Date(cekim).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} ölçüldü`;
+}
 
 export function Uzlastirma() {
   const [aralik, setAralik] = useState<{ bas: string; bit: string } | null>(null);
@@ -200,6 +217,7 @@ export function Uzlastirma() {
             {(veri?.araliklar ?? []).map((a) => (
               <option key={`${a.bas}|${a.bit}`} value={`${a.bas}|${a.bit}`}>
                 {a.ad ?? `${a.bas} – ${a.bit}`}{a.sorunluBayi > 0 ? ` — ${a.sorunluBayi} sorunlu bayi` : ' — temiz'}
+                {` · ${olcumYasi(a.cekimZamani)}`}
               </option>
             ))}
           </select>

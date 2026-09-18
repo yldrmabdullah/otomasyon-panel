@@ -56,6 +56,26 @@ function urunKanon(s: string | null | undefined): string {
 }
 const litreTam = (v: number) => v.toLocaleString('tr-TR', { maximumFractionDigits: 0 });
 
+/**
+ * Bir dönemin ÖLÇÜM YAŞI — "bugün" / "3 gün önce" / "12 Ağu" gibi.
+ *
+ * ⚠️ 2026-09-18 NEDEN VAR: açılır listede her dönem "1 sorunlu / temiz" diyordu ama
+ * o rakamın NE ZAMAN ölçüldüğü yazmıyordu. Cron yalnız cari + geçen ayı tazelediği
+ * için 2026 Ocak verisi 12 Ağustos'tan beri donmuştu; kullanıcı Logo'da ÇÖZDÜĞÜ bir
+ * sorunu panelde haftalarca "sorunlu" görüp veriye güvenini yitirdi. Rakamın yanına
+ * yaşını yazmak, bayat dönemi tek bakışta ayırt edilebilir kılar.
+ */
+function olcumYasi(cekim: string | null | undefined): string {
+  if (!cekim) return 'ölçülmedi';
+  const t = new Date(cekim).getTime();
+  if (!Number.isFinite(t)) return 'ölçülmedi';
+  const gun = Math.floor((Date.now() - t) / 86_400_000);
+  if (gun <= 0) return 'bugün ölçüldü';
+  if (gun === 1) return 'dün ölçüldü';
+  if (gun < 30) return `${gun} gün önce ölçüldü`;
+  return `${new Date(cekim).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} ölçüldü`;
+}
+
 export function Mutabakat() {
   const [donem, setDonem] = useState<string | null>(null);
   const url = donem ? `/api/mutabakat?donem=${encodeURIComponent(donem)}` : '/api/mutabakat';
@@ -190,6 +210,7 @@ export function Mutabakat() {
             {(veri?.donemler ?? []).map((d) => (
               <option key={d.donem} value={d.donem}>
                 {d.ad ?? d.donem}{d.sorunluSayisi > 0 ? ` — ${d.sorunluSayisi} sorunlu` : ' — temiz'}
+                {` · ${olcumYasi(d.cekimZamani)}`}
               </option>
             ))}
           </select>

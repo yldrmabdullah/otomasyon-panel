@@ -24,7 +24,7 @@ on:
   workflow_dispatch:
     inputs:
       hedef:
-        description: "Boş: en yeni dönem · '2026': o yılın tümü · '--tumu': dizindeki tüm Excel'ler"
+        description: "Boş: CARİ YILIN tümü · '2025': o yılın tümü · '--tumu': dizindeki tüm Excel'ler"
         required: false
         default: ''
 
@@ -60,8 +60,13 @@ jobs:
       # Tırnaksız `${{ github.event.inputs.x }}` kabuğa aynen yazılır; repo PUBLIC ve
       # aynı job'ın env'inde DATABASE_URL/POL_SIFRE/BFF_API_KEY var → `a; curl ...`
       # gibi bir girdi sırları dışarı sızdırabilirdi. env ile geçir, kabukta tırnakla.
+      # ⭐ 2026-09-18 — CRON ARTIK CARİ YILIN TAMAMINI TAZELİYOR.
+      # Eskiden girdi boş olunca hacimCek.ts yalnız `liste[0]`ı (en yeni dönem)
+      # çekiyordu. EPDK sektör raporu KÜMÜLATİF: geçmiş bir ayı sonradan düzeltirse
+      # o düzeltme panele HİÇ yansımıyordu. Yazım UPSERT (core/db.ts:845,876) →
+      # aynı dönemi yeniden çekmek zararsız.
       - name: EPDK hacim çekimi
-        run: npm run hacim -- $HEDEF
+        run: npm run hacim -- ${HEDEF:-$(date -u +%Y)}
         env:
           HEDEF: ${{ github.event.inputs.hedef }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}

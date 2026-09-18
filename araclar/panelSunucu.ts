@@ -167,9 +167,16 @@ const sunucu = createServer(async (istek, yanit) => {
       if (!ekranKapi('izleme')) return;
       return json(200, await durumVerisi(p));
     }
+    // ⚠️ 2026-09-03'te api/sorun.ts, Vercel Hobby 12-fonksiyon limiti yüzünden
+    // api/piyasa.ts içine `?tip=sorun` olarak taşındı ve panel de öyle çağırıyor
+    // (Sorun.tsx:74) — ama BURASI güncellenmemişti: `tip`e bakmadan hep piyasa
+    // verisi dönüyordu. Sonuç: Sorun ekranı LOCAL'de kırık (canlıda sağlamdı) ve
+    // yetki yanlış ekrandan sorgulanıyordu. CLAUDE.md: "ikisi ayrı kod, BİRLİKTE
+    // güncellenir" — bu, kuralın çiğnendiği canlı örnekti. (2026-09-18 düzeltildi.)
     if (url.pathname === '/api/piyasa') {
-      if (!ekranKapi('piyasa')) return;
-      return json(200, await piyasaVerisi(p));
+      const tip = q.get('tip') === 'sorun' ? 'sorun' : 'piyasa';
+      if (!ekranKapi(tip)) return;
+      return json(200, tip === 'sorun' ? await sorunTespiti(p) : await piyasaVerisi(p));
     }
     // Yönetim: bayi × ürün grubu alımları (tarih filtreli). Vercel'deki
     // api/yonetim.ts ile AYNI sorguyu kullanır — ikisi ayrı kod, birlikte güncellenir.
@@ -185,6 +192,8 @@ const sunucu = createServer(async (istek, yanit) => {
       if (!ekranKapi('operasyon')) return;
       return json(200, await operasyonVerisi(p));
     }
+    // ESKİ UÇ: üretimde ARTIK YOK (api/sorun.ts silindi). Panel bunu çağırmıyor;
+    // yalnız elle curl eden/eski sekme açık kalan için geriye dönük bırakıldı.
     if (url.pathname === '/api/sorun') {
       if (!ekranKapi('sorun')) return;
       return json(200, await sorunTespiti(p));

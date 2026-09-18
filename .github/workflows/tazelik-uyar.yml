@@ -1,0 +1,55 @@
+name: Bayat Veri Alarmı (panel verisi güncel mi)
+
+# ⭐ NEDEN VAR (2026-09-18 canlı vakası): panel Mevzuat → A3 ↔ Logo Mutabakatı'nda
+# 2026 Ocak "2 sorunlu" diyordu. Sorunlar Logo'da ÇOKTAN düzeltilmişti; panel 12
+# Ağustos'taki ölçümü gösteriyordu çünkü cron yalnız cari ay + geçen ayı tazeliyordu.
+# Kullanıcı panele güvenini yitirdi ve arızayı biz değil KULLANICI fark etti.
+#
+# Panel `tazelikVerisi()` ile her kaynağın yaşını zaten hesaplıyordu ve `bayat`
+# bayrağı üretiyordu — ama kimseye SÖYLEMİYORDU. Bu iş o bayrağı sese çevirir.
+#
+# NEDEN CRON'un YEŞİL BİTMESİ YETMEZ: iş başarıyla koşup YANLIŞ dönemi çekebilir
+# (a3Kiyas'ta bilinmeyen kod sessizce cari aya düşüyordu — 2026-09-18'de düzeltildi).
+# O durumda tek güvenilir imza, hedef kaynağın YAŞININ İLERLEMEMESİDİR.
+# canli-nabiz.yml'in veri tarafındaki karşılığı.
+#
+# Salt-okuma. YALNIZ ekibe gider (EKIP_MAIL) — bayiye ASLA (CLAUDE.md kuralı).
+
+on:
+  schedule:
+    # Günde bir, 07:00 UTC (10:00 TR) — ekip mesaiye başlarken. Saniye hassasiyeti
+    # gerekmiyor: bu bir bayatlık alarmı, eşikler gün/hafta mertebesinde.
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: tazelik-uyar
+  cancel-in-progress: true
+
+jobs:
+  tazelik:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+      - name: Bağımlılıklar
+        run: npm ci
+
+      # Bayat kaynak varsa araç çıkış 1 verir → iş KIRMIZI biter (Actions'ta görünür).
+      # BILDIRIM_KAPALI=1 iken DRY_RUN=1 olur: rapor basılır, mail atılmaz.
+      - name: Tazelik kontrolü + uyarı
+        run: npm run tazelik:uyar
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DRY_RUN: ${{ vars.BILDIRIM_KAPALI || '0' }}
+          EKIP_MAIL: ${{ secrets.EKIP_MAIL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}

@@ -18,13 +18,17 @@ on:
     #
     #  1) Her pazartesi 06:00 UTC — 'guncel' (POL'ün en yeni dönemi = cari ay).
     - cron: '0 1 * * 1'
-    #  2) Her ayın 2'si 06:00 UTC — 'onceki': kapanan ayın nihai hali.
+    #  2) Her ayın 2'si 06:00 UTC — 'son:6': SON 6 DÖNEM yeniden çekilir.
+    #     ⭐ 2026-09-18: eskiden yalnız 'onceki' (kapanan ay) çekiliyordu. POL/Logo'da
+    #     SONRADAN düzeltilen eski aylar panele hiç yansımıyordu — 2026 Ocak verisi
+    #     12 Ağustos'tan beri donmuştu ve panel çözülmüş bir sorunu "sorunlu"
+    #     gösteriyordu. Yazım DELETE+INSERT (idempotent) → kayan pencere zararsız.
     - cron: '0 1 2 * *'
   # Elle VE dışarıdan (cron-job.org → GitHub API). Dönem seçilebilir.
   workflow_dispatch:
     inputs:
       donem:
-        description: "POL dönem kodu (boş: cari ay · 'onceki': geçen ay · 18=2026 Tem · 19=Ağu)"
+        description: "Boş: cari ay · 'onceki': geçen ay · 'son:6'/'son:hepsi': toplu tazeleme · 12=2026 Oca … 19=Ağu"
         required: false
         default: ''
 
@@ -35,7 +39,7 @@ concurrency:
 jobs:
   mutabakat:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -63,14 +67,18 @@ jobs:
       # Araç dönemi DELETE+INSERT ediyor → aynı dönemi tekrar çekmek zararsız.
       - name: A3 çek + Logo kıyas
         run: |
+          # ⚠️ 2026-09-18: ESKİDEN cron STRING'i kıyaslanıyordu ("$TETIK" = "0 1 2 * *").
+          # Cron saati değişince kıyas sessizce bayatlıyor ve kapanış koşusu hiç
+          # çalışmıyor — uzlastirma-cek.yml'de tam olarak bu oldu (aylarca fark
+          # edilmedi). Artık SAATE DEĞİL AYIN GÜNÜNE bakılıyor.
           if [ -n "$DONEM" ]; then SEC="$DONEM"
-          elif [ "$TETIK" = "0 1 2 * *" ]; then SEC="onceki"
+          elif [ "$(date -u +%d)" = "02" ] && [ "$GITHUB_EVENT_NAME" = "schedule" ]; then SEC="son:6"
           else SEC="guncel"; fi
           echo "::notice::A3 dönem seçimi=$SEC"
           npm run a3 -- "$SEC"
         env:
           DONEM: ${{ github.event.inputs.donem }}
-          TETIK: ${{ github.event.schedule }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
           POL_URL: ${{ secrets.POL_URL }}
           POL_KULLANICI: ${{ secrets.POL_KULLANICI }}
           POL_SIFRE: ${{ secrets.POL_SIFRE }}

@@ -57,7 +57,12 @@ export async function tazelikVerisi(p: Pool) {
       ('mutabakat',   'A3 ↔ Logo kıyası',  (SELECT max(cekim_zamani) FROM mutabakat_a3_donem), 64800),
       ('uzlastirma',  'Tank uzlaştırma',   (SELECT max(cekim_zamani) FROM uzlastirma_donem),   64800),
       -- A1b günlük çekim: 2 gün tolerans (fiyat ile aynı mantık).
-      ('a1b',         'Stok-satış anomali', (SELECT max(guncelleme) FROM a1b_gun),         2880)
+      ('a1b',         'Stok-satış anomali', (SELECT max(guncelleme) FROM a1b_gun),         2880),
+      -- ⚠️ 2026-09-18: hacim de şeritte YOKTU — 2026-08-13'teki fiyat vakasının
+      -- aynısı. Ayın 5'i ve 20'sinde koşuyor ama 24 günde yalnız 1 kez koştuğu
+      -- ölçüldü; şeritte olmadığı için sessizce bayatlıyordu. Eşik 45 gün
+      -- (mutabakat/uzlaştırma ile aynı mantık: ayda bir koşan iş).
+      ('hacim',       'EPDK hacim payı',   (SELECT max(guncelleme) FROM epdk_hacim_dagitici), 64800)
     ) t(anahtar, ad, son, esik_dk)
     ORDER BY son NULLS FIRST`);
 
@@ -1264,6 +1269,9 @@ export async function uzlastirmaVerisi(p: Pool, bas?: string, bit?: string, epdk
     araliklar: araliklar.rows.map((r) => ({
       bas: gun(r.donem_bas), bit: gun(r.donem_bit),
       ad: r.ad, bayiSayisi: Number(r.bayi_sayisi), sorunluBayi: Number(r.sorunlu_bayi),
+      // Açılır listede dönemin ÖLÇÜM YAŞI gösterilsin diye (bkz. Uzlastirma.tsx
+      // olcumYasi): rakam var ama ne zaman ölçüldüğü yoksa bayat veri taze sanılır.
+      cekimZamani: r.cekim_zamani,
     })),
     secili: { bas: sB, bit: sE },
     ozet: {
