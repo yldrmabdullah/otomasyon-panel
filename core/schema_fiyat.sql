@@ -19,15 +19,26 @@ CREATE TABLE IF NOT EXISTS bayi_fiyat (
   il             TEXT,                    -- A5 "Mıntıka"
   urun           TEXT NOT NULL,           -- kanonik: 'benzin' | 'motorin'
   urun_ham       TEXT,                    -- A5 ham adı (Kurşunsuz Benzin 95 Oktan…)
+  koy_pompa_no   TEXT,                    -- A5 "Köy/Demiryolu Pompa No" — dolu ise KÖY POMPASI
   bayi_fiyat     NUMERIC NOT NULL,        -- bayinin pompa fiyatı (TL/lt)
   ref_fiyat      NUMERIC,                 -- web sitesi (PO) il referans fiyatı — il içi EN YÜKSEK
   fark           NUMERIC,                 -- bayi_fiyat − ref_fiyat (pozitif = bayi PAHALI)
   ref_guncelleme DATE,                    -- referans fiyatın tarihi (bayat mı anlaşılsın)
   durum          TEXT NOT NULL,           -- 'uygun' | 'pahali' | 'ref_yok'
   guncelleme     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  -- Aynı gün aynı bayi aynı ürün için birden çok fiyat değişimi olabilir → en SON fiyat tutulur
+  -- Aynı gün aynı bayi aynı ürün için birden çok fiyat değişimi olabilir → en SON fiyat
+  -- tutulur (fiyatKiyas.mts, saat karşılaştırmalı tekilleştirme).
+  --
+  -- ⚠️ ist_kod ANAHTARDA KALMALI (2026-09-24 kullanıcı teyidi): aynı bayi lisansı altında
+  -- normal istasyon VE köy pompası olabilir. A5 bunları İst.Kod sonuna '100' ekleyerek
+  -- ayırır — 210094 = istasyon, 210094100 = köy pompası, ikisi de aynı kişiye ait.
+  -- MÜKERRER DEĞİLDİR: ayrı fiyat uygularlar, farklı ilde olabilirler. ist_kod anahtardan
+  -- çıkarılırsa biri diğerini ezer ve bir satış noktasının fiyatı kaybolur.
   PRIMARY KEY (gun, epdk_kod, ist_kod, urun)
 );
+-- Mevcut kurulumlar için (tablo zaten varsa CREATE TABLE atlanır → kolon elle eklenir).
+ALTER TABLE bayi_fiyat ADD COLUMN IF NOT EXISTS koy_pompa_no TEXT;
+
 CREATE INDEX IF NOT EXISTS ix_bfiyat_gun   ON bayi_fiyat (gun DESC);
 CREATE INDEX IF NOT EXISTS ix_bfiyat_durum ON bayi_fiyat (gun, durum);
 CREATE INDEX IF NOT EXISTS ix_bfiyat_bayi  ON bayi_fiyat (epdk_kod, gun DESC);

@@ -1340,7 +1340,7 @@ export async function fiyatVerisi(p: Pool, gun?: string) {
   const sG = g(secili.gun);
 
   const satirlar = await p.query(
-    `SELECT epdk_kod, ist_kod, istasyon, bolge, il, urun, urun_ham,
+    `SELECT epdk_kod, ist_kod, istasyon, bolge, il, urun, urun_ham, koy_pompa_no,
             bayi_fiyat, ref_fiyat, fark, durum
      FROM bayi_fiyat WHERE gun = $1
      ORDER BY (durum='pahali') DESC, fark DESC NULLS LAST, istasyon`,
@@ -1358,7 +1358,7 @@ export async function fiyatVerisi(p: Pool, gun?: string) {
     },
     satirlar: satirlar.rows.map((r) => ({
       epdk: r.epdk_kod, istKod: r.ist_kod, istasyon: r.istasyon, bolge: r.bolge, il: r.il,
-      urun: r.urun, urunHam: r.urun_ham,
+      urun: r.urun, urunHam: r.urun_ham, koyPompaNo: r.koy_pompa_no ?? null,
       bayiFiyat: Number(r.bayi_fiyat), refFiyat: r.ref_fiyat == null ? null : Number(r.ref_fiyat),
       fark: r.fark == null ? null : Number(r.fark), durum: r.durum,
     })),

@@ -10,7 +10,7 @@ interface GunOzet { gun: string; kayit: number; pahali: number; }
 interface Ozet { gun: string; kayit: number; pahali: number; refGuncelleme: string | null; refYas: number | null; cekim: string; }
 interface Satir {
   epdk: string; istKod: string | null; istasyon: string | null; bolge: string | null; il: string | null;
-  urun: string; urunHam: string | null;
+  urun: string; urunHam: string | null; koyPompaNo: string | null;
   bayiFiyat: number; refFiyat: number | null; fark: number | null; durum: string;
 }
 interface Veri { gunler: GunOzet[]; secili: string | null; ozet: Ozet | null; satirlar: Satir[]; }
@@ -20,6 +20,19 @@ const DURUM: Record<string, { ad: string; sinif: string }> = {
   pahali: { ad: 'Referans üstü', sinif: 'krit' },
   ref_yok: { ad: 'Referans yok', sinif: 'soluk' },
 };
+
+/**
+ * KÖY POMPASI (2026-09-24 kullanıcı teyidi). Aynı bayi lisansı altında normal istasyon
+ * VE köy pompası olabilir; POL bunları istasyon listesinde `(İ)` / `(K)` ön ekiyle,
+ * A5 Excel'inde ise "Köy/Demiryolu Pompa No" kolonuyla ayırır (köy pompasında dolu —
+ * ör. 2725, istasyonda 0). İst.Kod da `100` ekli gelir (210114 ↔ 210114100) ama
+ * KAYNAK ALAN BU DEĞİL: kod deseni tahmin, pompa no POL'ün kendi ayrımı.
+ *
+ * Aynı bayinin listede İKİ SATIR görünmesi DOĞRUDUR — mükerrer kayıt değil, iki ayrı
+ * satış noktası; ayrı fiyat uygularlar ve farklı ilde olabilirler. İşaretlenmezse
+ * kullanıcı haklı olarak "job mükerrer yazmış" sanıyor (canlı geri bildirim).
+ */
+const koyPompasi = (r: { koyPompaNo?: string | null }) => !!r.koyPompaNo;
 const URUN_AD: Record<string, string> = { benzin: 'Benzin', motorin: 'Motorin' };
 const tl = (v: number | null | undefined) => v == null ? '—' : v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₺';
 
@@ -40,11 +53,12 @@ export function Fiyat() {
       hucre: (r) => (
         <>
           {r.istasyon || r.epdk}
-          {r.istasyon && <div className="alt-satir soluk mono">{r.epdk}</div>}
+          {koyPompasi(r) && <span className="rozet soluk" style={{ marginLeft: 6 }}>köy pompası</span>}
+          {r.istasyon && <div className="alt-satir soluk mono">{r.epdk}{r.istKod ? ` · ${r.istKod}` : ''}</div>}
         </>
       ),
-      ara: (r) => `${r.istasyon ?? ''} ${r.epdk}`,
-      metin: (r) => `${r.istasyon ?? ''} (${r.epdk})`,
+      ara: (r) => `${r.istasyon ?? ''} ${r.epdk} ${r.istKod ?? ''}${koyPompasi(r) ? ' köy pompası' : ''}`,
+      metin: (r) => `${r.istasyon ?? ''} (${r.epdk})${koyPompasi(r) ? ' [köy pompası]' : ''}`,
       sirala: (r) => r.istasyon ?? '',
     },
     { id: 'il', ad: 'İl', varsayilan: true, hucre: (r) => r.il || <Bos />, ara: (r) => r.il ?? '', sirala: (r) => r.il ?? '' },
@@ -79,9 +93,13 @@ export function Fiyat() {
   const ozet = veri?.ozet;
 
   function disaAktar(xls: boolean) {
-    const baslik = ['Bayi', 'EPDK', 'İl', 'Bölge', 'Ürün', 'Bayi Fiyatı', 'Referans (PO)', 'Fark', 'Durum'];
+    // Nokta tipi kolonu ŞART: aynı bayi iki satırla gelir (istasyon + köy pompası) ve
+    // dışa aktarılan dosyada ayırt edilemezse mükerrer kayıt sanılır.
+    const baslik = ['Bayi', 'EPDK', 'Nokta', 'İl', 'Bölge', 'Ürün', 'Bayi Fiyatı', 'Referans (PO)', 'Fark', 'Durum'];
     const satir = satirlar.map((r) => [
-      r.istasyon ?? '', r.epdk, r.il ?? '', r.bolge ?? '', URUN_AD[r.urun] ?? r.urun,
+      r.istasyon ?? '', r.epdk,
+      koyPompasi(r) ? `Köy pompası (${r.koyPompaNo})` : 'İstasyon',
+      r.il ?? '', r.bolge ?? '', URUN_AD[r.urun] ?? r.urun,
       r.bayiFiyat.toFixed(2), r.refFiyat == null ? '' : r.refFiyat.toFixed(2),
       r.fark == null ? '' : r.fark.toFixed(2), DURUM[r.durum]?.ad ?? r.durum,
     ]);
@@ -153,7 +171,9 @@ export function Fiyat() {
         anahtar="fiyat"
         baslik={<>Bayi Fiyat Takibi{ozet?.gun ? ` · ${new Date(ozet.gun).toLocaleDateString('tr-TR')}` : ''}</>}
         aciklama={<>Bayi pompa fiyatı (POL A5) ↔ <b>parkoil.com.tr</b> il referans fiyatı (Petrol Ofisi).
-          Referansın <b>0,20 ₺</b> üstünde satan bayi işaretlenir — rekabet göstergesi, EPDK yasal tavan değil.</>}
+          Referansın <b>0,20 ₺</b> üstünde satan bayi işaretlenir — rekabet göstergesi, EPDK yasal tavan değil.
+          {' '}Bir bayi <b>iki satır</b> görünebilir: istasyon ve <b>köy pompası</b> ayrı satış noktalarıdır,
+          ayrı fiyat uygularlar. Gün içinde fiyat değişirse <b>günün son fiyatı</b> gösterilir.</>}
         kolonlar={kolonlar}
         satirlar={satirlar}
         satirAnahtar={(r, i) => `${r.epdk}-${r.istKod}-${r.urun}-${i}`}

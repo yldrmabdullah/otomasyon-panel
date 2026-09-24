@@ -129,6 +129,49 @@ tek bayi için gösteriyor.
 **Ne:** Bayi pompa fiyatı bildirimi. 827 satır. Fiyat + tarih + istasyon.
 ASIS `SonBirimFiyat` metodu bunun kaynağı olabilir (320 kayıt/gün, `PompaFiyat` %100 dolu).
 
+### ⚠️ İst. Kod + `100` = KÖY POMPASI (2026-09-24, kullanıcı teyidi)
+
+Aynı bayi lisansı altında **iki ayrı satış noktası** olabilir ve A5 bunları İst. Kod'un
+sonuna `100` ekleyerek ayırır:
+
+| İst. Kod | Ne |
+|---|---|
+| `210094` | normal istasyon |
+| `210094100` | **köy pompası** (aynı kişiye/lisansa ait) |
+
+Canlı örnekler (11.08.2026'dan beri her gün):
+
+```
+BAY/939-82/30848  UĞURLU ZİREK  210094 (Bursa) + 210094100 (Bursa)
+BAY/939-82/44604  FULYAKIT      210114 (Düzce) + 210114100 (Bursa)
+```
+
+**MÜKERRER KAYIT DEĞİLDİR — birleştirilmemeli.** İki nokta ayrı fiyat uygular
+(FULYAKIT 24.09: istasyon motorin 66,09 ₺ ↔ köy pompası 97,30 ₺) ve farklı ilde
+olabilirler, dolayısıyla referans fiyat karşılaştırması da ayrı yapılmalıdır.
+
+Bu yüzden `bayi_fiyat` birincil anahtarı `(gun, epdk_kod, ist_kod, urun)` —
+`ist_kod` anahtardan ÇIKARILIRSA köy pompası kaydı istasyonunkini ezer.
+Panelde aynı bayinin iki satır görünmesi bu durumda **doğrudur**.
+
+İlgili: EPDK "Bilgi Sistemi (E)" modülünde E-2 **Bayi Köy/Demiryolu Pompası**
+beyanı var; A5 filtresinde de `Köy/Demiryolu Pompa No` alanı bulunuyor.
+
+### ⚠️ Gün içinde BİRDEN ÇOK fiyat satırı olabilir (2026-09-24 canlı bulgu)
+
+Bayi fiyatını gün ortasında güncellerse A5 her değişimi **ayrı satır** verir:
+
+```
+PARKOİL DÜZCE (210238), 24.09.2026, Motorin:
+  24.09.2026 06:07 → 86,45 ₺   ← güncel (bayi indirmiş)
+  24.09.2026 00:00 → 92,02 ₺   ← günün açılışı
+```
+
+**POL dosyayı saate göre SIRALAMIYOR** — ekranda 06:07 satırı 00:00'dan önce
+listeleniyor. Dolayısıyla "dosyada son gelen kazanır" varsayımı YANLIŞTIR;
+tarih kolonunun **saat kısmı** (Excel seri sayısının ondalık hanesi)
+karşılaştırılmalıdır. `fiyatKiyas.mts` bunu `excelDakika()` ile yapar.
+
 ---
 
 ## İstasyon Dönemleri ⭐⭐ — AYLIK KAPATMA (kullanıcı: "en kritik yer")
