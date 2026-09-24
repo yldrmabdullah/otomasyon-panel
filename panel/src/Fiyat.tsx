@@ -171,9 +171,10 @@ export function Fiyat() {
         anahtar="fiyat"
         baslik={<>Bayi Fiyat Takibi{ozet?.gun ? ` · ${new Date(ozet.gun).toLocaleDateString('tr-TR')}` : ''}</>}
         aciklama={<>Bayi pompa fiyatı (POL A5) ↔ <b>parkoil.com.tr</b> il referans fiyatı (Petrol Ofisi).
-          Referansın <b>0,20 ₺</b> üstünde satan bayi işaretlenir — rekabet göstergesi, EPDK yasal tavan değil.
+          Referansın <b>üstündeki her fark</b> işaretlenir (tolerans yok) — referansla aynı fiyat aşım sayılmaz.
           {' '}Bir bayi <b>iki satır</b> görünebilir: istasyon ve <b>köy pompası</b> ayrı satış noktalarıdır,
-          ayrı fiyat uygularlar. Gün içinde fiyat değişirse <b>günün son fiyatı</b> gösterilir.</>}
+          ayrı fiyat uygularlar. Gün içinde fiyat değişirse <b>günün son fiyatı</b> gösterilir.
+          {' '}Referans <b>il</b> bazlıdır (il içi en yüksek ilçe fiyatı).</>}
         kolonlar={kolonlar}
         satirlar={satirlar}
         satirAnahtar={(r, i) => `${r.epdk}-${r.istKod}-${r.urun}-${i}`}

@@ -69,12 +69,28 @@ const excelGun = (seri: number) => new Date(Date.UTC(1899, 11, 30) + Math.floor(
  */
 const excelDakika = (seri: number) => Math.round((seri - Math.floor(seri)) * 1440);
 
-/** "Pahalı" sayılma eşiği (TL/lt).
- *  ⚠️ NEDEN 0.20 (2026-08-12 ölçüldü): eşiksiz 17 kayıt "pahalı" çıkıyordu ama 11'i
- *  +0,02…+0,15 TL — bunlar ilçe fiyat farkı / zam zamanlaması, gerçek sapma değil.
- *  Gerçek sapmalar +1,24 ve +1,34 TL (ILGINPARK Konya, ABDULKADİR TEKİNTAŞ Çankırı).
- *  0,20 TL bu iki grubu net ayırıyor; kuruş gürültüsü alarm üretmiyor. */
-const PAHALI_ESIK = 0.20;
+/**
+ * "Referans üstü" sayılma eşiği (TL/lt).
+ *
+ * ⚠️ 0 = TOLERANS YOK (2026-09-24 kullanıcı kararı). Referansın ÜSTÜNDEKİ her fark
+ * işaretlenir; 0,001 TL bile olsa. Gerekçe: tavan fiyatın üzerine çıkılamaz, dolayısıyla
+ * "küçük aşım" diye bir kavram yok — aşım aşımdır.
+ *
+ * TARİHÇE: 2026-08-12'de 0,20 konmuştu. O gün eşiksiz 17 kayıt "pahalı" çıkıyor, 11'i
+ * +0,02…+0,15 TL idi ve bunlar ilçe fiyat farkı / zam zamanlaması sayılıp gürültü kabul
+ * edilmişti. Bugün ölçüldü: 24.09'da eşik altında kalan yalnız 3 kayıt var (+0,06…+0,10),
+ * yani gürültü korkusu artık karşılığını bulmuyor — 12 "pahalı" 15'e çıkıyor.
+ *
+ * ⚠️ KALAN AÇIK: referans fiyat İL bazlı (il içi EN YÜKSEK ilçe — bkz. refFiyat).
+ * Tavan ilçe bazlıysa ucuz ilçedeki bayinin aşımı hâlâ gizlenebilir. Eşik sıfırlandı
+ * ama bu ayrı bir iş; ilçe eşleştirmesi kurulunca burası daha da hassaslaşır.
+ *
+ * NOT: `fark >= PAHALI_ESIK` karşılaştırması 0 eşiğinde TAM EŞİTLİĞİ de yakalardı
+ * (fark=0 → "pahalı"), bu yanlış olurdu — eşit fiyat aşım değildir. Bu yüzden
+ * karşılaştırma `fark > 0` olacak şekilde ayrıca ele alınır (aşağıya bak).
+ * Ölçüm: 24.09'da 27 kayıt tam eşit.
+ */
+const PAHALI_ESIK = 0;
 
 async function a5Indir(bas: string, bit: string): Promise<string> {
   const browser = await chromium.launch({ headless: true });
@@ -219,8 +235,11 @@ async function main() {
     for (const s of tekil.values()) {
       const r = ref.il.get(ilAnahtar(s.il))?.[s.urun];
       const fark = r === undefined ? null : Math.round((s.fiyat - r) * 100) / 100;
-      // Eşik altı fark (kuruş) 'uygun' — gürültü alarm üretmesin (bkz. PAHALI_ESIK).
-      const durum = r === undefined ? 'ref_yok' : (fark! >= PAHALI_ESIK ? 'pahali' : 'uygun');
+      // REFERANSIN ÜSTÜNDEKİ HER FARK işaretlenir (2026-09-24, PAHALI_ESIK=0).
+      // ⚠️ `>` kullanılır, `>=` DEĞİL: eşik 0 iken `>=` tam eşitliği de "pahalı" sayardı,
+      // oysa referansla AYNI fiyat aşım değildir (24.09'da 27 kayıt tam eşit).
+      // Eşik tekrar >0 yapılırsa bu karşılaştırma yine doğru çalışır.
+      const durum = r === undefined ? 'ref_yok' : (fark! > PAHALI_ESIK ? 'pahali' : 'uygun');
       if (durum === 'pahali') pahali++; else if (durum === 'uygun') uygun++; else refYok++;
       await c.query(
         `INSERT INTO bayi_fiyat (gun,epdk_kod,ist_kod,istasyon,bolge,il,urun,urun_ham,bayi_fiyat,ref_fiyat,fark,ref_guncelleme,durum,koy_pompa_no)
