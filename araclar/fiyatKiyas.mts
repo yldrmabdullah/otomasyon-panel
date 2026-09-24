@@ -54,8 +54,20 @@ const ilAnahtar = (il: unknown) => { const n = norm(il); return IL_ES_AD[n] ?? n
 /** A5 ürün adı → kanonik. Web JSON alan adlarıyla aynı olmalı (benzin/motorin). */
 const urunKanon = (u: string): 'benzin' | 'motorin' | null =>
   /motorin|mazot/i.test(u) ? 'motorin' : /benzin|oktan/i.test(u) ? 'benzin' : null;
-/** Excel seri no → YYYY-MM-DD (1899-12-30 epoch). */
+/** Excel seri no → YYYY-MM-DD (1899-12-30 epoch). Saat kısmı ATILIR — gün anahtarı için. */
 const excelGun = (seri: number) => new Date(Date.UTC(1899, 11, 30) + Math.floor(seri) * 864e5).toISOString().slice(0, 10);
+
+/**
+ * Excel seri no → gün İÇİNDEKİ dakika (0–1439). Saat kısmı seri sayının ondalık hanesidir.
+ *
+ * NEDEN GEREKLİ (2026-09-24 canlı bulgu): A5 aynı bayi+ürün için gün içinde BİRDEN ÇOK
+ * satır verebiliyor — bayi fiyatını gün ortasında güncellediğinde eski ve yeni fiyat
+ * ayrı satır olarak geliyor (PARKOİL DÜZCE 24.09: 00:00 → 92,02 ve 06:07 → 86,45).
+ * Önceden yalnız tarihe bakılıyordu, saat bilgisi kayboluyordu ve hangi satırın
+ * kazanacağı DOSYA SIRASINA kalıyordu. POL dosyayı saate göre sıralamıyor (ekranda
+ * 06:07 satırı 00:00'dan önce listeleniyor), dolayısıyla panelde ESKİ fiyat kalabiliyordu.
+ */
+const excelDakika = (seri: number) => Math.round((seri - Math.floor(seri)) * 1440);
 
 /** "Pahalı" sayılma eşiği (TL/lt).
  *  ⚠️ NEDEN 0.20 (2026-08-12 ölçüldü): eşiksiz 17 kayıt "pahalı" çıkıyordu ama 11'i
@@ -125,7 +137,7 @@ async function a5Indir(bas: string, bit: string): Promise<string> {
   } finally { await browser.close(); }
 }
 
-interface Satir { gun: string; epdk: string; istKod: string; istasyon: string; bolge: string; il: string; urun: 'benzin' | 'motorin'; urunHam: string; fiyat: number; }
+interface Satir { gun: string; dk: number; epdk: string; istKod: string; koyPompaNo: string; istasyon: string; bolge: string; il: string; urun: 'benzin' | 'motorin'; urunHam: string; fiyat: number; }
 
 function a5Oku(yol: string): Satir[] {
   const wb = XLSX.readFile(yol);
@@ -136,8 +148,15 @@ function a5Oku(yol: string): Satir[] {
     const uk = urunKanon(String(r[4] ?? ''));
     const fiyat = Number(r[5]);
     if (!uk || !(fiyat > 0)) continue;
+    // KÖY POMPASI (2026-09-24): A5 kolon 3 = "Köy/Demiryolu Pompa No". Köy pompası
+    // satırında dolu (ör. 2725), normal istasyonda 0. POL istasyon listesinde de
+    // (İ)/(K) ön ekiyle ayırıyor. İst.Kod'a bakıp '100' ile bitiyor mu demekten
+    // DAHA GÜVENİLİR — bu alan POL'ün kendi ayrımı, tahmin değil.
+    const kpHam = String(r[3] ?? '').trim();
     out.push({
-      gun: excelGun(Number(r[6])), epdk: String(r[2]).trim(), istKod: String(r[8] ?? '').trim(),
+      gun: excelGun(Number(r[6])), dk: excelDakika(Number(r[6])),
+      koyPompaNo: kpHam === '0' ? '' : kpHam,
+      epdk: String(r[2]).trim(), istKod: String(r[8] ?? '').trim(),
       istasyon: String(r[9] ?? '').trim(), bolge: String(r[10] ?? '').trim(), il: String(r[11] ?? '').trim(),
       urun: uk, urunHam: String(r[4] ?? '').trim(), fiyat,
     });
@@ -173,9 +192,24 @@ async function main() {
   const [satirlar, ref] = await Promise.all([a5Indir(bas, bit).then(a5Oku), refFiyat()]);
   log(`A5: ${satirlar.length} fiyat kaydı · referans: ${ref.il.size} il (${ref.guncelleme})`);
 
-  // Aynı gün+bayi+ürün için EN SON (en yüksek fiyat değişimi değil, son kayıt) → dosya sırası son kazanır
+  // ── AYNI GÜN+BAYİ+ÜRÜN → GÜNÜN EN SON FİYATI (2026-09-24 düzeltmesi) ───────────────
+  // Bayi gün içinde fiyat güncellerse A5 her değişimi ayrı satır verir. Panelde o günün
+  // GEÇERLİ (en güncel) fiyatı görünmeli.
+  //
+  // ÖNCE: `tekil.set(...)` koşulsuz yazıyordu, yani "dosyada en son gelen kazanır"
+  // varsayımı vardı. O varsayım YANLIŞ — POL dosyayı saate göre sıralamıyor. Canlı kanıt
+  // (PARKOİL DÜZCE, 24.09): POL ekranında 06:07/86,45 satırı 00:00/92,02'den ÖNCE
+  // listeleniyor; dolayısıyla panel 92,02'yi (eski fiyat) yazıp "pahalı" işaretliyordu,
+  // oysa bayi fiyatı 86,45'e DÜŞÜRMÜŞTÜ.
+  //
+  // ARTIK saat karşılaştırılıyor: yalnız daha GEÇ saatli satır öncekini ezer. Eşitlikte
+  // (aynı dakika, ör. ikisi de 00:00) dosya sırasında sonra gelen kazanır — eski davranış.
   const tekil = new Map<string, Satir>();
-  for (const s of satirlar) tekil.set(`${s.gun}|${s.epdk}|${s.istKod}|${s.urun}`, s);
+  for (const s of satirlar) {
+    const k = `${s.gun}|${s.epdk}|${s.istKod}|${s.urun}`;
+    const onceki = tekil.get(k);
+    if (!onceki || s.dk >= onceki.dk) tekil.set(k, s);
+  }
 
   const p = pool();
   const c = await p.connect();
@@ -189,11 +223,12 @@ async function main() {
       const durum = r === undefined ? 'ref_yok' : (fark! >= PAHALI_ESIK ? 'pahali' : 'uygun');
       if (durum === 'pahali') pahali++; else if (durum === 'uygun') uygun++; else refYok++;
       await c.query(
-        `INSERT INTO bayi_fiyat (gun,epdk_kod,ist_kod,istasyon,bolge,il,urun,urun_ham,bayi_fiyat,ref_fiyat,fark,ref_guncelleme,durum)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        `INSERT INTO bayi_fiyat (gun,epdk_kod,ist_kod,istasyon,bolge,il,urun,urun_ham,bayi_fiyat,ref_fiyat,fark,ref_guncelleme,durum,koy_pompa_no)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
          ON CONFLICT (gun,epdk_kod,ist_kod,urun) DO UPDATE SET
-           bayi_fiyat=$9, ref_fiyat=$10, fark=$11, ref_guncelleme=$12, durum=$13, guncelleme=now()`,
-        [s.gun, s.epdk, s.istKod, s.istasyon, s.bolge, s.il, s.urun, s.urunHam, s.fiyat, r ?? null, fark, ref.guncelleme, durum],
+           bayi_fiyat=$9, ref_fiyat=$10, fark=$11, ref_guncelleme=$12, durum=$13,
+           koy_pompa_no=$14, guncelleme=now()`,
+        [s.gun, s.epdk, s.istKod, s.istasyon, s.bolge, s.il, s.urun, s.urunHam, s.fiyat, r ?? null, fark, ref.guncelleme, durum, s.koyPompaNo || null],
       );
     }
     await c.query('COMMIT');
