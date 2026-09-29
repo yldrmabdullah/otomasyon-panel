@@ -64,10 +64,44 @@ function olcumYasi(cekim: string | null | undefined): string {
 export function Uzlastirma() {
   const [aralik, setAralik] = useState<{ bas: string; bit: string } | null>(null);
   const [acikBayi, setAcikBayi] = useState<string | null>(null);
+  // TARİH SÜZGECİ (2026-09-29): dönem listesi 15+ kayda çıktı ve aranan aralığı
+  // bulmak zorlaştı. Süzgeç yalnız LİSTEYİ daraltır — POL'e gitmez, yeni veri
+  // çekmez. Çekilmemiş bir aralık burada da çıkmaz (bkz. aşağıdaki boş durum notu).
+  const [suzBas, setSuzBas] = useState('');
+  const [suzBit, setSuzBit] = useState('');
   const qs = new URLSearchParams();
   if (aralik) { qs.set('bas', aralik.bas); qs.set('bit', aralik.bit); }
   if (acikBayi) qs.set('epdk', acikBayi);
   const { veri, yukleniyor, hata } = useVeri<Veri>(`/api/uzlastirma${qs.toString() ? '?' + qs : ''}`, undefined, 600_000);
+
+  /**
+   * Dönem listesini tarih aralığına göre süzer (2026-09-29).
+   *
+   * KURAL — ÇAKIŞMA, KAPSAMA DEĞİL: bir çekim, süzgeç aralığıyla BİR GÜN BİLE
+   * kesişiyorsa listede kalır (`cekimBas <= suzBit && cekimBit >= suzBas`).
+   * "Tamamen içinde olsun" kuralı seçilseydi, 01.03–31.03 çekimini görmek için
+   * süzgeci tam o güne ayarlamak gerekirdi — süzgecin amacı bu değil.
+   *
+   * Tek uç doldurulabilir: yalnız başlangıç = "bu tarihten sonrası",
+   * yalnız bitiş = "bu tarihe kadar".
+   *
+   * Karşılaştırma YYYY-MM-DD metinleri üzerinde yapılır; bu biçimde sözlük
+   * sırası = tarih sırası olduğu için Date nesnesine çevirmeye gerek yok
+   * (saat dilimi kayması riski de böylece hiç doğmaz).
+   */
+  const suzulmusAraliklar = useMemo(() => {
+    const hepsi = veri?.araliklar ?? [];
+    if (!suzBas && !suzBit) return hepsi;
+    return hepsi.filter((a) => (!suzBit || a.bas <= suzBit) && (!suzBas || a.bit >= suzBas));
+  }, [veri, suzBas, suzBit]);
+
+  // Seçili dönem süzgeç dışında kaldıysa kullanıcıya belli et: tablo o dönemi
+  // göstermeye devam eder (veri ondan geliyor) ama listede görünmez — sessiz
+  // bırakılırsa "seçtiğim dönem kayboldu" izlenimi doğar.
+  const seciliSuzgecDisi = !!(
+    veri?.ozet && suzulmusAraliklar.length > 0 &&
+    !suzulmusAraliklar.some((a) => a.bas === veri.ozet!.bas && a.bit === veri.ozet!.bit)
+  );
 
   const bayiKolon: TabloKolon<Bayi>[] = useMemo(() => [
     {
@@ -212,9 +246,18 @@ export function Uzlastirma() {
           <select
             value={ozet ? `${ozet.bas}|${ozet.bit}` : ''}
             onChange={(e) => { const [b, t] = e.target.value.split('|'); setAralik({ bas: b, bit: t }); setAcikBayi(null); }}
-            disabled={yukleniyor || !veri?.araliklar.length}
+            disabled={yukleniyor || !suzulmusAraliklar.length}
           >
-            {(veri?.araliklar ?? []).map((a) => (
+            {/* Seçili dönem süzgeç dışında kaldıysa listeye geri eklenir — aksi halde
+                <select> value'yu bulamaz ve tarayıcı ilk seçeneği gösterir, yani ekran
+                bir dönemi gösterirken seçici BAŞKA dönemi işaret eder. */}
+            {(seciliSuzgecDisi && veri?.ozet
+              ? [{ bas: veri.ozet.bas, bit: veri.ozet.bit, ad: veri.ozet.ad,
+                   bayiSayisi: veri.ozet.bayiSayisi, sorunluBayi: veri.ozet.sorunluBayi,
+                   cekimZamani: veri.ozet.cekimZamani } satisfies Aralik,
+                 ...suzulmusAraliklar]
+              : suzulmusAraliklar
+            ).map((a) => (
               <option key={`${a.bas}|${a.bit}`} value={`${a.bas}|${a.bit}`}>
                 {a.ad ?? `${a.bas} – ${a.bit}`}{a.sorunluBayi > 0 ? ` — ${a.sorunluBayi} sorunlu bayi` : ' — temiz'}
                 {` · ${olcumYasi(a.cekimZamani)}`}
@@ -222,12 +265,71 @@ export function Uzlastirma() {
             ))}
           </select>
         </label>
+
+        {/* TARİH SÜZGECİ (2026-09-29) — dönem listesi 15+ kayda çıkınca aranan aralığı
+            bulmak zorlaştı. Yalnız listeyi daraltır; yeni veri ÇEKMEZ. */}
+        <label className="mutabakat-donem-secim">
+          <span>Tarih</span>
+          <input
+            type="date"
+            value={suzBas}
+            max={suzBit || undefined}
+            onChange={(e) => setSuzBas(e.target.value)}
+            aria-label="Süzgeç başlangıç tarihi"
+          />
+          <span style={{ opacity: 0.5 }}>–</span>
+          <input
+            type="date"
+            value={suzBit}
+            min={suzBas || undefined}
+            onChange={(e) => setSuzBit(e.target.value)}
+            aria-label="Süzgeç bitiş tarihi"
+          />
+          {(suzBas || suzBit) && (
+            <button
+              type="button"
+              onClick={() => { setSuzBas(''); setSuzBit(''); }}
+              className="mini-btn"
+              title="Tarih süzgecini temizle"
+            >
+              Temizle
+            </button>
+          )}
+        </label>
         {ozet && (
           <span className="taze">
             {new Date(ozet.cekimZamani).toLocaleString('tr-TR', { dateStyle: 'medium', timeStyle: 'short' })} çekildi
           </span>
         )}
       </div>
+
+      {/* SÜZGEÇ SONUÇ BİLDİRİMİ (2026-09-29).
+          Sessiz bırakılırsa iki durum yanlış okunur:
+           · Hiç eşleşme yok → "o tarihte hiç ölçüm yapılmamış" sanılır; oysa doğrusu
+             "o aralık HENÜZ ÇEKİLMEMİŞ" — POL'den çekilirse gelir.
+           · Seçili dönem süzgeç dışında → tablo eski dönemi göstermeye devam eder,
+             kullanıcı baktığı verinin hangi döneme ait olduğunu şaşırır. */}
+      {(suzBas || suzBit) && suzulmusAraliklar.length === 0 && (
+        <div className="analiz-not" role="status">
+          Seçilen tarih aralığına giren bir ölçüm <b>yok</b>. Bu, o dönemde sorun olmadığı
+          anlamına gelmez — aralık henüz <b>çekilmemiş</b> olabilir. Çekim haftalık ve ay
+          kapanışında otomatik koşuyor; ara bir aralık gerekiyorsa elle çekim yapılmalı.
+          <button
+            type="button"
+            onClick={() => { setSuzBas(''); setSuzBit(''); }}
+            className="mini-btn"
+            style={{ marginLeft: 8 }}
+          >
+            Süzgeci kaldır
+          </button>
+        </div>
+      )}
+      {seciliSuzgecDisi && (
+        <div className="analiz-not" role="status">
+          Aşağıdaki tablo <b>{ozet?.ad ?? `${ozet?.bas} – ${ozet?.bit}`}</b> dönemini gösteriyor;
+          bu dönem seçtiğiniz tarih aralığının dışında. Listeden süzgece uyan bir dönem seçin.
+        </div>
+      )}
 
       {/* Özet kartlar */}
       {ozet && (

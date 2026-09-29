@@ -1584,6 +1584,25 @@ button:focus-visible, a:focus-visible, [tabindex]:focus-visible {
 .mutabakat-donem-secim select:hover { border-color: var(--accent-cizgi); }
 .mutabakat-donem-secim select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+/* TARİH SÜZGECİ (2026-09-29) — dönem seçicinin yanındaki gün alanları.
+   select ile AYNI görsel dili kullanır ki iki kontrol tek bir grup gibi okunsun. */
+.mutabakat-donem-secim input[type="date"] {
+  font: inherit; font-size: var(--t-md); color: var(--metin); background: var(--panel-2);
+  border: 1px solid var(--cizgi-2); border-radius: var(--r-sm); padding: 5px var(--s-2);
+  cursor: pointer; color-scheme: dark;
+}
+.mutabakat-donem-secim input[type="date"]:hover { border-color: var(--accent-cizgi); }
+.mutabakat-donem-secim input[type="date"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Küçük ikincil buton (süzgeç temizleme gibi yan eylemler). */
+.mini-btn {
+  font: inherit; font-size: var(--t-sm); color: var(--metin-2); background: transparent;
+  border: 1px solid var(--cizgi-2); border-radius: var(--r-sm); padding: 4px var(--s-2);
+  cursor: pointer;
+}
+.mini-btn:hover { color: var(--metin); border-color: var(--accent-cizgi); }
+.mini-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 /* Kıyas satır boyama — uyuşmayanlar sarı, iptal/eksik kırmızımsı (satir-alarmli deseniyle aynı) */
 .satir-uyari td { background: var(--uyari-bg); }
 .satir-uyari:hover td { background: color-mix(in srgb, var(--uyari) 15%, var(--panel)); }
