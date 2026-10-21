@@ -307,7 +307,7 @@ export function Piyasa() {
 
   useEffect(() => {
     const ac = new AbortController();
-    fetch('/api/bayiler?secenekler=1', { signal: ac.signal })
+    fetch('/api/piyasa?secenekler=1', { signal: ac.signal })
       .then((r) => (r.status === 401 ? (location.reload(), null) : r.ok ? r.json() : null))
       .then((d) => { if (d) setSecenekler(d); })
       .catch(() => {});
@@ -340,7 +340,7 @@ export function Piyasa() {
         if (sorgu.dagitici) p.set('dagitici', sorgu.dagitici);
         if (sorgu.durum) p.set('durum', sorgu.durum);
         if (sorgu.sadeceBiz) p.set('sadeceBiz', '1');
-        const r = await fetch(`/api/bayiler?${p}`);
+        const r = await fetch(`/api/piyasa?bayiler=1&${p}`);
         if (!r.ok) throw new Error(`Sunucu ${r.status}`);
         const d = await r.json();
         tumu.push(...(d.satirlar ?? []));
@@ -384,7 +384,7 @@ export function Piyasa() {
     if (sorgu.sadeceBiz) p.set('sadeceBiz', '1');
 
     setBayiYukleniyor(true);
-    fetch(`/api/bayiler?${p}`, { signal: ac.signal })
+    fetch(`/api/piyasa?bayiler=1&${p}`, { signal: ac.signal })
       .then(async (r) => {
         if (r.status === 401) { location.reload(); return null; }
         if (!r.ok) throw new Error(`Bayi listesi alınamadı (${r.status} ${r.statusText})`);
