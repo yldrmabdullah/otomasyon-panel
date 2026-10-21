@@ -125,6 +125,33 @@ export async function tanklariKaydet(istasyonKod: string, tanklar: AsisTank[]): 
   }
 }
 
+// --- KALİBRASYON mm serisi (2026-10-21) — GetTankLastLevel anlık ölçümlerini biriktirir.
+// Anahtar (istasyon, tank, durum_zamani): aynı ölçüm anı tekrar gelirse ezilir, yeni zaman
+// yeni nokta. mm NULL ise o tank bu dönem mm göndermiyordur — kayıt yine yazılır, kalibrasyon
+// o noktayı atlar. Tüm filo (677 tank) → tankSonDurum tek çağrı; burada satır-satır upsert.
+export async function kalibrasyonSeriKaydet(tanklar: AsisTank[]): Promise<number> {
+  const p = pool();
+  let yazilan = 0;
+  for (const t of tanklar) {
+    if (!t.istasyonKod || !t.tankNo) continue;
+    await p.query(
+      `INSERT INTO kalibrasyon_mm_seri
+         (istasyon_kod, tank_no, durum_zamani, urun, yakit_mm, yakit_lt, su_mm,
+          sicaklik, kalibrasyon_yuzdesi, kapasite_lt, guncelleme)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now())
+       ON CONFLICT (istasyon_kod, tank_no, durum_zamani) DO UPDATE SET
+         urun=EXCLUDED.urun, yakit_mm=EXCLUDED.yakit_mm, yakit_lt=EXCLUDED.yakit_lt,
+         su_mm=EXCLUDED.su_mm, sicaklik=EXCLUDED.sicaklik,
+         kalibrasyon_yuzdesi=EXCLUDED.kalibrasyon_yuzdesi, kapasite_lt=EXCLUDED.kapasite_lt,
+         guncelleme=now()`,
+      [t.istasyonKod, t.tankNo, t.durumZamani, t.urunAdi, t.yakitMm, t.yakitLt, t.suMm,
+       t.sicaklik, t.kalibrasyonYuzdesi, t.kapasiteLt],
+    );
+    yazilan++;
+  }
+  return yazilan;
+}
+
 // --- Tank dolumları (artımlı) — TOPLU insert (satır-satır çok yavaştı) ---
 export async function dolumlariKaydet(dolumlar: AsisDolum[]): Promise<void> {
   if (dolumlar.length === 0) return;

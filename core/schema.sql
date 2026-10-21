@@ -251,3 +251,58 @@ CREATE TABLE IF NOT EXISTS tank_seviye_gun (
   PRIMARY KEY (gun, istasyon_kod, tank_no)
 );
 CREATE INDEX IF NOT EXISTS ix_seviye_gun ON tank_seviye_gun (gun);
+
+-- ════════════════════════════════════════════════════════════════════════════════════════
+-- KALİBRASYON (2026-10-21): tank mm→litre kalibrasyon cetveli üretimi.
+-- Kaynak: ASIS GetTankLastLevel (tüm filo, mm %98 dolu). Üç tablo: ham nokta bulutu +
+-- üretilen cetvel + versiyon/güven. Motor core/kalibrasyon.ts (saf). Cursor YOK (anlık veri).
+-- ════════════════════════════════════════════════════════════════════════════════════════
+
+-- 1) HAM NOKTA BULUTU — GetTankLastLevel'den biriken her mm ölçümü. Anahtar (istasyon,tank,
+-- durum_zamani): aynı ölçüm anı tekrar gelirse ezilir, yeni zaman yeni nokta → bulut büyür.
+CREATE TABLE IF NOT EXISTS kalibrasyon_mm_seri (
+  istasyon_kod         TEXT NOT NULL,
+  tank_no              TEXT NOT NULL,
+  durum_zamani         TIMESTAMPTZ NOT NULL,    -- ASIS DurumTarihi (anlık ölçüm anı)
+  urun                 TEXT,
+  yakit_mm             NUMERIC(14,4),           -- kalibrasyonun ANA girdisi
+  yakit_lt             NUMERIC(14,4),
+  su_mm                NUMERIC(14,4),
+  sicaklik             NUMERIC(14,4),
+  kalibrasyon_yuzdesi  NUMERIC(14,4),           -- POL'ün kendi doluluk oranı
+  kapasite_lt          NUMERIC(14,4),
+  guncelleme           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (istasyon_kod, tank_no, durum_zamani)
+);
+CREATE INDEX IF NOT EXISTS ix_kalib_mm_tank_zaman ON kalibrasyon_mm_seri (istasyon_kod, tank_no, durum_zamani);
+
+-- 2) ÜRETİLEN CETVEL — 1 cm adımlı mm→litre. kaynak: 'saha' (ölçüm) | 'geometri' (tamamlama).
+CREATE TABLE IF NOT EXISTS kalibrasyon_cetvel (
+  versiyon_id   BIGINT NOT NULL,
+  istasyon_kod  TEXT NOT NULL,
+  tank_no       TEXT NOT NULL,
+  mm            INT NOT NULL,
+  litre         NUMERIC(14,4),
+  kaynak        TEXT,                          -- 'saha' | 'geometri'
+  PRIMARY KEY (versiyon_id, istasyon_kod, tank_no, mm)
+);
+
+-- 3) VERSİYON + GÜVEN — tank başına her üretim bir versiyon; en güncel aktif=true. Türetilen
+-- çap (bayi beyanı DEĞİL, mm-litre bulutundan), POL kapasitesiyle çapraz uyum, A/B/C/D güven.
+CREATE TABLE IF NOT EXISTS kalibrasyon_versiyon (
+  versiyon_id          BIGINT NOT NULL,
+  istasyon_kod         TEXT NOT NULL,
+  tank_no              TEXT NOT NULL,
+  urun                 TEXT,
+  uretim_zamani        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  nokta_sayisi         INT,                     -- kaç ham mm ölçümünden üretildi
+  kapsam_yuzde         NUMERIC(14,4),           -- tank yüksekliğinin % kaçı saha verisiyle kaplı
+  turetilmis_cap_mm    NUMERIC(14,4),
+  pol_kapasite_lt      NUMERIC(14,4),
+  cap_kapasite_uyum    NUMERIC(14,4),           -- türetilen tam hacim / POL kapasite (×100)
+  fit_hatasi           NUMERIC(14,4),
+  guven                CHAR(1),                 -- 'A'|'B'|'C'|'D'
+  aktif                BOOLEAN NOT NULL DEFAULT true,
+  PRIMARY KEY (versiyon_id, istasyon_kod, tank_no)
+);
+CREATE INDEX IF NOT EXISTS ix_kalib_versiyon_aktif ON kalibrasyon_versiyon (istasyon_kod, tank_no) WHERE aktif = true;

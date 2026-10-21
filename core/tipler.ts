@@ -54,6 +54,14 @@ export interface AsisTank {
   yakitLt: number;
   suLt: number;
   durumZamani: Date; // DurumTarihi (UTC'ye çevrilmiş)
+  // KALİBRASYON (2026-10-21): GetTankLastLevel bu alanları ZATEN döndürüyor, artık okunuyor.
+  // GetTankLastLevel tüm filoyu (677 tank, mm %98 dolu — canlı doğrulandı) kapsadığından
+  // (GetTankLevelList yalnız 16-19/269 istasyona ulaşıyordu), kalibrasyon mm serisi bu anlık
+  // kaynaktan periyodik biriktirilir. Hepsi null olabilir → ondalikNull.
+  yakitMm: number | null;
+  suMm: number | null;
+  sicaklik: number | null;
+  kalibrasyonYuzdesi: number | null;
 }
 
 /** GetProductTypeList → ASIS ürün tanımı. */

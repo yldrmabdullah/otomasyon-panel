@@ -1,0 +1,55 @@
+name: Kalibrasyon mm Serisi Çekim
+
+# ASIS GetTankLastLevel ile TÜM filonun (677 tank) anlık mm ölçümünü çekip
+# kalibrasyon_mm_seri'ye biriktirir → tank mm→litre kalibrasyon cetveli için ham veri.
+#
+# NEDEN SAATLİK: tank mm'i ASIS'te ~30dk-1sa güncelleniyor; saatlik çekim yeterli
+# yoğunlukta zaman serisi biriktirir (cetvel ne kadar çok nokta görürse o kadar iyi).
+# Anlık veri — geçmiş çekilemez, seri ilk koşudan itibaren dolar. Aynı ölçüm zamanı
+# tekrar gelirse upsert (zararsız).
+#
+# NEDEN GetTankLastLevel (GetTankLevelList DEĞİL): artımlı metot 269 istasyonun yalnız
+# 16-19'una ulaşıyor (araclar/seviyeCek.ts'te kanıtlı). GetTankLastLevel 677 tankı tek
+# çağrıda verir, mm %98 dolu (canlı doğrulandı).
+#
+# Salt-okuma: yalnız ASIS'ten okunur, ASIS'e hiçbir şey yazılmaz.
+
+on:
+  schedule:
+    # Saatte bir, dakika 25 (diğer çekimlerle çakışmasın: seviye/satış gece, piyasa 02:xx).
+    - cron: '25 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: kalibrasyon-cek
+  cancel-in-progress: false
+
+jobs:
+  kalibrasyon:
+    runs-on: ubuntu-latest
+    # Ölçüldü: ASIS 677 tank ~715 ms; satır-satır upsert dahil tek koşu < 1 dk. 10 dk bol pay.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Bağımlılıklar
+        run: npm ci
+
+      - name: Şema (idempotent)
+        run: npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Kalibrasyon mm çekimi
+        run: npm run kalib:seviye
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ASIS_GATEWAY: ${{ secrets.ASIS_GATEWAY }}
+          ASIS_GUID_KEY: ${{ secrets.ASIS_GUID_KEY }}
+          ASIS_DAGITICI_KOD: ${{ secrets.ASIS_DAGITICI_KOD }}

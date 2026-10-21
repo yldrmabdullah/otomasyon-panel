@@ -224,6 +224,11 @@ export const asis = {
       yakitLt: ondalik(alan(t, 'YakitSeviyeLT')),
       suLt: ondalik(alan(t, 'SuSeviyeLT')),
       durumZamani: tarih(alan(t, 'DurumTarihi')) ?? new Date(),
+      // KALİBRASYON alanları (2026-10-21) — GetTankLastLevel bunları da döndürüyor.
+      yakitMm: ondalikNull(alan(t, 'YakitSeviyeMM')),
+      suMm: ondalikNull(alan(t, 'SuSeviyeMM')),
+      sicaklik: ondalikNull(alan(t, 'Sicaklik')),
+      kalibrasyonYuzdesi: ondalikNull(alan(t, 'KalibrasyonYuzdesi')),
     }));
   },
 
