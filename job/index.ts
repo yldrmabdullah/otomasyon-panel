@@ -9,6 +9,7 @@ import * as db from '../core/db.js';
 import { baglantiKopuklari, tankVeriYoklari, anahtar, tespitEpdkNo } from '../core/kurallar.js';
 import { bildir } from '../core/bildirim/index.js';
 import { iletisimHaritasiGetir, type BayiIletisim } from '../core/bffIletisim.js';
+import { kalibrasyonUretimiYap } from '../core/kalibrasyonIs.js';
 import type { AsisIstasyon, AsisTank, Tespit } from '../core/tipler.js';
 
 // Job boyunca sabit iletişim haritaları (başta bir kez çekilir).
@@ -85,6 +86,24 @@ async function main() {
     await db.tanklariKaydet(kod, tanklar);
   }
   log(`Tank verisi: ${tumTanklar.length} tank / ${tanklarByIst.size} istasyon.`);
+
+  // 4b) KALİBRASYON (2026-10-21) — aynı GetTankLastLevel verisi mm serisine eklenir (EK ASIS
+  //     ÇAĞRISI YOK) + cetveller saatte bir yeniden üretilir. Ayrı GH schedule güvenilmezdi
+  //     (ücretsiz planda kısılıyor; bu iş ise cron-job.org ile dışarıdan tetikleniyor).
+  //     ⚠️ ALARM İŞİNİ ASLA KIRMAMALI: hata yalnız loglanır, akış devam eder.
+  try {
+    const yeni = await db.kalibrasyonSeriKaydet(tumTanklar);
+    const son = await db.kalibrasyonSonUretim();
+    const saatGecti = !son || Date.now() - son.getTime() > 55 * 60_000;
+    if (saatGecti) {
+      const o = await kalibrasyonUretimiYap();
+      log(`Kalibrasyon: +${yeni} yeni mm noktası · cetvel ${o.uretildi} tank (A${o.guven.A} B${o.guven.B} C${o.guven.C} D${o.guven.D}) ${o.sureMs} ms.`);
+    } else {
+      log(`Kalibrasyon: +${yeni} yeni mm noktası (cetvel üretimi saatte bir).`);
+    }
+  } catch (e) {
+    log(`⚠ Kalibrasyon adımı atlandı (alarm akışı etkilenmez): ${e instanceof Error ? e.message : e}`);
+  }
 
   // 5) Tank veri-yok tespitleri
   const tankTespitler = tankVeriYoklari(tanklarByIst, kopukKodlar, istByKod, simdi);

@@ -130,26 +130,43 @@ export async function tanklariKaydet(istasyonKod: string, tanklar: AsisTank[]): 
 // yeni nokta. mm NULL ise o tank bu dönem mm göndermiyordur — kayıt yine yazılır, kalibrasyon
 // o noktayı atlar. Tüm filo (677 tank) → tankSonDurum tek çağrı; burada satır-satır upsert.
 export async function kalibrasyonSeriKaydet(tanklar: AsisTank[]): Promise<number> {
+  // TOPLU yazım (2026-10-21): izleme işine bağlandı (her ~15 dk, 677 tank) — satır-satır
+  // 677 sorgu alarm işini yavaşlatırdı. Tek INSERT, 500'lük parçalar (param sınırı).
+  // ON CONFLICT DO NOTHING: aynı (tank, ölçüm anı) zaten var demek — ASIS ölçümü saatte
+  // bir yeniliyor, aradaki 3 tur aynı zaman damgasını getirir; yeniden yazmaya gerek yok.
+  // ⚠️ Tekilleştir: aynı anahtar tek komutta iki kez gelirse PG hata verir.
+  const tekil = [...new Map(
+    tanklar.filter((t) => t.istasyonKod && t.tankNo)
+      .map((t) => [`${t.istasyonKod}|${t.tankNo}|${t.durumZamani.getTime()}`, t]),
+  ).values()];
   const p = pool();
   let yazilan = 0;
-  for (const t of tanklar) {
-    if (!t.istasyonKod || !t.tankNo) continue;
-    await p.query(
+  for (let i = 0; i < tekil.length; i += 500) {
+    const grup = tekil.slice(i, i + 500);
+    const deger: unknown[] = [];
+    const satir = grup.map((t, j) => {
+      const b = j * 10;
+      deger.push(t.istasyonKod, t.tankNo, t.durumZamani, t.urunAdi, t.yakitMm, t.yakitLt,
+        t.suMm, t.sicaklik, t.kalibrasyonYuzdesi, t.kapasiteLt);
+      return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7},$${b + 8},$${b + 9},$${b + 10}, now())`;
+    });
+    const r = await p.query(
       `INSERT INTO kalibrasyon_mm_seri
          (istasyon_kod, tank_no, durum_zamani, urun, yakit_mm, yakit_lt, su_mm,
           sicaklik, kalibrasyon_yuzdesi, kapasite_lt, guncelleme)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now())
-       ON CONFLICT (istasyon_kod, tank_no, durum_zamani) DO UPDATE SET
-         urun=EXCLUDED.urun, yakit_mm=EXCLUDED.yakit_mm, yakit_lt=EXCLUDED.yakit_lt,
-         su_mm=EXCLUDED.su_mm, sicaklik=EXCLUDED.sicaklik,
-         kalibrasyon_yuzdesi=EXCLUDED.kalibrasyon_yuzdesi, kapasite_lt=EXCLUDED.kapasite_lt,
-         guncelleme=now()`,
-      [t.istasyonKod, t.tankNo, t.durumZamani, t.urunAdi, t.yakitMm, t.yakitLt, t.suMm,
-       t.sicaklik, t.kalibrasyonYuzdesi, t.kapasiteLt],
+       VALUES ${satir.join(',')}
+       ON CONFLICT (istasyon_kod, tank_no, durum_zamani) DO NOTHING`,
+      deger,
     );
-    yazilan++;
+    yazilan += r.rowCount ?? 0;
   }
-  return yazilan;
+  return yazilan; // YENİ eklenen nokta sayısı (zaten olanlar sayılmaz)
+}
+
+/** En son cetvel üretim zamanı — izleme işinde saatte bir üretim kısıtı için. */
+export async function kalibrasyonSonUretim(): Promise<Date | null> {
+  const r = await pool().query(`SELECT max(uretim_zamani) son FROM kalibrasyon_versiyon`);
+  return r.rows[0]?.son ? new Date(r.rows[0].son) : null;
 }
 
 // --- KALİBRASYON cetvel üretimi (2026-10-21) ---
