@@ -55,9 +55,9 @@ export interface AsisTank {
   suLt: number;
   durumZamani: Date; // DurumTarihi (UTC'ye çevrilmiş)
   // KALİBRASYON (2026-10-21): GetTankLastLevel bu alanları ZATEN döndürüyor, artık okunuyor.
-  // GetTankLastLevel tüm filoyu (677 tank, mm %98 dolu — canlı doğrulandı) kapsadığından
-  // (GetTankLevelList yalnız 16-19/269 istasyona ulaşıyordu), kalibrasyon mm serisi bu anlık
-  // kaynaktan periyodik biriktirilir. Hepsi null olabilir → ondalikNull.
+  // GetTankLastLevel tüm filoyu (670 tank) kapsadığından (GetTankLevelList yalnız 16-19/269
+  // istasyona ulaşıyordu — seviyeCek.ts kanıtı), kalibrasyon mm serisi bu anlık kaynaktan
+  // periyodik biriktirilir. Hepsi null olabilir → ondalikNull.
   yakitMm: number | null;
   suMm: number | null;
   sicaklik: number | null;
@@ -89,6 +89,14 @@ export interface AsisSeviye {
   durumZamani: Date;
   yakitLt: number; // YakitSeviyeLTNet tercih, yoksa YakitSeviyeLT
   kapasiteLt: number;
+  // KALİBRASYON (2026-10-21): GetTankLevelList bu alanları ZATEN döndürüyordu ama okunmuyordu.
+  // mm = kalibrasyon cetvelinin ANA girdisi (seviye→litre eğrisi). Sıcaklık brüt/net farkı,
+  // su dip kirliliği, kalibrasyonYuzdesi POL'ün kendi doluluk oranı. Hepsi null olabilir
+  // (eski/eksik kayıt) → ondalikNull. Mutabakat bu alanları kullanmaz, geriye uyumlu.
+  yakitMm: number | null;
+  suMm: number | null;
+  sicaklik: number | null;
+  kalibrasyonYuzdesi: number | null;
 }
 
 /** GetTankFillingList → tank dolumu + irsaliye (mutabakat için). Artımlı (TTankDolumID cursor). */
