@@ -36,9 +36,18 @@ function GuvenRozet({ g }: { g: string }) {
   return <span className={`rozet ${sinif}`} title={`${GUVEN_AD[g] ?? g} güven`}>{g} · {GUVEN_AD[g] ?? g}</span>;
 }
 
+const KOLON_ACIKLAMA: { ad: string; metin: string }[] = [
+  { ad: 'Güven', metin: 'Cetvelin ne kadar güvenilir olduğu. A·Yüksek = bol saha verisi + fit mükemmel. D·Zayıf = az veri, çoğu geometriyle tamamlandı (tahmin).' },
+  { ad: 'Çap (mm)', metin: 'Tankın türetilen çapı — bayi beyanı DEĞİL, mm-litre ölçümlerinden hesaplandı.' },
+  { ad: 'Kapsam', metin: 'Tank yüksekliğinin % kaçı gerçek saha verisiyle kaplı. %89 = tankın %89’u ölçülmüş, gerisi geometriyle tamamlandı. Düşükse tank hiç dolmamış.' },
+  { ad: 'Kapasite uyumu', metin: 'Türetilen çaptan hesaplanan tam hacim ÷ POL kapasitesi. %95–120 iyi (birbirini doğruluyor). Uzaksa çap güvenilmez (az veri).' },
+  { ad: 'Ölçüm', metin: 'Cetvelin kaç mm noktasından üretildiği. Ne kadar çok, o kadar sağlam.' },
+];
+
 export function Kalibrasyon() {
   const { veri, hata, yukleniyor, yenile } = useVeri<KalibVeri>('/api/kalibrasyon');
   const [secili, setSecili] = useState<{ istasyon: string; tank: string } | null>(null);
+  const [aciklamaAcik, setAciklamaAcik] = useState(false);
 
   const tanklar = veri?.tanklar ?? [];
 
@@ -80,7 +89,24 @@ export function Kalibrasyon() {
               <span className="rozet notr">D·{veri.ozet.d}</span>
             </span>
             <span className="ozet-oge soluk">{Number(veri.ozet.olcum).toLocaleString('tr')} mm ölçümü birikti</span>
+            <button type="button" className="aciklama-btn" onClick={() => setAciklamaAcik((a) => !a)}
+              aria-expanded={aciklamaAcik} title="Kolonlar ne anlama geliyor?">
+              <span aria-hidden="true">ⓘ</span> Kolonlar ne demek?
+            </button>
           </div>
+
+          {aciklamaAcik && (
+            <div className="kolon-aciklama">
+              <dl>
+                {KOLON_ACIKLAMA.map((k) => (
+                  <div key={k.ad} className="aciklama-oge">
+                    <dt>{k.ad}</dt>
+                    <dd>{k.metin}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )}
 
           {veri.ozet.cetvel_tank === 0 ? (
             <div className="bos-kart">

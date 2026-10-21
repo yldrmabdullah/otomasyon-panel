@@ -1803,3 +1803,20 @@ tr.secili-satir td { background: var(--accent-bg); }
 .cetvel-tablo-sar th, .cetvel-tablo-sar td { padding: 5px var(--s-3); border-bottom: 1px solid var(--cizgi); text-align: left; }
 .cetvel-tablo-sar th { position: sticky; top: 0; background: var(--panel-2); font-size: var(--t-xs); text-transform: uppercase; color: var(--soluk); z-index: 1; }
 .cetvel-tablo-sar tr.geom-satir td { color: var(--soluk-2); background: rgba(255, 122, 0, 0.05); }
+
+/* Kalibrasyon kolon açıklaması */
+.aciklama-btn {
+  font: inherit; font-size: var(--t-sm); color: var(--accent-2);
+  background: transparent; border: 1px solid var(--accent-cizgi); border-radius: 6px;
+  padding: 3px var(--s-3); cursor: pointer; margin-left: auto;
+}
+.aciklama-btn:hover { background: var(--accent-bg); }
+.kolon-aciklama {
+  background: var(--panel-2); border: 1px solid var(--cizgi); border-radius: 8px;
+  padding: var(--s-4); margin-bottom: var(--s-3);
+}
+.kolon-aciklama dl { margin: 0; display: grid; gap: var(--s-3); }
+.kolon-aciklama .aciklama-oge { display: grid; grid-template-columns: 140px 1fr; gap: var(--s-3); }
+.kolon-aciklama dt { font-weight: 700; color: var(--accent-2); font-size: var(--t-sm); }
+.kolon-aciklama dd { margin: 0; color: var(--soluk); font-size: var(--t-sm); line-height: 1.5; }
+@media (max-width: 560px) { .kolon-aciklama .aciklama-oge { grid-template-columns: 1fr; gap: 2px; } }
