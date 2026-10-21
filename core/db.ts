@@ -152,6 +152,89 @@ export async function kalibrasyonSeriKaydet(tanklar: AsisTank[]): Promise<number
   return yazilan;
 }
 
+// --- KALİBRASYON cetvel üretimi (2026-10-21) ---
+
+/** Tank başına ham mm serisi — cetvel üretimi için. Tankları (en az 1 ölçümü olan) listeler. */
+export async function kalibrasyonTanklar(): Promise<
+  { istasyonKod: string; tankNo: string; urun: string; noktaSayisi: number }[]
+> {
+  const r = await pool().query(
+    `SELECT istasyon_kod, tank_no, MAX(urun) urun, COUNT(*) FILTER (WHERE yakit_mm > 0) nokta
+       FROM kalibrasyon_mm_seri GROUP BY istasyon_kod, tank_no HAVING COUNT(*) FILTER (WHERE yakit_mm > 0) > 0`,
+  );
+  return r.rows.map((x) => ({
+    istasyonKod: x.istasyon_kod, tankNo: x.tank_no, urun: x.urun, noktaSayisi: Number(x.nokta),
+  }));
+}
+
+/** Bir tankın ham (mm, lt) ölçümleri + POL kapasitesi. */
+export async function kalibrasyonSeri(
+  istasyonKod: string, tankNo: string,
+): Promise<{ ham: { mm: number; lt: number }[]; polKapasite: number }> {
+  const r = await pool().query(
+    `SELECT yakit_mm, yakit_lt, kapasite_lt FROM kalibrasyon_mm_seri
+       WHERE istasyon_kod = $1 AND tank_no = $2 AND yakit_mm > 0 ORDER BY durum_zamani`,
+    [istasyonKod, tankNo],
+  );
+  const ham = r.rows.map((x) => ({ mm: Number(x.yakit_mm), lt: Number(x.yakit_lt) }));
+  // kapasite tüm satırlarda aynı; en son dolu olanı al
+  const kap = r.rows.map((x) => Number(x.kapasite_lt)).filter((k) => k > 0);
+  return { ham, polKapasite: kap.length ? kap[kap.length - 1] : 0 };
+}
+
+/**
+ * Üretilen cetveli yaz: yeni versiyon oluştur, eski aktif versiyonu pasifle. Tek transaction
+ * benzeri (cetvel + versiyon birlikte). versiyonId = üretim zamanı epoch (artan, tank-bağımsız).
+ */
+export async function kalibrasyonCetvelYaz(
+  versiyonId: number,
+  istasyonKod: string, tankNo: string, urun: string,
+  cetvel: { mm: number; litre: number; kaynak: string }[],
+  meta: {
+    noktaSayisi: number; kapsamYuzde: number; turetilmisCapMm: number;
+    polKapasite: number; capKapasiteUyum: number; fitHatasi: number; guven: string;
+  },
+): Promise<void> {
+  const p = pool();
+  // Eski aktif versiyonu pasifle (bu tank için)
+  await p.query(
+    `UPDATE kalibrasyon_versiyon SET aktif = false
+       WHERE istasyon_kod = $1 AND tank_no = $2 AND aktif = true`,
+    [istasyonKod, tankNo],
+  );
+  // Yeni versiyon satırı
+  await p.query(
+    `INSERT INTO kalibrasyon_versiyon
+       (versiyon_id, istasyon_kod, tank_no, urun, nokta_sayisi, kapsam_yuzde,
+        turetilmis_cap_mm, pol_kapasite_lt, cap_kapasite_uyum, fit_hatasi, guven, aktif)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, true)`,
+    [versiyonId, istasyonKod, tankNo, urun, meta.noktaSayisi, meta.kapsamYuzde,
+     meta.turetilmisCapMm, meta.polKapasite, meta.capKapasiteUyum, meta.fitHatasi, meta.guven],
+  );
+  // Önce bu tankın eski cetvel satırlarını temizle (versiyon değişti — eski versiyon_id kalır
+  // ama aktif değil; cetvel tablosu yalnız aktif versiyonu tutsun ki şişmesin).
+  await p.query(
+    `DELETE FROM kalibrasyon_cetvel WHERE istasyon_kod = $1 AND tank_no = $2`,
+    [istasyonKod, tankNo],
+  );
+  // Cetvel satırları TEK toplu INSERT (satır-satır çok yavaştı — 360 satır × N tank = timeout).
+  if (cetvel.length > 0) {
+    const deger: unknown[] = [];
+    const satir: string[] = [];
+    let i = 1;
+    for (const c of cetvel) {
+      satir.push(`($${i},$${i + 1},$${i + 2},$${i + 3},$${i + 4},$${i + 5})`);
+      deger.push(versiyonId, istasyonKod, tankNo, c.mm, c.litre, c.kaynak);
+      i += 6;
+    }
+    await p.query(
+      `INSERT INTO kalibrasyon_cetvel (versiyon_id, istasyon_kod, tank_no, mm, litre, kaynak)
+       VALUES ${satir.join(',')}`,
+      deger,
+    );
+  }
+}
+
 // --- Tank dolumları (artımlı) — TOPLU insert (satır-satır çok yavaştı) ---
 export async function dolumlariKaydet(dolumlar: AsisDolum[]): Promise<void> {
   if (dolumlar.length === 0) return;

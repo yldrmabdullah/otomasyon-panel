@@ -53,3 +53,11 @@ jobs:
           ASIS_GATEWAY: ${{ secrets.ASIS_GATEWAY }}
           ASIS_GUID_KEY: ${{ secrets.ASIS_GUID_KEY }}
           ASIS_DAGITICI_KOD: ${{ secrets.ASIS_DAGITICI_KOD }}
+
+      # Çekimden hemen sonra cetvelleri yeniden üret (yeterli veri biriken tanklar için).
+      # Saf motor (core/kalibrasyon.ts) DB okur, cetvel + versiyon yazar. ASIS'e gitmez.
+      # Ölçüldü: 666 tank ~2.2 sn (yeterli verili olanlar üretilir, ötekiler atlanır).
+      - name: Kalibrasyon cetvel üretimi
+        run: npm run kalib:uret
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

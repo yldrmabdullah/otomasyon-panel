@@ -22,6 +22,7 @@
     "satis": "tsx araclar/satisCek.ts",
     "seviye": "tsx araclar/seviyeCek.ts",
     "kalib:seviye": "tsx araclar/kalibrasyonSeviyeCek.ts",
+    "kalib:uret": "tsx araclar/kalibrasyonUret.ts",
     "piyasa:mail": "tsx araclar/piyasaMail.ts",
     "mutabakat:mail": "tsx araclar/mutabakatMail.ts",
     "kolon:test": "tsx araclar/kolonMenuTest.ts",
