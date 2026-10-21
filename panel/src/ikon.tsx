@@ -119,3 +119,14 @@ export function IkonYonetim() {
     </svg>
   );
 }
+
+// Kalibrasyon — tank seviye→hacim cetveli: artan çubuklar (mm kademeleri) + yükselen eğri.
+export function IkonKalibrasyon() {
+  return (
+    <svg {...ORTAK}>
+      <path d="M4 20h16" />
+      <path d="M7 20v-5M12 20v-9M17 20v-13" />
+      <path d="M4 16c4-1 8-5 16-9" />
+    </svg>
+  );
+}

@@ -1749,3 +1749,65 @@ export async function yonetimVerisi(p: Pool, basHam?: string, bitHam?: string) {
     kapsam: kapsam.rows[0],
   };
 }
+
+// ── KALİBRASYON (2026-10-21) ──────────────────────────────────────────────────────────────
+// Tank mm→litre kalibrasyon cetveli modülü. Aktif versiyonların özeti + tank listesi.
+// Cetvelin kendisi (1cm satırları) ayrı uçtan (api/kalibrasyon ?istasyon&tank) çekilir —
+// listeyle birlikte 677×360 satır göndermek anlamsız.
+export async function kalibrasyonVerisi(p: Pool) {
+  const [ozet, tanklar, kapsam] = await Promise.all([
+    // Genel özet: kaç tank cetveli var, güven dağılımı, toplam mm ölçümü
+    p.query(
+      `SELECT
+         (SELECT count(*) FROM kalibrasyon_versiyon WHERE aktif = true) AS cetvel_tank,
+         (SELECT count(DISTINCT (istasyon_kod, tank_no)) FROM kalibrasyon_mm_seri) AS veri_tank,
+         (SELECT count(*) FROM kalibrasyon_mm_seri) AS olcum,
+         (SELECT count(*) FROM kalibrasyon_versiyon WHERE aktif = true AND guven = 'A') AS a,
+         (SELECT count(*) FROM kalibrasyon_versiyon WHERE aktif = true AND guven = 'B') AS b,
+         (SELECT count(*) FROM kalibrasyon_versiyon WHERE aktif = true AND guven = 'C') AS c,
+         (SELECT count(*) FROM kalibrasyon_versiyon WHERE aktif = true AND guven = 'D') AS d`,
+    ),
+    // Tank listesi: istasyon adıyla, güven/çap/kapsam/uyum. En güvenilir üstte.
+    p.query(
+      `SELECT v.istasyon_kod, i.ad AS istasyon_ad, i.sehir, v.tank_no, v.urun,
+              v.guven, v.turetilmis_cap_mm AS cap_mm, v.kapsam_yuzde, v.cap_kapasite_uyum AS uyum,
+              v.fit_hatasi, v.nokta_sayisi, v.uretim_zamani
+         FROM kalibrasyon_versiyon v
+         LEFT JOIN istasyonlar i ON i.istasyon_kod = v.istasyon_kod
+        WHERE v.aktif = true
+        ORDER BY CASE v.guven WHEN 'A' THEN 1 WHEN 'B' THEN 2 WHEN 'C' THEN 3 ELSE 4 END,
+                 i.ad NULLS LAST, v.tank_no`,
+    ),
+    // Kapsam dürüstlüğü: kaç tankta veri var ama henüz cetvel YOK (yeterli nokta birikmemiş).
+    p.query(
+      `SELECT
+         (SELECT count(DISTINCT (istasyon_kod, tank_no)) FROM kalibrasyon_mm_seri) AS veri_var,
+         (SELECT count(*) FROM kalibrasyon_versiyon WHERE aktif = true) AS cetvel_var`,
+    ),
+  ]);
+  return { ozet: ozet.rows[0], tanklar: tanklar.rows, kapsam: kapsam.rows[0] };
+}
+
+// Bir tankın cetvel satırları (1cm adımlı mm→litre) — ekranda tablo/grafik için.
+export async function kalibrasyonCetvel(p: Pool, istasyonKod: string, tankNo: string) {
+  const [cetvel, versiyon] = await Promise.all([
+    p.query(
+      `SELECT mm, litre, kaynak FROM kalibrasyon_cetvel
+        WHERE versiyon_id = (SELECT versiyon_id FROM kalibrasyon_versiyon
+                             WHERE istasyon_kod = $1 AND tank_no = $2 AND aktif = true)
+          AND istasyon_kod = $1 AND tank_no = $2
+        ORDER BY mm`,
+      [istasyonKod, tankNo],
+    ),
+    p.query(
+      `SELECT v.istasyon_kod, i.ad AS istasyon_ad, v.tank_no, v.urun, v.guven,
+              v.turetilmis_cap_mm AS cap_mm, v.kapsam_yuzde, v.cap_kapasite_uyum AS uyum,
+              v.pol_kapasite_lt, v.fit_hatasi, v.nokta_sayisi, v.uretim_zamani
+         FROM kalibrasyon_versiyon v
+         LEFT JOIN istasyonlar i ON i.istasyon_kod = v.istasyon_kod
+        WHERE v.istasyon_kod = $1 AND v.tank_no = $2 AND v.aktif = true`,
+      [istasyonKod, tankNo],
+    ),
+  ]);
+  return { cetvel: cetvel.rows, versiyon: versiyon.rows[0] ?? null };
+}

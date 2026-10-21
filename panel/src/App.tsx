@@ -4,14 +4,15 @@ import { Mevzuat } from './Mevzuat.js';
 import { Piyasa } from './Piyasa.js';
 import { Yonetim } from './Yonetim.js';
 import { Operasyon } from './Operasyon.js';
+import { Kalibrasyon } from './Kalibrasyon.js';
 import { Sorun } from './Sorun.js';
 import { Giris } from './Giris.js';
 import { SifreDegistir } from './SifreDegistir.js';
 import { Kullanicilar } from './Kullanicilar.js';
-import { IkonIzleme, IkonMevzuat, IkonPiyasa, IkonOperasyon, IkonSorun, IkonKullanici, IkonYonetim } from './ikon.js';
+import { IkonIzleme, IkonMevzuat, IkonPiyasa, IkonOperasyon, IkonSorun, IkonKullanici, IkonYonetim, IkonKalibrasyon } from './ikon.js';
 import { TemaSecici, useTema } from './ortak.js';
 
-type Modul = 'izleme' | 'operasyon' | 'sorun' | 'mevzuat' | 'piyasa' | 'yonetim' | 'kullanicilar';
+type Modul = 'izleme' | 'operasyon' | 'sorun' | 'mevzuat' | 'piyasa' | 'yonetim' | 'kalibrasyon' | 'kullanicilar';
 
 interface Oturum {
   kullanici: string;
@@ -29,6 +30,7 @@ const MODULLER: { id: Modul; ad: string; Ikon: () => ReactElement; alt: string; 
   { id: 'mevzuat', ad: 'Mevzuat', Ikon: IkonMevzuat, alt: 'EPDK & mutabakat' },
   { id: 'piyasa', ad: 'Piyasa', Ikon: IkonPiyasa, alt: 'Dağıtıcı & bayi' },
   { id: 'yonetim', ad: 'Yönetim', Ikon: IkonYonetim, alt: 'Bayi alımları & ciro' },
+  { id: 'kalibrasyon', ad: 'Kalibrasyon', Ikon: IkonKalibrasyon, alt: 'Tank cetveli & içgörü' },
   { id: 'kullanicilar', ad: 'Kullanıcılar', Ikon: IkonKullanici, alt: 'Yetki yönetimi', adminMi: true },
 ];
 
@@ -242,6 +244,7 @@ export function App() {
             : aktif.id === 'mevzuat' ? <Mevzuat />
             : aktif.id === 'piyasa' ? <Piyasa />
             : aktif.id === 'yonetim' ? <Yonetim />
+            : aktif.id === 'kalibrasyon' ? <Kalibrasyon />
             : <Kullanicilar benKim={oturum.kullanici} />}
         </div>
       </main>

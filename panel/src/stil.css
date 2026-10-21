@@ -1751,3 +1751,55 @@ td { vertical-align: middle; font-variant-numeric: tabular-nums; }
   .uzlas-detay { padding: var(--s-3); }
   .uzlas-detay-bas h3 { font-size: var(--t-md); }
 }
+
+/* ═══ KALİBRASYON modülü (2026-10-21) ═══════════════════════════════════════════════ */
+.rozet.notr { background: var(--panel-3); color: var(--soluk); }
+
+/* Özet şeridi (kapsam dürüstlüğü + güven dağılımı) */
+.ozet-serit {
+  display: flex; flex-wrap: wrap; gap: var(--s-4); align-items: center;
+  padding: var(--s-3) var(--s-4); background: var(--panel-2);
+  border: 1px solid var(--cizgi); border-radius: 8px; margin-bottom: var(--s-3);
+}
+.ozet-serit .ozet-oge { font-size: var(--t-sm); }
+.ozet-serit strong { font-size: var(--t-lg); color: var(--accent-2); }
+
+.bos-kart, .hata-kart, .detay-kart {
+  padding: var(--s-4); background: var(--panel-2);
+  border: 1px solid var(--cizgi); border-radius: 8px; margin-top: var(--s-3);
+}
+.bos-kart p { color: var(--soluk); margin: 0; line-height: 1.5; }
+.hata-kart { color: var(--krit); }
+
+/* Seçili satır vurgusu */
+tr.secili-satir td { background: var(--accent-bg); }
+
+/* Detay başlığı + indir düğmesi */
+.detay-bas { display: flex; justify-content: space-between; align-items: center; gap: var(--s-3); margin-bottom: var(--s-3); flex-wrap: wrap; }
+.detay-bas h3 { margin: 0; font-size: var(--t-lg); }
+.indir-dugme {
+  font: inherit; font-weight: 600; font-size: var(--t-sm); color: #fff;
+  background: var(--marka); border: 0; border-radius: 6px; padding: var(--s-2) var(--s-4); cursor: pointer;
+}
+.indir-dugme:hover { filter: brightness(0.94); }
+
+/* Mini metrik kartları */
+.kalib-mini-kartlar { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--s-3); margin-bottom: var(--s-4); }
+.mini-kart { background: var(--panel-3); border: 1px solid var(--cizgi); border-radius: 7px; padding: var(--s-3); display: flex; flex-direction: column; gap: 4px; }
+.mini-kart .mini-etiket { font-size: var(--t-xs); color: var(--soluk); text-transform: uppercase; letter-spacing: 0.04em; }
+.mini-kart .mini-deger { font-size: var(--t-md); font-weight: 700; }
+
+/* Cetvel eğri grafiği (SVG) */
+.cetvel-grafik { max-width: 100%; margin-bottom: var(--s-4); }
+.cetvel-grafik .eksen { stroke: var(--cizgi-2); stroke-width: 1; }
+.cetvel-grafik .grid { stroke: var(--cizgi); stroke-width: 0.5; stroke-dasharray: 3 3; }
+.cetvel-grafik .egri-geom { stroke: var(--soluk-2); stroke-width: 1.6; stroke-dasharray: 4 3; }
+.cetvel-grafik .egri-saha { stroke: var(--marka); stroke-width: 2.4; }
+.cetvel-grafik .eksen-yazi { fill: var(--soluk); font-size: 9px; font-family: inherit; }
+
+/* 1cm cetvel tablosu (kaydırmalı) */
+.cetvel-tablo-sar { max-height: 360px; overflow-y: auto; border: 1px solid var(--cizgi); border-radius: 7px; }
+.cetvel-tablo-sar .veri-tablo { width: 100%; border-collapse: collapse; font-size: var(--t-sm); }
+.cetvel-tablo-sar th, .cetvel-tablo-sar td { padding: 5px var(--s-3); border-bottom: 1px solid var(--cizgi); text-align: left; }
+.cetvel-tablo-sar th { position: sticky; top: 0; background: var(--panel-2); font-size: var(--t-xs); text-transform: uppercase; color: var(--soluk); z-index: 1; }
+.cetvel-tablo-sar tr.geom-satir td { color: var(--soluk-2); background: rgba(255, 122, 0, 0.05); }
