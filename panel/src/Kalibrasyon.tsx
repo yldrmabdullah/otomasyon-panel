@@ -3,7 +3,6 @@
 // Tank listesi (güven/çap/kapsam) + seçili tank detayı (eğri grafiği + 1cm tablo + Excel).
 // Üstte kapsam dürüstlüğü şeridi ("N/M tank için cetvel hazır") — kısmi kapsam saklanmaz.
 import { useMemo, useState } from 'react';
-import { Tablo, type TabloKolon } from './Tablo.js';
 import { ModulBar, useVeri } from './ortak.js';
 import { xlsIndir } from './disaAktar.js';
 
@@ -49,26 +48,34 @@ export function Kalibrasyon() {
   const [secili, setSecili] = useState<{ istasyon: string; tank: string } | null>(null);
   const [aciklamaAcik, setAciklamaAcik] = useState(false);
 
+  const [arama, setArama] = useState('');
   const tanklar = veri?.tanklar ?? [];
 
-  const kolonlar: TabloKolon<TankSatir>[] = useMemo(() => [
-    {
-      id: 'tank', ad: 'Bayi / Tank', varsayilan: true, sabit: true,
-      hucre: (s) => (
-        <span className="ad-hucre">
-          <strong>{s.istasyon_ad ?? s.istasyon_kod}</strong>
-          <span className="alt-metin">T{s.tank_no} · {s.urun}{s.sehir ? ` · ${s.sehir}` : ''}</span>
-        </span>
-      ),
-      sirala: (s) => s.istasyon_ad ?? s.istasyon_kod,
-      ara: (s) => `${s.istasyon_ad ?? ''} ${s.istasyon_kod} ${s.sehir ?? ''} ${s.urun}`,
-    },
-    { id: 'guven', ad: 'Güven', varsayilan: true, hucre: (s) => <GuvenRozet g={s.guven} />, sirala: (s) => s.guven },
-    { id: 'cap', ad: 'Çap (mm)', varsayilan: true, sinif: 'sag mono', hucre: (s) => Math.round(Number(s.cap_mm)).toLocaleString('tr'), sirala: (s) => Number(s.cap_mm) },
-    { id: 'kapsam', ad: 'Kapsam', varsayilan: true, sinif: 'sag mono', hucre: (s) => `%${Math.round(Number(s.kapsam_yuzde))}`, sirala: (s) => Number(s.kapsam_yuzde) },
-    { id: 'uyum', ad: 'Kapasite uyumu', varsayilan: true, sinif: 'sag mono', hucre: (s) => `%${Math.round(Number(s.uyum))}`, sirala: (s) => Number(s.uyum) },
-    { id: 'olcum', ad: 'Ölçüm', varsayilan: true, sinif: 'sag mono soluk', hucre: (s) => String(s.nokta_sayisi), sirala: (s) => s.nokta_sayisi },
-  ], []);
+  // BAYİ GRUPLARI (2026-10-21, kullanıcı isteği): güvene göre düz liste aynı bayinin tanklarını
+  // dağıtıyordu. Artık bayi adına göre alfabetik, her bayinin tankları altında tank no sırasıyla.
+  const gruplar = useMemo(() => {
+    const q = arama.trim().toLocaleLowerCase('tr');
+    const harita = new Map<string, { kod: string; ad: string; sehir: string | null; tanklar: TankSatir[] }>();
+    for (const s of tanklar) {
+      if (q && !`${s.istasyon_ad ?? ''} ${s.istasyon_kod} ${s.sehir ?? ''} ${s.urun}`.toLocaleLowerCase('tr').includes(q)) continue;
+      const g = harita.get(s.istasyon_kod) ?? { kod: s.istasyon_kod, ad: s.istasyon_ad ?? s.istasyon_kod, sehir: s.sehir, tanklar: [] };
+      g.tanklar.push(s);
+      harita.set(s.istasyon_kod, g);
+    }
+    const liste = [...harita.values()];
+    for (const g of liste) g.tanklar.sort((a, b) => Number(a.tank_no) - Number(b.tank_no) || a.tank_no.localeCompare(b.tank_no));
+    return liste.sort((a, b) => a.ad.localeCompare(b.ad, 'tr'));
+  }, [tanklar, arama]);
+
+  function listeIndir() {
+    xlsIndir('Kalibrasyon_Tanklar', ['Bayi', 'Şehir', 'Tank', 'Ürün', 'Güven', 'Çap (mm)', 'Kapsam %', 'Kapasite uyumu %', 'Ölçüm'],
+      gruplar.flatMap((g) => g.tanklar.map((s) => [
+        g.ad, g.sehir ?? '', s.tank_no, s.urun, `${s.guven} · ${GUVEN_AD[s.guven] ?? ''}`,
+        String(Math.round(Number(s.cap_mm))), String(Math.round(Number(s.kapsam_yuzde))),
+        String(Math.round(Number(s.uyum))), String(s.nokta_sayisi),
+      ])),
+      { raporAdi: 'Tank Kalibrasyon — Cetvel Listesi', notlar: ['Çap POL mm-litre verisinden türetildi (bayi beyanı değildir).'] });
+  }
 
   return (
     <div className="modul-govde">
@@ -114,22 +121,66 @@ export function Kalibrasyon() {
                  Veri saatlik biriktiriliyor; bu liste doldukça kendiliğinden güncellenir.</p>
             </div>
           ) : (
-            <section>
-              <Tablo
-                anahtar="kalib-tanklar"
-                baslik={`Tanklar — ${tanklar.length} cetvel`}
-                kolonlar={kolonlar}
-                satirlar={tanklar}
-                satirAnahtar={(s) => `${s.istasyon_kod}|${s.tank_no}`}
-                satirSinif={(s) => (secili?.istasyon === s.istasyon_kod && secili?.tank === s.tank_no ? 'secili-satir' : undefined)}
-                satirTikla={(s) => setSecili({ istasyon: s.istasyon_kod, tank: s.tank_no })}
-                aramaEtiket="Bayi / şehir / ürün ara"
-                ilkGosterim={30}
-              />
+            <section className="kalib-liste">
+              <div className="kalib-liste-bas">
+                <h2>Bayiler — {gruplar.length} bayi · {gruplar.reduce((n, g) => n + g.tanklar.length, 0)} tank</h2>
+                <button type="button" className="indir-dugme ikincil" onClick={listeIndir}>Excel indir</button>
+              </div>
+              <input className="kalib-arama" type="search" placeholder="Bayi / şehir / ürün ara…"
+                value={arama} onChange={(e) => setArama(e.target.value)} aria-label="Bayi, şehir veya ürün ara" />
+
+              {gruplar.length === 0 && <p className="soluk">Aramayla eşleşen bayi yok.</p>}
+
+              {gruplar.map((g) => (
+                <div key={g.kod} className="bayi-grup">
+                  <div className="bayi-bas">
+                    <h3 className="bayi-ad">{g.ad}</h3>
+                    <span className="bayi-alt">{g.sehir ? <span className="sehir-cip">{g.sehir}</span> : null}{g.tanklar.length} tank</span>
+                  </div>
+                  {/* Tank KARTLARI (2026-10-21): tablo dar ekranda sığmıyordu; kartlar genişlikte yan
+                      yana, telefonda alt alta dizilir. Tank no büyük rozet — ilk bakışta okunur. */}
+                  <div className="tank-izgara">
+                    {g.tanklar.map((s) => {
+                      const acik = secili?.istasyon === s.istasyon_kod && secili?.tank === s.tank_no;
+                      const kapsam = Math.max(0, Math.min(100, Math.round(Number(s.kapsam_yuzde))));
+                      const uyum = Math.round(Number(s.uyum));
+                      const uyumSapik = uyum < 80 || uyum > 125;
+                      const sec = () => setSecili(acik ? null : { istasyon: s.istasyon_kod, tank: s.tank_no });
+                      return (
+                        <div key={s.tank_no} role="button" tabIndex={0} aria-expanded={acik}
+                          aria-label={`Tank ${s.tank_no}, ${s.urun}, güven ${s.guven} — cetveli ${acik ? 'gizle' : 'göster'}`}
+                          className={`tank-kart guven-${s.guven}${acik ? ' acik' : ''}`}
+                          onClick={sec}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sec(); } }}>
+                          <div className="tank-kart-ust">
+                            <span className="tank-no" aria-hidden="true"><small>TANK</small>{s.tank_no}</span>
+                            <span className="tank-kimlik">
+                              <span className="tank-urun">{s.urun}</span>
+                              <GuvenRozet g={s.guven} />
+                            </span>
+                          </div>
+                          <div className="kapsam-cubuk" title={`Tank yüksekliğinin %${kapsam}'i gerçek ölçümle kaplı`}>
+                            <span style={{ width: `${kapsam}%` }} />
+                          </div>
+                          <dl className="tank-metrik">
+                            <div><dt>Çap</dt><dd>{Math.round(Number(s.cap_mm)).toLocaleString('tr')} mm</dd></div>
+                            <div><dt>Kapsam</dt><dd>%{kapsam}</dd></div>
+                            <div><dt>Kap. uyumu</dt><dd className={uyumSapik ? 'sapik' : undefined}>%{uyum}</dd></div>
+                            <div><dt>Ölçüm</dt><dd>{s.nokta_sayisi.toLocaleString('tr')}</dd></div>
+                          </dl>
+                          <span className="tank-ac">{acik ? 'Cetveli gizle' : 'Cetveli göster'} <span aria-hidden="true">{acik ? '▴' : '▾'}</span></span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Seçili tankın cetveli kendi bayisinin hemen altında açılır */}
+                  {secili?.istasyon === g.kod && (
+                    <TankDetay key={`${secili.istasyon}|${secili.tank}`} istasyon={secili.istasyon} tank={secili.tank} />
+                  )}
+                </div>
+              ))}
             </section>
           )}
-
-          {secili && <TankDetay key={`${secili.istasyon}|${secili.tank}`} istasyon={secili.istasyon} tank={secili.tank} />}
         </>
       )}
     </div>
@@ -169,7 +220,7 @@ function TankDetay({ istasyon, tank }: { istasyon: string; tank: string }) {
   return (
     <section className="detay-kart">
       <div className="detay-bas">
-        <h3>{v.istasyon_ad ?? istasyon} — Tank {v.tank_no} <span className="soluk">({v.urun})</span></h3>
+        <h3><span className="detay-tank">Tank {v.tank_no}</span> {v.urun} <span className="soluk">— kalibrasyon cetveli</span></h3>
         <button type="button" className="indir-dugme" onClick={indir}>Excel indir</button>
       </div>
 
@@ -203,31 +254,43 @@ function TankDetay({ istasyon, tank }: { istasyon: string; tank: string }) {
   );
 }
 
-/** mm→litre eğrisi (SVG). Tam eğri soluk, saha kısmı marka rengiyle vurgulu. */
+/**
+ * mm→litre eğrisi. Tam eğri soluk kesik (geometri dahil), saha kısmı marka rengi.
+ * ⚠️ Eksen yazıları SVG DIŞINDA (HTML): SVG içindeki metin genişliğe göre ölçeklenip masaüstünde
+ * dev, telefonda okunmaz oluyordu (2026-10-21 ekran görüntüsüyle görüldü). SVG sabit yükseklikte,
+ * preserveAspectRatio="none" ile genişliğe yayılır; çizgiler non-scaling-stroke ile incelmez/kalınlaşmaz.
+ */
 function CetvelGrafik({ noktalar }: { noktalar: { mm: number; litre: number; kaynak: string }[] }) {
   if (noktalar.length < 2) return null;
-  const W = 520, H = 220, P = 44;
+  const W = 1000, H = 400;
   const maxMm = Math.max(...noktalar.map((n) => n.mm)) || 1;
   const maxLt = Math.max(...noktalar.map((n) => n.litre)) || 1;
-  const x = (mm: number) => P + ((W - 2 * P) * mm) / maxMm;
-  const y = (lt: number) => H - P - ((H - 2 * P) * lt) / maxLt;
+  const x = (mm: number) => (W * mm) / maxMm;
+  const y = (lt: number) => H - (H * lt) / maxLt;
   const saha = noktalar.filter((n) => n.kaynak === 'saha');
   const cizgi = (pts: typeof noktalar) => pts.map((n, i) => `${i ? 'L' : 'M'}${x(n.mm).toFixed(1)},${y(n.litre).toFixed(1)}`).join(' ');
+  const ltEtiket = (f: number) => Math.round(maxLt * f).toLocaleString('tr');
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img"
-      aria-label="Tank seviyesi (mm) ile litre arasındaki kalibrasyon eğrisi" className="cetvel-grafik">
-      <line x1={P} y1={P - 8} x2={P} y2={H - P} className="eksen" />
-      <line x1={P} y1={H - P} x2={W - P + 8} y2={H - P} className="eksen" />
-      {[0.25, 0.5, 0.75].map((f) => (
-        <line key={f} x1={P} y1={H - P - (H - 2 * P) * f} x2={W - P} y2={H - P - (H - 2 * P) * f} className="grid" />
-      ))}
-      <path d={cizgi(noktalar)} className="egri-geom" fill="none" />
-      {saha.length >= 2 && <path d={cizgi(saha)} className="egri-saha" fill="none" />}
-      <text x={P} y={H - P + 15} className="eksen-yazi">0</text>
-      <text x={W - P} y={H - P + 15} textAnchor="end" className="eksen-yazi">{Math.round(maxMm / 10)} cm</text>
-      <text x={P - 6} y={P} textAnchor="end" className="eksen-yazi">{Math.round(maxLt).toLocaleString('tr')} L</text>
-      <text x={P - 6} y={H - P} textAnchor="end" className="eksen-yazi">0</text>
-    </svg>
+    <figure className="cetvel-grafik-kap">
+      <div className="cetvel-grafik-alan">
+        <div className="eksen-y" aria-hidden="true">
+          <span>{ltEtiket(1)} L</span><span>{ltEtiket(0.5)}</span><span>0</span>
+        </div>
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" className="cetvel-grafik"
+          aria-label={`Kalibrasyon eğrisi: 0–${Math.round(maxMm / 10)} cm seviye, 0–${ltEtiket(1)} litre`}>
+          {[0.25, 0.5, 0.75].map((f) => (
+            <line key={f} x1={0} y1={H * f} x2={W} y2={H * f} className="grid" vectorEffect="non-scaling-stroke" />
+          ))}
+          <path d={cizgi(noktalar)} className="egri-geom" fill="none" vectorEffect="non-scaling-stroke" />
+          {saha.length >= 2 && <path d={cizgi(saha)} className="egri-saha" fill="none" vectorEffect="non-scaling-stroke" />}
+        </svg>
+      </div>
+      <div className="eksen-x" aria-hidden="true"><span>0 cm</span><span>Seviye</span><span>{Math.round(maxMm / 10)} cm</span></div>
+      <figcaption className="grafik-lejant">
+        <span><i className="lejant-saha" /> Saha ölçümü</span>
+        <span><i className="lejant-geom" /> Geometriyle tamamlanan</span>
+      </figcaption>
+    </figure>
   );
 }
