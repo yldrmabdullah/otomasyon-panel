@@ -169,86 +169,138 @@ export async function kalibrasyonSonUretim(): Promise<Date | null> {
   return r.rows[0]?.son ? new Date(r.rows[0].son) : null;
 }
 
-// --- KALİBRASYON cetvel üretimi (2026-10-21) ---
+// --- KALİBRASYON cetvel üretimi (2026-10-21; 2026-10-22 toplu okuma/yazma) ---
 
-/** Tank başına ham mm serisi — cetvel üretimi için. Tankları (en az 1 ölçümü olan) listeler. */
-export async function kalibrasyonTanklar(): Promise<
-  { istasyonKod: string; tankNo: string; urun: string; noktaSayisi: number }[]
-> {
-  const r = await pool().query(
-    `SELECT istasyon_kod, tank_no, MAX(urun) urun, COUNT(*) FILTER (WHERE yakit_mm > 0) nokta
-       FROM kalibrasyon_mm_seri GROUP BY istasyon_kod, tank_no HAVING COUNT(*) FILTER (WHERE yakit_mm > 0) > 0`,
-  );
-  return r.rows.map((x) => ({
-    istasyonKod: x.istasyon_kod, tankNo: x.tank_no, urun: x.urun, noktaSayisi: Number(x.nokta),
-  }));
+export interface KalibrasyonMeta {
+  noktaSayisi: number; kapsamYuzde: number; turetilmisCapMm: number;
+  polKapasite: number; capKapasiteUyum: number; fitHatasi: number; guven: string;
+}
+export interface KalibrasyonYeni {
+  istasyonKod: string; tankNo: string; urun: string;
+  cetvel: { mm: number; litre: number; kaynak: string }[];
+  meta: KalibrasyonMeta;
 }
 
-/** Bir tankın ham (mm, lt) ölçümleri + POL kapasitesi. */
-export async function kalibrasyonSeri(
-  istasyonKod: string, tankNo: string,
-): Promise<{ ham: { mm: number; lt: number }[]; polKapasite: number }> {
+/** TÜM tankların ham (mm, lt) serisi + POL kapasitesi — TEK sorgu (eskiden tank başına 1 sorgu). */
+export async function kalibrasyonTumSeriler(): Promise<
+  { istasyonKod: string; tankNo: string; urun: string; ham: { mm: number; lt: number }[]; polKapasite: number }[]
+> {
   const r = await pool().query(
-    `SELECT yakit_mm, yakit_lt, kapasite_lt FROM kalibrasyon_mm_seri
-       WHERE istasyon_kod = $1 AND tank_no = $2 AND yakit_mm > 0 ORDER BY durum_zamani`,
-    [istasyonKod, tankNo],
+    `SELECT istasyon_kod, tank_no, urun, yakit_mm, yakit_lt, kapasite_lt FROM kalibrasyon_mm_seri
+      WHERE yakit_mm > 0 ORDER BY istasyon_kod, tank_no, durum_zamani`,
   );
-  const ham = r.rows.map((x) => ({ mm: Number(x.yakit_mm), lt: Number(x.yakit_lt) }));
-  // kapasite tüm satırlarda aynı; en son dolu olanı al
-  const kap = r.rows.map((x) => Number(x.kapasite_lt)).filter((k) => k > 0);
-  return { ham, polKapasite: kap.length ? kap[kap.length - 1] : 0 };
+  const tanklar = new Map<string, { istasyonKod: string; tankNo: string; urun: string; ham: { mm: number; lt: number }[]; polKapasite: number }>();
+  for (const x of r.rows) {
+    const k = `${x.istasyon_kod}|${x.tank_no}`;
+    let t = tanklar.get(k);
+    if (!t) { t = { istasyonKod: x.istasyon_kod, tankNo: x.tank_no, urun: x.urun ?? '', ham: [], polKapasite: 0 }; tanklar.set(k, t); }
+    t.ham.push({ mm: Number(x.yakit_mm), lt: Number(x.yakit_lt) });
+    if (x.urun && x.urun > t.urun) t.urun = x.urun; // eski MAX(urun) davranışı
+    const kap = Number(x.kapasite_lt);
+    if (kap > 0) t.polKapasite = kap; // en son dolu kapasite (zaman sıralı)
+  }
+  return [...tanklar.values()];
 }
 
 /**
- * Üretilen cetveli yaz: yeni versiyon oluştur, eski aktif versiyonu pasifle. Tek transaction
- * benzeri (cetvel + versiyon birlikte). versiyonId = üretim zamanı epoch (artan, tank-bağımsız).
+ * Aktif versiyonların cetvel İMZASI ("istasyon|tank" → "mm:litre:kaynak,…", litre tam sayıya
+ * yuvarlı) — değişmeyen tankı yeniden yazmamak için. Satırları çekmek (175 bin) 27 sn sürüyordu;
+ * imza tank başına tek satır. Biçim core/kalibrasyonIs.ts cetvelImzasi() ile BİREBİR aynı olmalı.
  */
-export async function kalibrasyonCetvelYaz(
+export async function kalibrasyonAktifImzalar(): Promise<Map<string, string>> {
+  const r = await pool().query(
+    `SELECT c.istasyon_kod, c.tank_no,
+            string_agg(c.mm || ':' || round(c.litre)::bigint || ':' || c.kaynak, ',' ORDER BY c.mm) AS imza
+       FROM kalibrasyon_cetvel c
+       JOIN kalibrasyon_versiyon v ON v.versiyon_id = c.versiyon_id
+        AND v.istasyon_kod = c.istasyon_kod AND v.tank_no = c.tank_no AND v.aktif = true
+      GROUP BY c.istasyon_kod, c.tank_no`,
+  );
+  return new Map(r.rows.map((x) => [`${x.istasyon_kod}|${x.tank_no}`, String(x.imza)]));
+}
+
+/**
+ * Üretim turunu TEK transaction'da yaz:
+ *  - `yeniler` (cetveli değişen/ilk kez çıkan): yeni versiyon + cetvel, eski aktif pasiflenir,
+ *    eski cetvel satırları silinir (cetvel tablosu yalnız aktif versiyonu tutar).
+ *  - `ayniler` (cetvel aynı): yalnız aktif versiyonun özet alanları + uretim_zamani güncellenir
+ *    (izleme işindeki "saatte bir" kapısı uretim_zamani'na bakar).
+ *  - 30 günden eski PASİF versiyon satırları budanır (her tur 650 satır birikiyordu).
+ * Dizi parametreli unnest → parametre sayısı satır sayısından bağımsız (tek komut).
+ */
+export async function kalibrasyonToplaYaz(
   versiyonId: number,
-  istasyonKod: string, tankNo: string, urun: string,
-  cetvel: { mm: number; litre: number; kaynak: string }[],
-  meta: {
-    noktaSayisi: number; kapsamYuzde: number; turetilmisCapMm: number;
-    polKapasite: number; capKapasiteUyum: number; fitHatasi: number; guven: string;
-  },
+  yeniler: KalibrasyonYeni[],
+  ayniler: { istasyonKod: string; tankNo: string; meta: KalibrasyonMeta }[],
 ): Promise<void> {
-  const p = pool();
-  // Eski aktif versiyonu pasifle (bu tank için)
-  await p.query(
-    `UPDATE kalibrasyon_versiyon SET aktif = false
-       WHERE istasyon_kod = $1 AND tank_no = $2 AND aktif = true`,
-    [istasyonKod, tankNo],
-  );
-  // Yeni versiyon satırı
-  await p.query(
-    `INSERT INTO kalibrasyon_versiyon
-       (versiyon_id, istasyon_kod, tank_no, urun, nokta_sayisi, kapsam_yuzde,
-        turetilmis_cap_mm, pol_kapasite_lt, cap_kapasite_uyum, fit_hatasi, guven, aktif)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, true)`,
-    [versiyonId, istasyonKod, tankNo, urun, meta.noktaSayisi, meta.kapsamYuzde,
-     meta.turetilmisCapMm, meta.polKapasite, meta.capKapasiteUyum, meta.fitHatasi, meta.guven],
-  );
-  // Önce bu tankın eski cetvel satırlarını temizle (versiyon değişti — eski versiyon_id kalır
-  // ama aktif değil; cetvel tablosu yalnız aktif versiyonu tutsun ki şişmesin).
-  await p.query(
-    `DELETE FROM kalibrasyon_cetvel WHERE istasyon_kod = $1 AND tank_no = $2`,
-    [istasyonKod, tankNo],
-  );
-  // Cetvel satırları TEK toplu INSERT (satır-satır çok yavaştı — 360 satır × N tank = timeout).
-  if (cetvel.length > 0) {
-    const deger: unknown[] = [];
-    const satir: string[] = [];
-    let i = 1;
-    for (const c of cetvel) {
-      satir.push(`($${i},$${i + 1},$${i + 2},$${i + 3},$${i + 4},$${i + 5})`);
-      deger.push(versiyonId, istasyonKod, tankNo, c.mm, c.litre, c.kaynak);
-      i += 6;
+  const c = await pool().connect();
+  try {
+    await c.query('BEGIN');
+    if (yeniler.length > 0) {
+      const col = <T>(f: (y: KalibrasyonYeni) => T) => yeniler.map(f);
+      await c.query(
+        `INSERT INTO kalibrasyon_versiyon
+           (versiyon_id, istasyon_kod, tank_no, urun, nokta_sayisi, kapsam_yuzde,
+            turetilmis_cap_mm, pol_kapasite_lt, cap_kapasite_uyum, fit_hatasi, guven, aktif)
+         SELECT $1, u.* , true FROM unnest($2::text[], $3::text[], $4::text[], $5::int[], $6::numeric[],
+                $7::numeric[], $8::numeric[], $9::numeric[], $10::numeric[], $11::text[]) u`,
+        [versiyonId, col((y) => y.istasyonKod), col((y) => y.tankNo), col((y) => y.urun),
+         col((y) => y.meta.noktaSayisi), col((y) => y.meta.kapsamYuzde), col((y) => y.meta.turetilmisCapMm),
+         col((y) => y.meta.polKapasite), col((y) => y.meta.capKapasiteUyum), col((y) => y.meta.fitHatasi),
+         col((y) => y.meta.guven)],
+      );
+      // Bu turda yeni versiyon alan tankların ESKİ aktif versiyonu + eski cetvel satırları
+      await c.query(
+        `UPDATE kalibrasyon_versiyon o SET aktif = false
+           FROM kalibrasyon_versiyon n
+          WHERE n.versiyon_id = $1 AND o.istasyon_kod = n.istasyon_kod AND o.tank_no = n.tank_no
+            AND o.aktif = true AND o.versiyon_id <> $1`,
+        [versiyonId],
+      );
+      await c.query(
+        `DELETE FROM kalibrasyon_cetvel o USING kalibrasyon_versiyon n
+          WHERE n.versiyon_id = $1 AND o.istasyon_kod = n.istasyon_kod AND o.tank_no = n.tank_no
+            AND o.versiyon_id <> $1`,
+        [versiyonId],
+      );
+      // Cetvel satırları — 50 bin satırlık parçalar (tek komut boyutu makul kalsın)
+      const ist: string[] = [], tank: string[] = [], mm: number[] = [], lt: number[] = [], kay: string[] = [];
+      for (const y of yeniler) for (const n of y.cetvel) { ist.push(y.istasyonKod); tank.push(y.tankNo); mm.push(n.mm); lt.push(n.litre); kay.push(n.kaynak); }
+      const PARCA = 50_000;
+      for (let i = 0; i < mm.length; i += PARCA) {
+        await c.query(
+          `INSERT INTO kalibrasyon_cetvel (versiyon_id, istasyon_kod, tank_no, mm, litre, kaynak)
+           SELECT $1, u.* FROM unnest($2::text[], $3::text[], $4::int[], $5::numeric[], $6::text[]) u`,
+          [versiyonId, ist.slice(i, i + PARCA), tank.slice(i, i + PARCA), mm.slice(i, i + PARCA),
+           lt.slice(i, i + PARCA), kay.slice(i, i + PARCA)],
+        );
+      }
     }
-    await p.query(
-      `INSERT INTO kalibrasyon_cetvel (versiyon_id, istasyon_kod, tank_no, mm, litre, kaynak)
-       VALUES ${satir.join(',')}`,
-      deger,
+    if (ayniler.length > 0) {
+      const col = <T>(f: (a: (typeof ayniler)[number]) => T) => ayniler.map(f);
+      await c.query(
+        `UPDATE kalibrasyon_versiyon v SET
+           nokta_sayisi = u.nokta, kapsam_yuzde = u.kapsam, turetilmis_cap_mm = u.cap,
+           pol_kapasite_lt = u.kap, cap_kapasite_uyum = u.uyum, fit_hatasi = u.fit, guven = u.guven,
+           uretim_zamani = now()
+          FROM unnest($1::text[], $2::text[], $3::int[], $4::numeric[], $5::numeric[], $6::numeric[],
+                      $7::numeric[], $8::numeric[], $9::text[])
+               AS u(ist, tank, nokta, kapsam, cap, kap, uyum, fit, guven)
+         WHERE v.aktif = true AND v.istasyon_kod = u.ist AND v.tank_no = u.tank`,
+        [col((a) => a.istasyonKod), col((a) => a.tankNo), col((a) => a.meta.noktaSayisi),
+         col((a) => a.meta.kapsamYuzde), col((a) => a.meta.turetilmisCapMm), col((a) => a.meta.polKapasite),
+         col((a) => a.meta.capKapasiteUyum), col((a) => a.meta.fitHatasi), col((a) => a.meta.guven)],
+      );
+    }
+    await c.query(
+      `DELETE FROM kalibrasyon_versiyon WHERE aktif = false AND uretim_zamani < now() - interval '30 days'`,
     );
+    await c.query('COMMIT');
+  } catch (e) {
+    await c.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    c.release();
   }
 }
 

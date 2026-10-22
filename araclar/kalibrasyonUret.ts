@@ -9,7 +9,7 @@ import { kapat } from '../core/db.js';
 
 async function main() {
   const o = await kalibrasyonUretimiYap();
-  console.log(`  ✔ ${o.uretildi} tank için cetvel üretildi, ${o.atlandi} atlandı (veri yetersiz)`);
+  console.log(`  ✔ ${o.uretildi} tank için cetvel üretildi (${o.degisen} değişti), ${o.atlandi} atlandı (veri yetersiz)`);
   console.log(`     güven: A=${o.guven.A} B=${o.guven.B} C=${o.guven.C} D=${o.guven.D} · ${o.sureMs} ms`);
   await kapat();
 }

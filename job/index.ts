@@ -97,7 +97,7 @@ async function main() {
     const saatGecti = !son || Date.now() - son.getTime() > 55 * 60_000;
     if (saatGecti) {
       const o = await kalibrasyonUretimiYap();
-      log(`Kalibrasyon: +${yeni} yeni mm noktası · cetvel ${o.uretildi} tank (A${o.guven.A} B${o.guven.B} C${o.guven.C} D${o.guven.D}) ${o.sureMs} ms.`);
+      log(`Kalibrasyon: +${yeni} yeni mm noktası · cetvel ${o.uretildi} tank, ${o.degisen} değişti (A${o.guven.A} B${o.guven.B} C${o.guven.C} D${o.guven.D}) ${o.sureMs} ms.`);
     } else {
       log(`Kalibrasyon: +${yeni} yeni mm noktası (cetvel üretimi saatte bir).`);
     }
